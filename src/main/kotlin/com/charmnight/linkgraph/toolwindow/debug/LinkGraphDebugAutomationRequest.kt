@@ -17,6 +17,8 @@ data class LinkGraphDebugAutomationRequest(
     val autoloadGraphMode: String? = null,
     /** 自动按方法签名载入真实方法链路图。 */
     val autoloadMethodSignature: String? = null,
+    /** 自动展开的调用目标签名；会在真实方法图载入后定位对应 invocation 节点。 */
+    val autoExpandInvocationSignature: String? = null,
     /** 是否自动发起一次架构图请求。 */
     val autoRequestArchitectureGraph: Boolean = false,
     /** 是否自动对架构图触发讲解任务。 */
@@ -47,6 +49,7 @@ data class LinkGraphDebugAutomationRequest(
         get() = autoOpenToolWindow ||
             autoloadGraphMode != null ||
             autoloadMethodSignature != null ||
+            autoExpandInvocationSignature != null ||
             autoRequestArchitectureGraph ||
             autoRequestArchitectureGraphBeautification ||
             autoRequestArchitectureGraphQa ||
@@ -71,6 +74,9 @@ data class LinkGraphDebugAutomationRequest(
         private const val DEBUG_AUTOLOAD_GRAPH_ENV = "LINKGRAPH_DEBUG_AUTOLOAD_GRAPH"
         /** 环境变量名：自动载入的方法签名。 */
         private const val DEBUG_AUTOLOAD_METHOD_SIGNATURE_ENV = "LINKGRAPH_DEBUG_AUTOLOAD_METHOD_SIGNATURE"
+        /** 环境变量名：自动展开的调用目标签名。 */
+        const val DEBUG_AUTO_EXPAND_INVOCATION_SIGNATURE_ENV: String =
+            "LINKGRAPH_DEBUG_AUTO_EXPAND_INVOCATION_SIGNATURE"
         /** 环境变量名：是否自动请求架构图。 */
         private const val DEBUG_AUTO_REQUEST_ARCHITECTURE_GRAPH_ENV = "LINKGRAPH_DEBUG_AUTO_REQUEST_ARCHITECTURE_GRAPH"
         /** 环境变量名：是否自动请求架构图讲解。 */
@@ -127,6 +133,10 @@ data class LinkGraphDebugAutomationRequest(
                 autoloadMethodSignature = LinkGraphDebugEnvironment.value(DEBUG_AUTOLOAD_METHOD_SIGNATURE_ENV, environment)
                     ?.trim()
                     ?.takeIf(String::isNotBlank),
+                autoExpandInvocationSignature = LinkGraphDebugEnvironment.value(
+                    DEBUG_AUTO_EXPAND_INVOCATION_SIGNATURE_ENV,
+                    environment,
+                )?.trim()?.takeIf(String::isNotBlank),
                 autoRequestArchitectureGraph = debugFlag(DEBUG_AUTO_REQUEST_ARCHITECTURE_GRAPH_ENV, environment),
                 autoRequestArchitectureGraphBeautification =
                     debugFlag(DEBUG_AUTO_REQUEST_ARCHITECTURE_GRAPH_BEAUTIFICATION_ENV, environment),

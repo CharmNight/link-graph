@@ -5,10 +5,14 @@ import com.charmnight.linkgraph.application.usecase.InvocationExpansionTarget
 import com.charmnight.linkgraph.application.usecase.InvocationExpansionTargetKind
 import com.charmnight.linkgraph.jvm.index.JvmClassKind
 import com.charmnight.linkgraph.jvm.index.JvmClassSymbol
+import com.charmnight.linkgraph.jvm.index.JvmImplementationSignatureResolver
 import com.charmnight.linkgraph.jvm.index.JvmMethodSymbol
+import com.charmnight.linkgraph.jvm.index.NoopJvmImplementationSignatureResolver
 import com.charmnight.linkgraph.jvm.index.JvmOverrideShapeMatcher
+import com.charmnight.linkgraph.jvm.index.JvmSymbol
 import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
 import com.charmnight.linkgraph.source.SourceOrigin
+import com.intellij.openapi.diagnostic.Logger
 
 /**
  * 调用展开目标解析器。
@@ -18,6 +22,8 @@ import com.charmnight.linkgraph.source.SourceOrigin
  * 当目标在 JDK 或外部库中时给出对应的外部来源标记。
  */
 class InvocationExpansionTargetResolver {
+    private val logger = Logger.getInstance(InvocationExpansionTargetResolver::class.java)
+
     /**
      * 解析调用签名对应的展开目标。
      *
@@ -29,13 +35,13 @@ class InvocationExpansionTargetResolver {
     fun resolve(
         invocationSignature: String,
         index: ArchitectureGraphIndex,
+        implementationResolver: JvmImplementationSignatureResolver = NoopJvmImplementationSignatureResolver,
     ): InvocationExpansionTarget {
         val signature = invocationSignature.trim()
         if (signature.isBlank()) {
             return InvocationExpansionTarget(InvocationExpansionTargetKind.NOT_FOUND)
         }
-        val method = index.findMethod(signature)
-            ?: index.findMethod(signature.substringBefore('#', missingDelimiterValue = signature))
+        val method = findMethod(signature, index)
         if (method == null) {
             val ownerClass = ownerClassName(signature)?.let(index::findClass)
                 ?: return InvocationExpansionTarget(InvocationExpansionTargetKind.NOT_FOUND)
@@ -52,16 +58,34 @@ class InvocationExpansionTargetResolver {
                 signature = method.signature,
             )
         }
-        val implementations = implementationMethods(method, ownerClass, index)
-        return when (implementations.size) {
-            0 -> InvocationExpansionTarget(InvocationExpansionTargetKind.NO_IMPLEMENTATION)
+        val indexedImplementationSignatures = implementationMethods(method, ownerClass, index)
+            .map(JvmMethodSymbol::signature)
+        val fallbackImplementationSignatures = if (indexedImplementationSignatures.isEmpty()) {
+            implementationResolver.implementationSignatures(method, ownerClass)
+        } else {
+            emptyList()
+        }
+        val implementationSignatures = indexedImplementationSignatures
+            .ifEmpty { fallbackImplementationSignatures }
+            .sorted()
+        return when (implementationSignatures.size) {
+            0 -> {
+                logNoImplementationDiagnostic(
+                    signature = signature,
+                    method = method,
+                    ownerClass = ownerClass,
+                    index = index,
+                    implementationResolver = implementationResolver,
+                )
+                InvocationExpansionTarget(InvocationExpansionTargetKind.NO_IMPLEMENTATION)
+            }
             1 -> InvocationExpansionTarget(
                 kind = InvocationExpansionTargetKind.PROJECT_SOURCE,
-                signature = implementations.single().signature,
+                signature = implementationSignatures.single(),
             )
             else -> InvocationExpansionTarget(
                 kind = InvocationExpansionTargetKind.MULTIPLE_IMPLEMENTATIONS,
-                candidateSignatures = implementations.map(JvmMethodSymbol::signature).sorted(),
+                candidateSignatures = implementationSignatures,
             )
         }
     }
@@ -124,7 +148,7 @@ class InvocationExpansionTargetResolver {
             .asSequence()
             .mapNotNull(index::findSymbol)
             .filterIsInstance<JvmClassSymbol>()
-            .filter { symbol -> symbol.origin == SourceOrigin.PROJECT_SOURCE }
+            .filter(::isConcreteJvmClass)
             .flatMap { classSymbol ->
                 index.symbolIndex.methodsBySignature.values.asSequence()
                     .filter { candidate ->
@@ -137,12 +161,62 @@ class InvocationExpansionTargetResolver {
     }
 
     /**
+     * 先按完整签名命中索引；失败时按 owner/name/参数形状兜底。
+     *
+     * 前端流程图节点可能保留源码展示签名（如 `List<String>`），而 JVM 符号索引可能记录 PSI
+     * 规范签名（如 `java.util.List`）。返回类型不参与 JVM 重载判定，因此这里以 owner/name/参数
+     * 作为稳定匹配条件，避免把同一个抽象方法误判为未索引。
+     */
+    private fun findMethod(
+        signature: String,
+        index: ArchitectureGraphIndex,
+    ): JvmMethodSymbol? {
+        val normalizedSignature = signature.substringBefore('#', missingDelimiterValue = signature)
+        index.findMethod(signature)?.let { return it }
+        if (normalizedSignature != signature) {
+            index.findMethod(normalizedSignature)?.let { return it }
+        }
+        val parsed = ParsedMethodSignature.parse(normalizedSignature) ?: return null
+        return index.symbolIndex.methodsBySignature.values.asSequence()
+            .filter { method ->
+                method.ownerClassName == parsed.ownerClassName &&
+                    method.simpleName == parsed.methodName &&
+                    method.parameterTypes.size == parsed.parameterTypes.size &&
+                    method.parameterTypes.zip(parsed.parameterTypes)
+                        .all { (indexedType, requestedType) -> methodTypesCompatible(indexedType, requestedType) }
+            }
+            .sortedWith(
+                compareByDescending<JvmMethodSymbol> { method -> method.returnType == parsed.returnType }
+                    .thenBy(JvmMethodSymbol::signature),
+            )
+            .firstOrNull()
+    }
+
+    private fun isConcreteJvmClass(classSymbol: JvmClassSymbol): Boolean =
+        classSymbol.origin == SourceOrigin.PROJECT_SOURCE &&
+            classSymbol.kind != JvmClassKind.INTERFACE &&
+            !classSymbol.abstract
+
+    /**
      * 通过广度优先遍历实现/继承关系，收集目标类的全部子类与实现类标识。
      *
      * 从目标类出发，沿着 incoming 的实现和继承边反向收集，
      * 最后排除目标类自身，避免把抽象声明当成实现计入结果。
      */
     private fun implementationClassIds(
+        ownerClass: JvmClassSymbol,
+        index: ArchitectureGraphIndex,
+    ): Set<String> {
+        val result = implementationClassIdsFromRelations(ownerClass, index).toMutableSet()
+        index.symbolIndex.classesByQualifiedName.values
+            .asSequence()
+            .filter { classSymbol -> classSymbol.id != ownerClass.id }
+            .filter { classSymbol -> classSymbol.hasSuperType(ownerClass, index) }
+            .mapTo(result, JvmClassSymbol::id)
+        return result
+    }
+
+    private fun implementationClassIdsFromRelations(
         ownerClass: JvmClassSymbol,
         index: ArchitectureGraphIndex,
     ): Set<String> {
@@ -163,6 +237,45 @@ class InvocationExpansionTargetResolver {
         return result
     }
 
+    private fun implementationClassIdsFromClassSymbols(
+        ownerClass: JvmClassSymbol,
+        index: ArchitectureGraphIndex,
+    ): Set<String> =
+        index.symbolIndex.classesByQualifiedName.values
+            .asSequence()
+            .filter { classSymbol -> classSymbol.id != ownerClass.id }
+            .filter { classSymbol -> classSymbol.hasSuperType(ownerClass, index) }
+            .mapTo(linkedSetOf(), JvmClassSymbol::id)
+
+    private fun JvmClassSymbol.hasSuperType(
+        targetClass: JvmClassSymbol,
+        index: ArchitectureGraphIndex,
+    ): Boolean {
+        val visited = linkedSetOf<String>()
+        val queue = java.util.ArrayDeque<JvmClassSymbol>()
+        queue.add(this)
+        while (queue.isNotEmpty()) {
+            val current = queue.removeFirst()
+            if (!visited.add(current.id)) {
+                continue
+            }
+            current.directSuperTypes(index).forEach { superClass ->
+                if (superClass.id == targetClass.id) {
+                    return true
+                }
+                queue.add(superClass)
+            }
+        }
+        return false
+    }
+
+    private fun JvmClassSymbol.directSuperTypes(index: ArchitectureGraphIndex): List<JvmClassSymbol> =
+        sequenceOf(superClassName)
+            .plus(interfaceNames.asSequence())
+            .mapNotNull { typeName -> index.symbolIndex.findClassByTypeName(typeName, packageName) }
+            .distinctBy(JvmClassSymbol::id)
+            .toList()
+
     /**
      * 从方法签名中提取所属类的全限定名。
      *
@@ -174,5 +287,176 @@ class InvocationExpansionTargetResolver {
         return beforeParameters
             .substringBeforeLast('.', missingDelimiterValue = "")
             .takeIf(String::isNotBlank)
+    }
+
+    private data class ParsedMethodSignature(
+        val ownerClassName: String,
+        val methodName: String,
+        val parameterTypes: List<String>,
+        val returnType: String?,
+    ) {
+        companion object {
+            fun parse(signature: String): ParsedMethodSignature? {
+                val openParen = signature.indexOf('(').takeIf { index -> index >= 0 } ?: return null
+                val closeParen = signature.indexOf(')', startIndex = openParen + 1)
+                    .takeIf { index -> index >= openParen } ?: return null
+                val ownerAndMethod = signature.substring(0, openParen)
+                val ownerClassName = ownerAndMethod.substringBeforeLast('.', missingDelimiterValue = "")
+                    .takeIf(String::isNotBlank) ?: return null
+                val methodName = ownerAndMethod.substringAfterLast('.').takeIf(String::isNotBlank) ?: return null
+                val parameterTypes = splitParameterTypes(signature.substring(openParen + 1, closeParen))
+                val returnType = signature.substring(closeParen + 1)
+                    .removePrefix(":")
+                    .takeIf(String::isNotBlank)
+                return ParsedMethodSignature(ownerClassName, methodName, parameterTypes, returnType)
+            }
+
+            private fun splitParameterTypes(raw: String): List<String> {
+                if (raw.isBlank()) {
+                    return emptyList()
+                }
+                val result = mutableListOf<String>()
+                val current = StringBuilder()
+                var genericDepth = 0
+                raw.forEach { char ->
+                    when (char) {
+                        '<' -> {
+                            genericDepth += 1
+                            current.append(char)
+                        }
+                        '>' -> {
+                            genericDepth = (genericDepth - 1).coerceAtLeast(0)
+                            current.append(char)
+                        }
+                        ',' -> {
+                            if (genericDepth == 0) {
+                                current.toString().trim().takeIf(String::isNotBlank)?.let(result::add)
+                                current.clear()
+                            } else {
+                                current.append(char)
+                            }
+                        }
+                        else -> current.append(char)
+                    }
+                }
+                current.toString().trim().takeIf(String::isNotBlank)?.let(result::add)
+                return result
+            }
+        }
+    }
+
+    private fun methodTypesCompatible(indexedType: String, requestedType: String): Boolean {
+        val indexed = eraseMethodType(indexedType)
+        val requested = eraseMethodType(requestedType)
+        return indexed == requested || isLikelyTypeParameterName(indexed) || isLikelyTypeParameterName(requested)
+    }
+
+    private fun eraseMethodType(type: String): String {
+        val trimmed = type.trim().removeSuffix("?")
+        val arraySuffix = buildString {
+            var rest = trimmed
+            while (rest.endsWith("[]")) {
+                append("[]")
+                rest = rest.removeSuffix("[]")
+            }
+        }
+        val withoutArrays = trimmed.removeSuffix(arraySuffix)
+        val erased = withoutArrays.substringBefore('<').substringAfterLast('.').trim()
+        return erased + arraySuffix
+    }
+
+    private fun isLikelyTypeParameterName(type: String): Boolean =
+        type.length == 1 && type[0].isUpperCase()
+
+    private fun logNoImplementationDiagnostic(
+        signature: String,
+        method: JvmMethodSymbol,
+        ownerClass: JvmClassSymbol,
+        index: ArchitectureGraphIndex,
+        implementationResolver: JvmImplementationSignatureResolver,
+    ) {
+        val relationClassIds = implementationClassIdsFromRelations(ownerClass, index)
+        val classSymbolClassIds = implementationClassIdsFromClassSymbols(ownerClass, index)
+        val implementationClassIds = (relationClassIds + classSymbolClassIds).toCollection(linkedSetOf())
+        val implementationClasses = implementationClassIds
+            .mapNotNull(index::findSymbol)
+            .filterIsInstance<JvmClassSymbol>()
+        val concreteImplementationClasses = implementationClasses.filter(::isConcreteJvmClass)
+        val sameOwnerNameMethods = index.symbolIndex.methodsBySignature.values
+            .filter { candidate -> candidate.ownerClassName == method.ownerClassName && candidate.simpleName == method.simpleName }
+            .sortedBy(JvmMethodSymbol::signature)
+        val candidateMethodsByName = concreteImplementationClasses
+            .asSequence()
+            .flatMap { classSymbol ->
+                index.symbolIndex.methodsBySignature.values.asSequence()
+                    .filter { candidate ->
+                        candidate.ownerClassName == classSymbol.qualifiedName &&
+                            candidate.simpleName == method.simpleName
+                    }
+            }
+            .distinctBy(JvmMethodSymbol::id)
+            .sortedBy(JvmMethodSymbol::signature)
+            .toList()
+        val matchedMethods = candidateMethodsByName
+            .filter { candidate -> JvmOverrideShapeMatcher.matchesOverride(candidate, method) }
+            .sortedBy(JvmMethodSymbol::signature)
+        val incomingRelations = index.relationIndex.incoming(ownerClass.id)
+        val outgoingRelations = index.relationIndex.outgoing(ownerClass.id)
+
+        logger.warn(
+            "调用展开解析 trace: stage=invocationExpansion.noImplementation, " +
+                "signature=$signature, normalizedSignature=${signature.substringBefore('#', missingDelimiterValue = signature)}, " +
+                "matchedMethod=${method.methodSummary()}, ownerClass=${ownerClass.classSummary()}, " +
+                "sameOwnerNameMethods=${sameOwnerNameMethods.size}[${sameOwnerNameMethods.sampleMethods()}], " +
+                "ownerIncoming=${incomingRelations.size}[${incomingRelations.sampleRelations(index)}], " +
+                "ownerOutgoing=${outgoingRelations.size}[${outgoingRelations.sampleRelations(index)}], " +
+                "relationImplementationClassIds=${relationClassIds.size}[${relationClassIds.sampleIds(index)}], " +
+                "classSymbolImplementationClassIds=${classSymbolClassIds.size}[${classSymbolClassIds.sampleIds(index)}], " +
+                "implementationClasses=${implementationClasses.size}[${implementationClasses.sampleClasses()}], " +
+                "concreteImplementationClasses=${concreteImplementationClasses.size}[${concreteImplementationClasses.sampleClasses()}], " +
+                "candidateMethodsByName=${candidateMethodsByName.size}[${candidateMethodsByName.sampleMethods()}], " +
+                "matchedOverrideMethods=${matchedMethods.size}[${matchedMethods.sampleMethods()}], " +
+                implementationResolver.diagnostic(method, ownerClass),
+        )
+    }
+
+    private fun JvmMethodSymbol.methodSummary(): String =
+        "$signature(id=$id, owner=$ownerClassName, params=${parameterTypes.joinToString("|")}, return=$returnType, abstract=$abstract, origin=$origin)"
+
+    private fun JvmClassSymbol.classSummary(): String =
+        "$qualifiedName(id=$id, kind=$kind, abstract=$abstract, origin=$origin, super=$superClassName, interfaces=${interfaceNames.joinToString("|")})"
+
+    private fun List<JvmMethodSymbol>.sampleMethods(): String =
+        take(SAMPLE_LIMIT).joinToString("|") { method -> method.methodSummary() }
+
+    private fun List<JvmClassSymbol>.sampleClasses(): String =
+        take(SAMPLE_LIMIT).joinToString("|") { classSymbol -> classSymbol.classSummary() }
+
+    private fun Set<String>.sampleIds(index: ArchitectureGraphIndex): String =
+        take(SAMPLE_LIMIT).joinToString("|") { symbolId ->
+            val symbol = index.findSymbol(symbolId)
+            when (symbol) {
+                is JvmClassSymbol -> symbol.classSummary()
+                is JvmMethodSymbol -> symbol.methodSummary()
+                is JvmSymbol -> "${symbol.qualifiedName}(id=${symbol.id}, origin=${symbol.origin})"
+                null -> "$symbolId(unindexed)"
+            }
+        }
+
+    private fun List<com.charmnight.linkgraph.jvm.relation.JvmRelation>.sampleRelations(index: ArchitectureGraphIndex): String =
+        take(SAMPLE_LIMIT).joinToString("|") { relation ->
+            "${relation.kind}:${relation.fromSymbolId.symbolLabel(index)}->${relation.toSymbolId.symbolLabel(index)}"
+        }
+
+    private fun String.symbolLabel(index: ArchitectureGraphIndex): String =
+        when (val symbol = index.findSymbol(this)) {
+            is JvmClassSymbol -> "${symbol.qualifiedName}($this)"
+            is JvmMethodSymbol -> "${symbol.signature}($this)"
+            is JvmSymbol -> "${symbol.qualifiedName}($this)"
+            null -> "$this(unindexed)"
+        }
+
+    private companion object {
+        const val SAMPLE_LIMIT = 8
     }
 }

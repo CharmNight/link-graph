@@ -6,6 +6,10 @@ import com.charmnight.linkgraph.agent.tools.ToolGraphSceneId
 import com.charmnight.linkgraph.agent.tools.ToolGraphSceneState
 import com.charmnight.linkgraph.agent.tools.ToolGraphSnapshot
 import com.charmnight.linkgraph.agent.tools.ToolGraphView
+import com.charmnight.linkgraph.agent.model.ChildInvocationExpansionState as AgentChildInvocationExpansionState
+import com.charmnight.linkgraph.agent.model.InvocationExpansionBlockPosition
+import com.charmnight.linkgraph.agent.model.InvocationExpansionContextMode as AgentInvocationExpansionContextMode
+import com.charmnight.linkgraph.agent.model.InvocationExpansionSceneState as AgentInvocationExpansionSceneState
 import com.charmnight.linkgraph.ui.GraphEditorStateSnapshot
 import com.charmnight.linkgraph.ui.GraphSceneId
 import com.charmnight.linkgraph.application.model.GraphProjectionIndex
@@ -44,7 +48,12 @@ fun GraphEditorStateSnapshot.toToolGraphSnapshot(): ToolGraphSnapshot {
         diff = diff,
         currentSceneId = currentSceneId.toToolGraphSceneId(),
         sceneStates = sceneStates.mapKeys { (sceneId, _) -> sceneId.toToolGraphSceneId() }
-            .mapValues { (_, state) -> ToolGraphSceneState(selectedNodeId = state.selectedNodeId) },
+            .mapValues { (_, state) ->
+                ToolGraphSceneState(
+                    selectedNodeId = state.selectedNodeId,
+                    invocationExpansionState = state.invocationExpansionState.toAgentInvocationExpansionSceneState(),
+                )
+            },
         selectedMethodSignature = selectedMethodSignature,
         trustedNavigationNodes = trustedNavigationNodes,
         draftWorkbenchState = draftWorkbenchState,
@@ -73,3 +82,26 @@ private fun GraphProjectionIndex.toToolGraphProjectionIndex(): ToolGraphProjecti
         },
     )
 }
+
+private fun com.charmnight.linkgraph.ui.InvocationExpansionSceneState.toAgentInvocationExpansionSceneState(): AgentInvocationExpansionSceneState =
+    AgentInvocationExpansionSceneState(
+        activeExpansionId = activeExpansionId,
+        activeExpansionPath = activeExpansionPath,
+        collapsedExpansionIds = collapsedExpansionIds,
+        activeSiblingByParentContext = activeSiblingByParentContext,
+        blockPositions = blockPositions.mapValues { (_, position) ->
+            InvocationExpansionBlockPosition(x = position.x, y = position.y)
+        },
+        lastChildStateByExpansionId = lastChildStateByExpansionId.mapValues { (_, childState) ->
+            AgentChildInvocationExpansionState(
+                activeExpansionId = childState.activeExpansionId,
+                activeExpansionPath = childState.activeExpansionPath,
+                collapsedExpansionIds = childState.collapsedExpansionIds,
+                activeSiblingByParentContext = childState.activeSiblingByParentContext,
+            )
+        },
+        contextMode = when (contextMode) {
+            com.charmnight.linkgraph.ui.InvocationExpansionContextMode.ACTIVE_CHAIN ->
+                AgentInvocationExpansionContextMode.ACTIVE_CHAIN
+        },
+    )

@@ -12,8 +12,12 @@ import com.charmnight.linkgraph.agent.model.GenerationPlan
 import com.charmnight.linkgraph.agent.model.GraphBeautificationContext
 import com.charmnight.linkgraph.agent.model.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.application.port.GraphGenerationPort
+import com.charmnight.linkgraph.agent.model.InvocationExpansionContext
 import com.charmnight.linkgraph.agent.model.GraphPresentationContext
 import com.charmnight.linkgraph.agent.model.SourceSnippetContext
+import com.charmnight.linkgraph.agent.model.buildInvocationExpansionActiveChainScope
+import com.charmnight.linkgraph.agent.model.hasExplicitInvocationExpansionScope
+import com.charmnight.linkgraph.application.model.GraphSceneId
 import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
@@ -148,6 +152,7 @@ internal class PlanningContextFactory(
                 selectedNodeIds = selectedNodeIds,
                 hiddenCurrentMethodNodeCount = hiddenCurrentMethodNodeCount,
                 hiddenCrossMethodNodeCount = hiddenCrossMethodNodeCount,
+                invocationExpansionContext = graphContext.invocationExpansionContext,
             ),
             sourceContext = buildSourceSnippetContexts(
                 visibleGraph = graphContext.presentationGraph,
@@ -191,10 +196,22 @@ internal class PlanningContextFactory(
         val visibleGraph = currentVisibleGraph(snapshot)
             .takeIf(GraphDocument::hasGraphContent)
             ?: workingGraph
-        val presentationGraph = includeVisibleInvocationExpansions(
+        val invocationExpansionScope = if (
+            snapshot.currentSceneId == GraphSceneId.WORKSPACE_FLOWCHART &&
+            snapshot.flowchartInvocationExpansionState.hasExplicitInvocationExpansionScope()
+        ) {
+            buildInvocationExpansionActiveChainScope(
+                visibleGraph = visibleGraph,
+                fullGraph = fullGraph,
+                sceneState = snapshot.flowchartInvocationExpansionState,
+            )
+        } else {
+            null
+        }
+        val presentationGraph = (invocationExpansionScope?.graph ?: includeVisibleInvocationExpansions(
             visibleGraph = visibleGraph,
             fullGraph = fullGraph,
-        ).includeRequestedFocusNodes(
+        )).includeRequestedFocusNodes(
             fullGraph = fullGraph,
             focusNodeIds = normalizedFocusNodeIds,
         )
@@ -202,6 +219,7 @@ internal class PlanningContextFactory(
             presentationGraph = presentationGraph,
             fullGraph = fullGraph,
             workingGraph = workingGraph,
+            invocationExpansionContext = invocationExpansionScope?.context ?: InvocationExpansionContext(),
         )
     }
 
@@ -378,6 +396,7 @@ internal class PlanningContextFactory(
             editableGraph = editableGraph,
             sourceContext = evidenceCollection.sourceContext,
             evidenceTrace = evidenceCollection.evidenceTrace,
+            invocationExpansionContext = graphContext.invocationExpansionContext,
         )
     }
 
@@ -410,6 +429,11 @@ internal class PlanningContextFactory(
         return if (usesCurrentSceneGraphForReview(snapshot)) {
             graphContext.presentationGraph.takeIf(GraphDocument::hasGraphContent)
                 ?: graphContext.fullGraph
+        } else if (
+            snapshot.currentSceneId == GraphSceneId.WORKSPACE_FLOWCHART &&
+            graphContext.invocationExpansionContext.fullExpansionIds.isNotEmpty()
+        ) {
+            graphContext.presentationGraph
         } else {
             graphContext.workingGraph
         }
@@ -422,6 +446,12 @@ internal class PlanningContextFactory(
         if (usesCurrentSceneGraphForReview(snapshot)) {
             return graphContext.fullGraph.takeIf(GraphDocument::hasGraphContent)
                 ?: graphContext.presentationGraph
+        }
+        if (
+            snapshot.currentSceneId == GraphSceneId.WORKSPACE_FLOWCHART &&
+            graphContext.invocationExpansionContext.fullExpansionIds.isNotEmpty()
+        ) {
+            return graphContext.presentationGraph
         }
         return snapshot.semanticFactGraph
             .takeIf(GraphDocument::hasGraphContent)
@@ -754,10 +784,12 @@ internal data class QaGraphs(
     val editableGraph: GraphDocument,
     val sourceContext: List<SourceSnippetContext> = emptyList(),
     val evidenceTrace: List<com.charmnight.linkgraph.agent.model.EvidenceTraceEntry> = emptyList(),
+    val invocationExpansionContext: InvocationExpansionContext = InvocationExpansionContext(),
 )
 
 private data class InteractiveGraphContext(
     val presentationGraph: GraphDocument,
     val fullGraph: GraphDocument,
     val workingGraph: GraphDocument,
+    val invocationExpansionContext: InvocationExpansionContext = InvocationExpansionContext(),
 )

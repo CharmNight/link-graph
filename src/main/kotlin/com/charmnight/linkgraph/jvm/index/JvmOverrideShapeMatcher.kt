@@ -16,7 +16,7 @@ package com.charmnight.linkgraph.jvm.index
  * 1. simpleName 必须相等
  * 2. 参数类型列表长度必须相等
  * 3. 每个位置的参数类型「相容」：
- *    - 数组形式归一化并擦除后字符串相等（剥包名 / 泛型 / 数组）→ 相容
+ *    - 数组形式归一化并擦除后字符串相等（剥包名 / 泛型，保留数组维度）→ 相容
  *    - 任一端是单个大写字母（Java/Kotlin 通用泛型参数约定 T/K/V/E/R）→ 视为可覆盖，相容
  *    - 否则不相容（Integer 与 String、String 与 BigDecimal 等）
  *
@@ -58,8 +58,10 @@ internal object JvmOverrideShapeMatcher {
         val normalizedCandidate = eraseType(normalizeArrayNotation(candidateType))
         val normalizedBase = eraseType(normalizeArrayNotation(baseType))
         if (normalizedCandidate == normalizedBase) return true
-        if (isLikelyTypeParameterName(normalizedCandidate)) return true
-        if (isLikelyTypeParameterName(normalizedBase)) return true
+        if (sameArrayDepth(normalizedCandidate, normalizedBase)) {
+            if (isLikelyTypeParameterName(arrayElementType(normalizedCandidate))) return true
+            if (isLikelyTypeParameterName(arrayElementType(normalizedBase))) return true
+        }
         return false
     }
 
@@ -89,17 +91,46 @@ internal object JvmOverrideShapeMatcher {
     /**
      * 把类型字符串归一化到可比较形式：
      * - 去掉尖括号泛型参数：`List<String>` → `List`、`Map<K,V>` → `Map`
-     * - 去掉数组方括号：`String[]` → `String`
+     * - 保留数组方括号：`String[]` → `String[]`，避免数组与标量重载互相误配
      * - 去掉包前缀：`java.lang.String` → `String`
      *
      * 注：故意保留内部类 `$` 分隔符——`Outer$Inner` 与 `Outer.Inner` 在 JVM 层不是同一类型，
      * 也不属于本匹配器要兼顾的「源码 vs 字节码」差异。
      */
-    private fun eraseType(type: String): String =
-        type.substringBefore('<')
-            .replace("[]", "")
-            .substringAfterLast('.')
-            .trim()
+    private fun eraseType(type: String): String {
+        val trimmed = type.trim().removeSuffix("?")
+        val arraySuffix = buildString {
+            var rest = trimmed
+            while (rest.endsWith("[]")) {
+                append("[]")
+                rest = rest.removeSuffix("[]")
+            }
+        }
+        val withoutArrays = trimmed.removeSuffix(arraySuffix)
+        val erased = withoutArrays.substringBefore('<').substringAfterLast('.').trim()
+        return erased + arraySuffix
+    }
+
+    private fun sameArrayDepth(left: String, right: String): Boolean =
+        arrayDepth(left) == arrayDepth(right)
+
+    private fun arrayDepth(type: String): Int {
+        var rest = type
+        var depth = 0
+        while (rest.endsWith("[]")) {
+            depth += 1
+            rest = rest.removeSuffix("[]")
+        }
+        return depth
+    }
+
+    private fun arrayElementType(type: String): String {
+        var rest = type
+        while (rest.endsWith("[]")) {
+            rest = rest.removeSuffix("[]")
+        }
+        return rest
+    }
 
     /**
      * 判断擦除后的类型字符串是否像一个类型参数名。

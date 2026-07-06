@@ -108,8 +108,13 @@ class JvmSymbolIndexBuilder(
                 when (file.extension?.lowercase()) {
                     "java" -> {
                         if (!ctx.isFull()) {
-                            (psiManager.findFile(file) as? PsiJavaFile)?.classes.orEmpty().forEach { psiClass ->
+                            val psiJavaFile = psiManager.findFile(file) as? PsiJavaFile
+                            val fallbackClassInfo = javaFallbackClassInfo(file, contentRootRelativePath(root, file))
+                            psiJavaFile?.classes.orEmpty().forEach { psiClass ->
                                 indexPsiClass(file, psiClass, ctx)
+                                psiJavaFile?.let { javaFile ->
+                                    applyFallbackJavaClassInfo(javaFile, psiClass, classes, fallbackClassInfo)
+                                }
                                 indexFrameworkResources(file, psiClass, resources)
                             }
                         }
@@ -425,6 +430,14 @@ class JvmSymbolIndexBuilder(
     /** 容错读取 [VirtualFile] 文本，捕获编码异常返回 null，避免单文件失败拖垮整次扫描。 */
     private fun readVirtualFileText(file: VirtualFile): String? =
         runCatching { String(file.contentsToByteArray(), file.charset) }.getOrNull()
+
+    private fun javaFallbackClassInfo(
+        file: VirtualFile,
+        relativePath: String,
+    ): Map<String, FallbackJavaClassInfo> =
+        readVirtualFileText(file)
+            ?.let { text -> FallbackJavaClassInfoExtractor.extract(relativePath, text) }
+            .orEmpty()
 
     /** 在不依赖项目索引的情况下，使用 [PsiFileFactory] 直接由文本创建一个临时 [PsiJavaFile] 供词法/语法解析。 */
     private fun fallbackPsiJavaFile(
@@ -1343,6 +1356,14 @@ class JvmSymbolIndexBuilder(
                 return
             }
             indexPsiClass(file, psiClass, ctx)
+            (psiClass.containingFile as? PsiJavaFile)?.let { psiJavaFile ->
+                applyFallbackJavaClassInfo(
+                    psiJavaFile = psiJavaFile,
+                    psiClass = psiClass,
+                    classes = classes,
+                    fallbackClassInfo = javaFallbackClassInfo(file, relativePath(file) ?: file.path),
+                )
+            }
         }
         if (classes.size < budget.maxProjectClasses) {
             val allClassesStartedAt = System.nanoTime()

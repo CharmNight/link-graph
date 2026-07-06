@@ -1,6 +1,9 @@
 import {
   applyCodeDrafts,
+  activateInvocationExpansion,
+  collapseInvocationExpansion,
   exportMermaid,
+  openInvocationExpansion,
   requestAnalysisDisplayMode,
   requestArchitectureGraph,
   requestPackageDependencyGraph,
@@ -221,6 +224,33 @@ export function useWorkbenchCommandController({
     });
   }
 
+  function handleCollapseInvocationExpansion(expansionId: string) {
+    bridgeCommands.runBridgeCommand("折叠调用展开", () => collapseInvocationExpansion(expansionId), {
+      successFeedback: {
+        level: "INFO",
+        message: "已折叠调用展开。",
+      },
+    });
+  }
+
+  function handleOpenInvocationExpansion(expansionId: string) {
+    bridgeCommands.runBridgeCommand("打开调用展开", () => openInvocationExpansion(expansionId), {
+      successFeedback: {
+        level: "INFO",
+        message: "已打开调用展开。",
+      },
+    });
+  }
+
+  function handleActivateInvocationExpansion(expansionId: string) {
+    bridgeCommands.runBridgeCommand("激活调用展开", () => activateInvocationExpansion(expansionId), {
+      successFeedback: {
+        level: "INFO",
+        message: "已激活调用展开。",
+      },
+    });
+  }
+
   return {
     handleRequestAnalysisDisplayMode,
     handleRequestArchitectureGraph,
@@ -239,5 +269,8 @@ export function useWorkbenchCommandController({
     handleExpandOverflowNode,
     handleExpandInvocation,
     handleRemoveInvocationExpansion,
+    handleCollapseInvocationExpansion,
+    handleOpenInvocationExpansion,
+    handleActivateInvocationExpansion,
   };
 }

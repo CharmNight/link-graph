@@ -17,6 +17,7 @@ import com.charmnight.linkgraph.semantic.outcome.FactGraphViewDocument
 import com.charmnight.linkgraph.semantic.outcome.ResourceRelationViewDocument
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 
 class GetCurrentGraphToolTest : BasePlatformTestCase() {
@@ -209,6 +210,149 @@ class GetCurrentGraphToolTest : BasePlatformTestCase() {
         )
     }
 
+    fun testCurrentGraphUsesActiveInvocationExpansionChainWhenFlowchartSceneStateExists() {
+        val activeExpansionId = "invocation:active"
+        val collapsedExpansionId = "invocation:collapsed"
+        val caller = GraphNode(
+            id = "method:submit-order",
+            type = NodeType.METHOD,
+            title = "OrderController.submit",
+        )
+        val invocation = GraphNode(
+            id = "invoke:charge",
+            type = NodeType.FLOW_ACTION,
+            title = "processor.charge()",
+            metadata = mapOf("flow.kind" to "INVOCATION"),
+        )
+        val activeMethod = GraphNode(
+            id = "method:active-payment",
+            type = NodeType.METHOD,
+            title = "ActivePayment.charge",
+            metadata = mapOf(
+                "linkGraph.expansion.id" to activeExpansionId,
+                "linkGraph.expansion.sourceInvocationNodeId" to invocation.id,
+            ),
+        )
+        val activeAction = GraphNode(
+            id = "action:active-payment",
+            type = NodeType.FLOW_ACTION,
+            title = "captureActivePayment()",
+            metadata = mapOf(
+                "linkGraph.expansion.id" to activeExpansionId,
+                "linkGraph.expansion.sourceInvocationNodeId" to invocation.id,
+            ),
+        )
+        val collapsedMethod = GraphNode(
+            id = "method:collapsed-payment",
+            type = NodeType.METHOD,
+            title = "CollapsedPayment.charge",
+            metadata = mapOf(
+                "linkGraph.expansion.id" to collapsedExpansionId,
+                "linkGraph.expansion.sourceInvocationNodeId" to invocation.id,
+            ),
+        )
+        val collapsedAction = GraphNode(
+            id = "action:collapsed-payment",
+            type = NodeType.FLOW_ACTION,
+            title = "captureCollapsedPayment()",
+            metadata = mapOf(
+                "linkGraph.expansion.id" to collapsedExpansionId,
+                "linkGraph.expansion.sourceInvocationNodeId" to invocation.id,
+            ),
+        )
+        val visibleGraph = GraphDocument(
+            nodes = listOf(caller, invocation),
+            edges = listOf(
+                GraphEdge(
+                    id = "control:submit-to-charge",
+                    type = EdgeType.CONTROL_FLOW,
+                    fromNodeId = caller.id,
+                    toNodeId = invocation.id,
+                ),
+            ),
+        )
+        val workspaceGraph = GraphDocument(
+            nodes = listOf(caller, invocation, activeMethod, activeAction, collapsedMethod, collapsedAction),
+            edges = visibleGraph.edges + listOf(
+                GraphEdge(
+                    id = "call:active",
+                    type = EdgeType.CALL,
+                    fromNodeId = invocation.id,
+                    toNodeId = activeMethod.id,
+                    metadata = mapOf(
+                        "linkGraph.expansion.id" to activeExpansionId,
+                        "linkGraph.expansion.sourceInvocationNodeId" to invocation.id,
+                    ),
+                ),
+                GraphEdge(
+                    id = "control:active",
+                    type = EdgeType.CONTROL_FLOW,
+                    fromNodeId = activeMethod.id,
+                    toNodeId = activeAction.id,
+                    metadata = mapOf(
+                        "linkGraph.expansion.id" to activeExpansionId,
+                        "linkGraph.expansion.sourceInvocationNodeId" to invocation.id,
+                    ),
+                ),
+                GraphEdge(
+                    id = "call:collapsed",
+                    type = EdgeType.CALL,
+                    fromNodeId = invocation.id,
+                    toNodeId = collapsedMethod.id,
+                    metadata = mapOf(
+                        "linkGraph.expansion.id" to collapsedExpansionId,
+                        "linkGraph.expansion.sourceInvocationNodeId" to invocation.id,
+                    ),
+                ),
+                GraphEdge(
+                    id = "control:collapsed",
+                    type = EdgeType.CONTROL_FLOW,
+                    fromNodeId = collapsedMethod.id,
+                    toNodeId = collapsedAction.id,
+                    metadata = mapOf(
+                        "linkGraph.expansion.id" to collapsedExpansionId,
+                        "linkGraph.expansion.sourceInvocationNodeId" to invocation.id,
+                    ),
+                ),
+            ),
+        )
+        val tool = GetCurrentGraphTool(GraphToolFacade())
+
+        val result = tool.invoke(
+            input = emptyMap(),
+            context = ToolExecutionContext(
+                project = project,
+                snapshot = snapshot(
+                    analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
+                    currentSceneId = GraphSceneId.WORKSPACE_FLOWCHART,
+                    workspaceGraph = workspaceGraph,
+                    flowchartView = FlowchartViewDocument(
+                        visibleGraph = visibleGraph,
+                        fullGraph = workspaceGraph,
+                        anchorNodeId = caller.id,
+                    ),
+                    selectedNodeId = collapsedMethod.id,
+                    invocationExpansionState = com.charmnight.linkgraph.ui.InvocationExpansionSceneState(
+                        activeExpansionId = activeExpansionId,
+                        activeExpansionPath = listOf(activeExpansionId),
+                        collapsedExpansionIds = setOf(collapsedExpansionId),
+                        activeSiblingByParentContext = mapOf("root:${caller.id}" to activeExpansionId),
+                    ),
+                ),
+                artifactStore = InMemoryArtifactStore(),
+                runBudget = RunBudget(),
+            ),
+        )
+
+        val graph = result.payload["graph"] as GraphDocument
+        assertEquals(
+            setOf(caller.id, invocation.id, activeMethod.id, activeAction.id),
+            graph.nodes.map(GraphNode::id).toSet(),
+        )
+        assertFalse(graph.nodes.any { node -> node.id == collapsedAction.id })
+        assertFalse(graph.edges.any { edge -> edge.id == "control:collapsed" })
+    }
+
     fun testReturnsVisibleGraphWhenWorkspaceGraphIsEmpty() {
         val visibleGraph = GraphDocument(
             nodes = listOf(
@@ -265,6 +409,7 @@ private fun snapshot(
     flowchartView: FlowchartViewDocument = FlowchartViewDocument(),
     resourceRelationView: ResourceRelationViewDocument = ResourceRelationViewDocument(),
     selectedNodeId: String? = null,
+    invocationExpansionState: com.charmnight.linkgraph.ui.InvocationExpansionSceneState = com.charmnight.linkgraph.ui.InvocationExpansionSceneState(),
 ): ToolGraphSnapshot {
     val baseSceneStates = mapOf(
         GraphSceneId.WORKSPACE_FACT to com.charmnight.linkgraph.ui.GraphSceneState(),
@@ -272,7 +417,15 @@ private fun snapshot(
         GraphSceneId.WORKSPACE_RESOURCE_RELATION to com.charmnight.linkgraph.ui.GraphSceneState(),
         GraphSceneId.DIFF to com.charmnight.linkgraph.ui.GraphSceneState(),
     )
-    val nextSceneState = baseSceneStates.getValue(currentSceneId).copy(selectedNodeId = selectedNodeId)
+    val flowchartSceneState = baseSceneStates.getValue(GraphSceneId.WORKSPACE_FLOWCHART).copy(
+        invocationExpansionState = invocationExpansionState,
+    )
+    val currentBaseSceneState = if (currentSceneId == GraphSceneId.WORKSPACE_FLOWCHART) {
+        flowchartSceneState
+    } else {
+        baseSceneStates.getValue(currentSceneId)
+    }
+    val nextSceneState = currentBaseSceneState.copy(selectedNodeId = selectedNodeId)
     return com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
         workspaceGraph = workspaceGraph,
         workspaceRevision = workspaceRevision,
@@ -284,6 +437,6 @@ private fun snapshot(
         analysisDisplayMode = analysisDisplayMode,
         currentSceneId = currentSceneId,
         previousWorkspaceSceneId = GraphSceneId.WORKSPACE_FACT,
-        sceneStates = baseSceneStates + (currentSceneId to nextSceneState),
+        sceneStates = baseSceneStates + (GraphSceneId.WORKSPACE_FLOWCHART to flowchartSceneState) + (currentSceneId to nextSceneState),
     ).toToolGraphSnapshot()
 }

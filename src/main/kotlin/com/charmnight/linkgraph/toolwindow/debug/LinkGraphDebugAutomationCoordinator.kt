@@ -6,11 +6,14 @@ import com.charmnight.linkgraph.application.indexed.IndexedClassUsageOptions
 import com.charmnight.linkgraph.application.indexed.requestArchitectureGraphRequest
 import com.charmnight.linkgraph.application.indexed.requestClassDiagramRequest
 import com.charmnight.linkgraph.application.indexed.requestClassUsageOverlayRequest
+import com.charmnight.linkgraph.application.usecase.InvocationExpansionUseCase
 import com.charmnight.linkgraph.foundation.debugLazy
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.model.SourceNavigationAnchors
 import com.charmnight.linkgraph.toolwindow.LinkGraphToolWindowSession
+import com.charmnight.linkgraph.ui.GraphBrowserDiagnostics
+import com.charmnight.linkgraph.ui.GraphEditorStateSnapshot
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.ui.SourceNavigationPhase
 import com.charmnight.linkgraph.workbench.AssistantActionId
@@ -68,15 +71,24 @@ internal class LinkGraphDebugAutomationCoordinator(
             schedule(DEBUG_AUTOLOAD_DELAY_MS) {
                 commandDispatcher.dispatch(ApplicationCommand.LoadDebugMethodGraphBySignature(signature))
             }
-            return
-        }
-
-        request.autoloadGraphMode?.let { mode ->
+        } ?: request.autoloadGraphMode?.let { mode ->
             debugLazy(logger.isDebugEnabled, logger::debug) {
                 "检测到调试自动载图请求，将在 ${DEBUG_AUTOLOAD_DELAY_MS}ms 后注入诊断链路图: $mode"
             }
             schedule(DEBUG_AUTOLOAD_DELAY_MS) {
                 commandDispatcher.dispatch(ApplicationCommand.LoadDebugGraph(mode))
+            }
+        }
+
+        request.autoExpandInvocationSignature?.let { invocationSignature ->
+            debugLazy(logger.isDebugEnabled, logger::debug) {
+                "检测到调试自动请求：调用展开，methodSignature=${request.autoloadMethodSignature.orEmpty()}, invocationSignature=$invocationSignature"
+            }
+            schedule(DEBUG_AUTO_EXPAND_INVOCATION_DELAY_MS) {
+                runWhenAutoExpandInvocationReady(
+                    requestedMethodSignature = request.autoloadMethodSignature,
+                    requestedInvocationSignature = invocationSignature,
+                )
             }
         }
 
@@ -339,6 +351,157 @@ internal class LinkGraphDebugAutomationCoordinator(
     }
 
     /**
+     * 等待可展开调用节点出现在当前快照里。
+     * 既支持直接命中 workspace invocation 节点，也支持从流程图投影节点回映到规范图节点。
+     */
+    private fun runWhenAutoExpandInvocationReady(
+        requestedMethodSignature: String?,
+        requestedInvocationSignature: String,
+        attempt: Int = 0,
+    ) {
+        val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
+        val match = DebugAutoExpandInvocationLocator.find(snapshot, requestedInvocationSignature)
+        if (match != null) {
+            logger.warn(
+                "debug 自动触发调用展开: " +
+                    "requestedMethodSignature=${requestedMethodSignature.orEmpty()}, " +
+                    "requestedInvocationSignature=$requestedInvocationSignature, " +
+                    "matchedGraph=${match.matchedGraphName}, " +
+                    "matchedNodeId=${match.matchedNode.id}, " +
+                    "matchedNodeTitle=${GraphBrowserDiagnostics.summarizePayloadText(match.matchedNode.title)}, " +
+                    "matchedNodeSignature=${match.matchedNode.signature.orEmpty()}, " +
+                    "targetNodeId=${match.targetNode.id}, " +
+                    "targetNodeTitle=${GraphBrowserDiagnostics.summarizePayloadText(match.targetNode.title)}, " +
+                    "targetNodeSignature=${match.targetNode.signature.orEmpty()}, " +
+                    "snapshot=${GraphBrowserDiagnostics.snapshotSummary(snapshot)}",
+            )
+            val beforeSnapshot = snapshot
+            project.getService(GraphEditorApplicationService::class.java).commandDispatcher.dispatch(
+                ApplicationCommand.RequestExpandInvocation(match.targetNode.id),
+            )
+            schedule(DEBUG_AUTO_EXPAND_INVOCATION_RESULT_POLL_MS) {
+                logAutoExpandInvocationResult(
+                    requestedMethodSignature = requestedMethodSignature,
+                    requestedInvocationSignature = requestedInvocationSignature,
+                    targetNodeId = match.targetNode.id,
+                    previousSnapshot = beforeSnapshot,
+                )
+            }
+            return
+        }
+        if (attempt >= DEBUG_AUTO_EXPAND_INVOCATION_MAX_ATTEMPTS) {
+            logger.warn(
+                "debug 自动调用展开放弃: " +
+                    "requestedMethodSignature=${requestedMethodSignature.orEmpty()}, " +
+                    "requestedInvocationSignature=$requestedInvocationSignature, " +
+                    "attempt=$attempt, " +
+                    "invocationCandidates=${sampleInvocationCandidates(snapshot)}, " +
+                    "snapshot=${GraphBrowserDiagnostics.snapshotSummary(snapshot)}",
+            )
+            return
+        }
+        if (attempt == 0 || (attempt + 1) % DEBUG_AUTO_EXPAND_INVOCATION_LOG_INTERVAL == 0) {
+            logger.warn(
+                "debug 自动调用展开等待节点: " +
+                    "requestedMethodSignature=${requestedMethodSignature.orEmpty()}, " +
+                    "requestedInvocationSignature=$requestedInvocationSignature, " +
+                    "attempt=${attempt + 1}, " +
+                    "invocationCandidates=${sampleInvocationCandidates(snapshot)}, " +
+                    "snapshot=${GraphBrowserDiagnostics.snapshotSummary(snapshot)}",
+            )
+        }
+        schedule(DEBUG_AUTO_EXPAND_INVOCATION_POLL_MS) {
+            runWhenAutoExpandInvocationReady(
+                requestedMethodSignature = requestedMethodSignature,
+                requestedInvocationSignature = requestedInvocationSignature,
+                attempt = attempt + 1,
+            )
+        }
+    }
+
+    /**
+     * 轮询一次自动调用展开的结果，输出图谱增量、反馈文案以及新增展开节点样本。
+     */
+    private fun logAutoExpandInvocationResult(
+        requestedMethodSignature: String?,
+        requestedInvocationSignature: String,
+        targetNodeId: String,
+        previousSnapshot: GraphEditorStateSnapshot,
+        attempt: Int = 0,
+    ) {
+        val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
+        val expansionNodes = snapshot.workspaceGraph.nodes
+            .filter { node ->
+                node.metadata[InvocationExpansionUseCase.EXPANSION_SOURCE_INVOCATION_NODE_ID] == targetNodeId
+            }
+        val expansionEdges = snapshot.workspaceGraph.edges
+            .filter { edge ->
+                edge.metadata[InvocationExpansionUseCase.EXPANSION_SOURCE_INVOCATION_NODE_ID] == targetNodeId
+            }
+        val feedbackChanged = snapshot.operationFeedback?.message != previousSnapshot.operationFeedback?.message
+        val workspaceChanged = snapshot.workspaceGraph != previousSnapshot.workspaceGraph
+        if (expansionNodes.isNotEmpty() || expansionEdges.isNotEmpty() || feedbackChanged || workspaceChanged) {
+            logger.warn(
+                "debug 自动调用展开结果: " +
+                    "requestedMethodSignature=${requestedMethodSignature.orEmpty()}, " +
+                    "requestedInvocationSignature=$requestedInvocationSignature, " +
+                    "targetNodeId=$targetNodeId, " +
+                    "expansionNodes=${expansionNodes.size}[${sampleExpandedNodes(expansionNodes)}], " +
+                    "expansionEdges=${expansionEdges.size}, " +
+                    "delta=${GraphBrowserDiagnostics.snapshotDeltaSummary(previousSnapshot, snapshot)}, " +
+                    "snapshot=${GraphBrowserDiagnostics.snapshotSummary(snapshot)}",
+            )
+            return
+        }
+        if (attempt >= DEBUG_AUTO_EXPAND_INVOCATION_RESULT_MAX_ATTEMPTS) {
+            logger.warn(
+                "debug 自动调用展开结果等待超时: " +
+                    "requestedMethodSignature=${requestedMethodSignature.orEmpty()}, " +
+                    "requestedInvocationSignature=$requestedInvocationSignature, " +
+                    "targetNodeId=$targetNodeId, " +
+                    "delta=${GraphBrowserDiagnostics.snapshotDeltaSummary(previousSnapshot, snapshot)}, " +
+                    "snapshot=${GraphBrowserDiagnostics.snapshotSummary(snapshot)}",
+            )
+            return
+        }
+        schedule(DEBUG_AUTO_EXPAND_INVOCATION_RESULT_POLL_MS) {
+            logAutoExpandInvocationResult(
+                requestedMethodSignature = requestedMethodSignature,
+                requestedInvocationSignature = requestedInvocationSignature,
+                targetNodeId = targetNodeId,
+                previousSnapshot = previousSnapshot,
+                attempt = attempt + 1,
+            )
+        }
+    }
+
+    private fun sampleInvocationCandidates(snapshot: GraphEditorStateSnapshot): String {
+        val candidates = sequenceOf(
+            snapshot.workspaceGraph,
+            snapshot.flowchartView.visibleGraph,
+            snapshot.factGraphView.visibleGraph,
+            snapshot.resourceRelationView.visibleGraph,
+        ).flatMap { graph -> graph.nodes.asSequence() }
+            .filter { node ->
+                node.type == NodeType.FLOW_ACTION &&
+                    (node.metadata["flow.kind"] == "INVOCATION" || !node.signature.isNullOrBlank())
+            }
+            .distinctBy(GraphNode::id)
+            .take(DEBUG_AUTO_EXPAND_SAMPLE_LIMIT)
+            .map { node ->
+                "${node.id}:${node.metadata["flow.kind"].orEmpty()}:" +
+                    GraphBrowserDiagnostics.summarizePayloadText(node.signature ?: node.title, 96)
+            }
+            .toList()
+        return candidates.joinToString("|")
+    }
+
+    private fun sampleExpandedNodes(nodes: List<GraphNode>): String =
+        nodes.take(DEBUG_AUTO_EXPAND_SAMPLE_LIMIT).joinToString("|") { node ->
+            "${node.id}:${GraphBrowserDiagnostics.summarizePayloadText(node.signature ?: node.title, 96)}"
+        }
+
+    /**
      * 在后台线程执行动作，失败时仅记录告警，不向上抛出。
      * 入参 [actionLabel] 仅用于日志标识。
      */
@@ -450,6 +613,20 @@ internal class LinkGraphDebugAutomationCoordinator(
         private const val DEBUG_SOURCE_NAVIGATION_STATE_POLL_MS = 1000L
         /** 源码导航状态轮询最大次数。 */
         private const val DEBUG_SOURCE_NAVIGATION_STATE_MAX_ATTEMPTS = 30
+        /** 自动调用展开的初始等待时间（毫秒）。 */
+        private const val DEBUG_AUTO_EXPAND_INVOCATION_DELAY_MS = 5000L
+        /** 自动调用展开等待图就绪时的轮询间隔（毫秒）。 */
+        private const val DEBUG_AUTO_EXPAND_INVOCATION_POLL_MS = 2000L
+        /** 自动调用展开等待节点出现的最大轮询次数。 */
+        private const val DEBUG_AUTO_EXPAND_INVOCATION_MAX_ATTEMPTS = 180
+        /** 自动调用展开结果轮询间隔（毫秒）。 */
+        private const val DEBUG_AUTO_EXPAND_INVOCATION_RESULT_POLL_MS = 1000L
+        /** 自动调用展开结果轮询最大次数。 */
+        private const val DEBUG_AUTO_EXPAND_INVOCATION_RESULT_MAX_ATTEMPTS = 60
+        /** 自动调用展开等待日志的输出间隔。 */
+        private const val DEBUG_AUTO_EXPAND_INVOCATION_LOG_INTERVAL = 10
+        /** 调试日志里保留的节点样本上限。 */
+        private const val DEBUG_AUTO_EXPAND_SAMPLE_LIMIT = 8
         /** 触发生成计划前等待界面就绪的延迟（毫秒）。 */
         private const val DEBUG_AUTO_REQUEST_PLAN_DELAY_MS = 6000L
         /** 触发生成代码草稿前等待界面就绪的延迟（毫秒）。 */

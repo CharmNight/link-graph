@@ -13,6 +13,14 @@ import kotlin.test.assertTrue
 
 class PersistentArchitectureIndexCacheStoreTest {
     @Test
+    fun schemaVersionInvalidatesFragmentsWithoutJavaFallbackSuperTypes() {
+        assertTrue(
+            ProjectSliceManifest.CURRENT_SCHEMA_VERSION >= 5,
+            "schema v4 fragments can miss Java fallback super types and must not be reused",
+        )
+    }
+
+    @Test
     fun writesAndReadsFragmentsOnlyUnderIdeCacheDirectory() {
         val cacheRoot = Files.createTempDirectory("link-graph-ide-cache")
         val projectRoot = Files.createTempDirectory("link-graph-project")

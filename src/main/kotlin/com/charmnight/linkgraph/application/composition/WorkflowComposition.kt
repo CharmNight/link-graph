@@ -24,6 +24,7 @@ import com.charmnight.linkgraph.foundation.LoggedFailures
 import com.charmnight.linkgraph.agent.capability.CodegenCapability
 import com.charmnight.linkgraph.agent.capability.PlanCapability
 import com.charmnight.linkgraph.agent.runtime.AgentRunCoordinator
+import com.charmnight.linkgraph.jvm.index.PsiJvmImplementationSignatureResolver
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.navigation.SourceNavigationService
 import com.charmnight.linkgraph.semantic.SemanticAnalyzer
@@ -247,6 +248,8 @@ internal class WorkflowComposition(
             targetResolverHook = { runtimeHooks.invocationExpansionTargetResolver },
             subjectResolverHook = { runtimeHooks.invocationExpansionSubjectResolver },
             logger = logger,
+            taskRunner = infrastructure.taskRunner,
+            implementationSignatureResolver = PsiJvmImplementationSignatureResolver(project),
         )
     }
 

@@ -83,9 +83,10 @@ class JvmOverrideShapeMatcherTest {
     }
 
     @Test
-    fun matchesErasesArrayBrackets() {
-        assertTrue(matcher(listOf("String[]"), listOf("String")))
-        assertTrue(matcher(listOf("java.lang.String[]"), listOf("String")))
+    fun preservesArrayBracketsWhenComparingParameterTypes() {
+        assertTrue(matcher(listOf("String[]"), listOf("java.lang.String[]")))
+        assertFalse(matcher(listOf("String[]"), listOf("String")))
+        assertFalse(matcher(listOf("java.lang.String[]"), listOf("String")))
     }
 
     @Test

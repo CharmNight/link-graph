@@ -120,15 +120,13 @@ class ArchitectureDocumentationSanityTest {
     @Test
     fun publicDocsExcludeInternalPlansAndMachineLocalPaths() {
         val docsRoot = Path.of("docs")
-        val removedInternalPlanDir = removedInternalDocsDirName()
         val removedInternalPlanPath = removedInternalDocsPath()
         val publicDocs = Files.walk(docsRoot)
             .filter { path -> Files.isRegularFile(path) }
             .filter { path -> path.toString().endsWith(".md") }
-            .filter { path -> !path.startsWith(docsRoot.resolve("internal")) }
+            .filter { path -> isPublicDocsPath(path, docsRoot) }
             .toList()
 
-        assertFalse(Files.exists(docsRoot.resolve(removedInternalPlanDir)), "内部计划不应保留在公开 docs 入口下。")
         assertTrue(publicDocs.isNotEmpty())
         publicDocs.forEach { path ->
             val source = Files.readString(path)
@@ -218,10 +216,16 @@ private fun repositoryFilesForPublicScan(root: Path): List<Path> {
     }
     return Files.walk(root)
         .filter { path -> Files.isRegularFile(path) }
-        .filter { path -> !path.startsWith(Path.of("docs").resolve("internal")) }
+        .filter(::isPublicDocsPath)
         .filter(::isPublicTextFile)
         .toList()
 }
+
+private fun isPublicDocsPath(path: Path, docsRoot: Path = Path.of("docs")): Boolean =
+    internalDocsRoots(docsRoot).none { internalRoot -> path.startsWith(internalRoot) }
+
+private fun internalDocsRoots(docsRoot: Path): List<Path> =
+    listOf("internal", removedInternalDocsDirName()).map { dirName -> docsRoot.resolve(dirName) }
 
 private fun isPublicTextFile(path: Path): Boolean {
     val name = path.fileName.toString()

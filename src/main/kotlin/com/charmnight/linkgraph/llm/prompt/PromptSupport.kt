@@ -1,6 +1,8 @@
 package com.charmnight.linkgraph.llm.prompt
 
 import com.charmnight.linkgraph.agent.model.GraphEvidenceProfile
+import com.charmnight.linkgraph.agent.model.InvocationExpansionContext
+import com.charmnight.linkgraph.agent.model.InvocationExpansionSummary
 import com.charmnight.linkgraph.agent.model.SourceSnippetContext
 import com.charmnight.linkgraph.llm.llmClassDiagramRelationDisplayLabel
 import com.charmnight.linkgraph.llm.llmRelationKindDisplayLabel
@@ -141,4 +143,38 @@ internal fun buildEvidenceProfileText(profile: GraphEvidenceProfile): String {
         推荐下钻：
         $drilldowns
     """.trimIndent()
+}
+
+/** 把调用展开上下文整理成可直接嵌入提示词的多行文本。 */
+internal fun buildInvocationExpansionContextText(context: InvocationExpansionContext): String {
+    if (
+        context.activeExpansionPath.isEmpty() &&
+        context.fullExpansionIds.isEmpty() &&
+        context.summaryExpansionIds.isEmpty() &&
+        context.summaries.isEmpty()
+    ) {
+        return "- 无"
+    }
+    val summaries = if (context.summaries.isEmpty()) {
+        "- 无"
+    } else {
+        context.summaries.joinToString("\n") { summary -> invocationExpansionSummaryText(summary) }
+    }
+    return """
+        模式：${context.mode.name}
+        活动路径：${context.activeExpansionPath.joinToString(" -> ").ifBlank { "无" }}
+        完整证据扩展：${context.fullExpansionIds.joinToString(", ").ifBlank { "无" }}
+        摘要证据扩展：${context.summaryExpansionIds.joinToString(", ").ifBlank { "无" }}
+        摘要明细：
+        $summaries
+    """.trimIndent()
+}
+
+/** 把单个摘要展开压成一行文本。 */
+internal fun invocationExpansionSummaryText(summary: InvocationExpansionSummary): String {
+    val source = summary.sourceInvocationNodeId?.let { " | source=$it" }.orEmpty()
+    val root = summary.rootNodeId?.let { " | root=$it" }.orEmpty()
+    val title = summary.title?.let { " | title=${sanitizeContent(it)}" }.orEmpty()
+    val signature = summary.targetSignature?.let { " | signature=${sanitizeContent(it)}" }.orEmpty()
+    return "- ${summary.expansionId}$title$signature$source$root | ownedNodes=${summary.ownedNodeCount} | branches=${summary.branchCount} | returns=${summary.returnCount} | children=${summary.childExpansionCount} | borrowedRoot=${summary.hasBorrowedRoot}"
 }

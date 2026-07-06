@@ -61,6 +61,7 @@ internal fun buildQaPromptPackage(
     val sourceSnippets = context.sourceContext.joinToString("\n") { snippet ->
         sourceSnippetSummary(snippet)
     }.ifBlank { "- 无" }
+    val invocationExpansionContextText = buildInvocationExpansionContextText(context.invocationExpansionContext)
     val evidenceTrace = context.evidenceTrace.joinToString("\n") { trace ->
         buildString {
             append("- node=").append(trace.nodeId)
@@ -134,6 +135,8 @@ internal fun buildQaPromptPackage(
                 请求模式：${requestedMode.name}
                 实际模式：${effectiveMode.name}
                 当前范围：$scopeText
+                调用展开上下文：
+                $invocationExpansionContextText
                 用户问题：${sanitizeUserField(question)}
                 """.trimIndent(),
                 priority = USER_GOAL,

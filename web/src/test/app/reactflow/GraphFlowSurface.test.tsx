@@ -1750,6 +1750,7 @@ describe("GraphFlowSurface", () => {
     act(() => {
       vi.runAllTimers();
     });
+    vi.useRealTimers();
 
     expect(reactFlowFitViewMock).toHaveBeenCalled();
   });
@@ -1790,6 +1791,7 @@ describe("GraphFlowSurface", () => {
     act(() => {
       vi.runAllTimers();
     });
+    vi.useRealTimers();
 
     expect(reactFlowFitViewMock).not.toHaveBeenCalled();
   });

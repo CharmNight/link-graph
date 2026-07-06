@@ -8,6 +8,7 @@ import type {
   ClassDiagramViewDocument,
   FactGraphViewDocument,
   FlowchartViewDocument,
+  InvocationExpansionSceneState,
   LinkGraphBootstrapState,
   LinkGraphDocument,
   LinkGraphLayoutState,
@@ -106,6 +107,19 @@ function createEmptySceneState(): LinkGraphSceneState {
     },
     layoutRevision: 0,
     collapsedNodeIds: [],
+    invocationExpansionState: createEmptyInvocationExpansionSceneState(),
+  };
+}
+
+function createEmptyInvocationExpansionSceneState(): InvocationExpansionSceneState {
+  return {
+    activeExpansionId: null,
+    activeExpansionPath: [],
+    collapsedExpansionIds: [],
+    activeSiblingByParentContext: {},
+    blockPositions: {},
+    lastChildStateByExpansionId: {},
+    contextMode: "ACTIVE_CHAIN",
   };
 }
 
@@ -130,6 +144,42 @@ function filterLayoutState(
         return position ? [[node.id, position]] : [];
       }),
     ),
+  };
+}
+
+function expansionIdsInGraph(nodes: LinkGraphNode[]): Set<string> {
+  return new Set(
+    nodes
+      .map((node) => node.metadata?.["linkGraph.expansion.id"]?.trim())
+      .filter((value): value is string => Boolean(value)),
+  );
+}
+
+function filterInvocationExpansionSceneState(
+  state: InvocationExpansionSceneState | null | undefined,
+  nodes: LinkGraphNode[],
+): InvocationExpansionSceneState {
+  const baseState = state ?? createEmptyInvocationExpansionSceneState();
+  const expansionIds = expansionIdsInGraph(nodes);
+  const hasExpansion = (expansionId: string | null | undefined): expansionId is string =>
+    Boolean(expansionId && expansionIds.has(expansionId));
+  return {
+    activeExpansionId: hasExpansion(baseState.activeExpansionId) ? baseState.activeExpansionId : null,
+    activeExpansionPath: (baseState.activeExpansionPath ?? []).filter((expansionId) => expansionIds.has(expansionId)),
+    collapsedExpansionIds: (baseState.collapsedExpansionIds ?? []).filter((expansionId) => expansionIds.has(expansionId)),
+    activeSiblingByParentContext: Object.fromEntries(
+      Object.entries(baseState.activeSiblingByParentContext ?? {})
+        .filter(([, expansionId]) => expansionIds.has(expansionId)),
+    ),
+    blockPositions: Object.fromEntries(
+      Object.entries(baseState.blockPositions ?? {})
+        .filter(([expansionId]) => expansionIds.has(expansionId)),
+    ),
+    lastChildStateByExpansionId: Object.fromEntries(
+      Object.entries(baseState.lastChildStateByExpansionId ?? {})
+        .filter(([expansionId]) => expansionIds.has(expansionId)),
+    ),
+    contextMode: "ACTIVE_CHAIN",
   };
 }
 
@@ -168,6 +218,7 @@ function normalizeSceneState(
     anchorNodeId: resolveAnchorNodeId(nodes, preferredAnchorNodeId),
     layoutState: filterLayoutState(baseSceneState.layoutState, nodes),
     collapsedNodeIds: (baseSceneState.collapsedNodeIds ?? []).filter((nodeId) => nodeIds.has(nodeId)),
+    invocationExpansionState: filterInvocationExpansionSceneState(baseSceneState.invocationExpansionState, nodes),
   };
 }
 
@@ -382,6 +433,7 @@ function mergeSceneState(args: {
         selectedNodeId: currentSceneState.selectedNodeId,
         anchorNodeId: currentSceneState.anchorNodeId,
         collapsedNodeIds: currentSceneState.collapsedNodeIds,
+        invocationExpansionState: currentSceneState.invocationExpansionState,
         layoutState: preserveLocalLayout ? currentSceneState.layoutState : bootstrapSceneState.layoutState,
         layoutRevision: preserveLocalLayout ? currentSceneState.layoutRevision : bootstrapSceneState.layoutRevision,
     }

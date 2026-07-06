@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.agent.tools
 
+import com.charmnight.linkgraph.agent.model.InvocationExpansionSceneState
 import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
@@ -28,6 +29,8 @@ enum class ToolGraphSceneId {
 data class ToolGraphSceneState(
     /** 当前场景中用户选中的节点 ID，缺失表示未选中。 */
     val selectedNodeId: String? = null,
+    /** 流程图调用展开 UI/session 状态，用于 LLM 工具过滤上下文。 */
+    val invocationExpansionState: InvocationExpansionSceneState = InvocationExpansionSceneState(),
 )
 
 /** 单个图视图的展示快照，包含当前可见子图、完整图与节点投影索引。 */

@@ -55,6 +55,8 @@ data class GraphQaContext(
     val evidenceTrace: List<EvidenceTraceEntry> = emptyList(),
     /** 保存当前问答证据允许的回答边界。 */
     val evidenceProfile: GraphEvidenceProfile = GraphEvidenceProfile(),
+    /** 保存调用展开上下文范围，区分完整证据和摘要证据。 */
+    val invocationExpansionContext: InvocationExpansionContext = InvocationExpansionContext(),
 )
 
 /**
@@ -89,6 +91,61 @@ data class GraphPresentationContext(
     val hiddenCurrentMethodNodeCount: Int = 0,
     /** 记录跨方法被隐藏的节点数量。 */
     val hiddenCrossMethodNodeCount: Int = 0,
+    /** 保存调用展开上下文范围，区分完整证据和摘要证据。 */
+    val invocationExpansionContext: InvocationExpansionContext = InvocationExpansionContext(),
+)
+
+/** 调用展开上下文过滤模式。当前默认只沿活动阅读链提供完整证据。 */
+enum class InvocationExpansionContextMode {
+    ACTIVE_CHAIN,
+}
+
+/** 调用展开块在流程图中的运行时位置；这是 UI/session state，不写入语义图。 */
+data class InvocationExpansionBlockPosition(
+    val x: Double,
+    val y: Double,
+)
+
+/** 调用展开子状态快照，用于恢复父块重新打开后的子块状态。 */
+data class ChildInvocationExpansionState(
+    val activeExpansionId: String? = null,
+    val activeExpansionPath: List<String> = emptyList(),
+    val collapsedExpansionIds: Set<String> = emptySet(),
+    val activeSiblingByParentContext: Map<String, String> = emptyMap(),
+)
+
+/** 流程图调用展开的运行时场景状态。 */
+data class InvocationExpansionSceneState(
+    val activeExpansionId: String? = null,
+    val activeExpansionPath: List<String> = emptyList(),
+    val collapsedExpansionIds: Set<String> = emptySet(),
+    val activeSiblingByParentContext: Map<String, String> = emptyMap(),
+    val blockPositions: Map<String, InvocationExpansionBlockPosition> = emptyMap(),
+    val lastChildStateByExpansionId: Map<String, ChildInvocationExpansionState> = emptyMap(),
+    val contextMode: InvocationExpansionContextMode = InvocationExpansionContextMode.ACTIVE_CHAIN,
+)
+
+/** 折叠或非活动调用展开的摘要证据。 */
+data class InvocationExpansionSummary(
+    val expansionId: String,
+    val sourceInvocationNodeId: String? = null,
+    val rootNodeId: String? = null,
+    val targetSignature: String? = null,
+    val title: String? = null,
+    val ownedNodeCount: Int = 0,
+    val branchCount: Int = 0,
+    val returnCount: Int = 0,
+    val childExpansionCount: Int = 0,
+    val hasBorrowedRoot: Boolean = false,
+)
+
+/** LLM 可见的调用展开上下文范围。 */
+data class InvocationExpansionContext(
+    val mode: InvocationExpansionContextMode = InvocationExpansionContextMode.ACTIVE_CHAIN,
+    val activeExpansionPath: List<String> = emptyList(),
+    val fullExpansionIds: List<String> = emptyList(),
+    val summaryExpansionIds: List<String> = emptyList(),
+    val summaries: List<InvocationExpansionSummary> = emptyList(),
 )
 
 /**

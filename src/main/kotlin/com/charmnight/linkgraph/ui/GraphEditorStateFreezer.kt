@@ -126,8 +126,24 @@ private fun GraphSceneState.freeze(): GraphSceneState {
     return copy(
         layoutState = layoutState.copy(positions = layoutState.positions.toMap()),
         collapsedNodeIds = collapsedNodeIds.toSet(),
+        invocationExpansionState = invocationExpansionState.freeze(),
     )
 }
+
+private fun InvocationExpansionSceneState.freeze(): InvocationExpansionSceneState =
+    copy(
+        activeExpansionPath = activeExpansionPath.toList(),
+        collapsedExpansionIds = collapsedExpansionIds.toSet(),
+        activeSiblingByParentContext = activeSiblingByParentContext.toMap(),
+        blockPositions = blockPositions.toMap(),
+        lastChildStateByExpansionId = lastChildStateByExpansionId.mapValues { (_, childState) ->
+            childState.copy(
+                activeExpansionPath = childState.activeExpansionPath.toList(),
+                collapsedExpansionIds = childState.collapsedExpansionIds.toSet(),
+                activeSiblingByParentContext = childState.activeSiblingByParentContext.toMap(),
+            )
+        },
+    )
 
 /** 冻结整张图：节点、边与挂载的补丁都递归冻结为不可变副本。 */
 private fun GraphDocument.freeze(): GraphDocument {

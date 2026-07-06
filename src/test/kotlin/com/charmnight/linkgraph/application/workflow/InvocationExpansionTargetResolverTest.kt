@@ -74,10 +74,94 @@ class InvocationExpansionTargetResolverTest {
     }
 
     @Test
+    fun resolvesAbstractMethodWhenInvocationReturnTypeUsesGenericSimpleName() {
+        val scanner = classSymbol("com.example.AbstractScanner", abstract = true)
+        val linux = classSymbol("com.example.LinuxScanner", superClassName = scanner.qualifiedName)
+        val mac = classSymbol("com.example.MacScanner", superClassName = scanner.qualifiedName)
+        val scannerMethod = methodSymbol(scanner, "detectPackageManagers", returnType = "java.util.List", abstract = true)
+        val linuxMethod = methodSymbol(linux, "detectPackageManagers", returnType = "java.util.List")
+        val macMethod = methodSymbol(mac, "detectPackageManagers", returnType = "java.util.List")
+
+        val target = resolver.resolve(
+            "com.example.AbstractScanner.detectPackageManagers():List<String>",
+            index(
+                classes = listOf(scanner, linux, mac),
+                methods = listOf(scannerMethod, linuxMethod, macMethod),
+                relations = listOf(
+                    relation(JvmRelationKind.EXTENDS, linux, scanner),
+                    relation(JvmRelationKind.EXTENDS, mac, scanner),
+                ),
+            ),
+        )
+
+        assertEquals(InvocationExpansionTargetKind.MULTIPLE_IMPLEMENTATIONS, target.kind)
+        assertEquals(listOf(linuxMethod.signature, macMethod.signature).sorted(), target.candidateSignatures)
+    }
+
+    @Test
+    fun resolvesOverloadWithArrayParameterWithoutMatchingScalarOverload() {
+        val service = classSymbol("com.example.AbstractService", abstract = true)
+        val impl = classSymbol("com.example.ServiceImpl", superClassName = service.qualifiedName)
+        val scalarMethod = methodSymbol(service, "convert", parameterTypes = listOf("java.lang.String"), abstract = true)
+        val arrayMethod = methodSymbol(service, "convert", parameterTypes = listOf("java.lang.String[]"), abstract = true)
+        val scalarImplMethod = methodSymbol(impl, "convert", parameterTypes = listOf("java.lang.String"))
+        val arrayImplMethod = methodSymbol(impl, "convert", parameterTypes = listOf("java.lang.String[]"))
+
+        val target = resolver.resolve(
+            "com.example.AbstractService.convert(String[]):String",
+            index(
+                classes = listOf(service, impl),
+                methods = listOf(scalarMethod, arrayMethod, scalarImplMethod, arrayImplMethod),
+            ),
+        )
+
+        assertEquals(InvocationExpansionTargetKind.PROJECT_SOURCE, target.kind)
+        assertEquals(arrayImplMethod.signature, target.signature)
+    }
+
+    @Test
+    fun resolvesImplementationsFromClassSymbolsWhenRelationsAreMissing() {
+        val scanner = classSymbol("com.example.AbstractScanner", abstract = true)
+        val linux = classSymbol("com.example.LinuxScanner", superClassName = scanner.qualifiedName)
+        val mac = classSymbol("com.example.MacScanner", superClassName = scanner.qualifiedName)
+        val scannerMethod = methodSymbol(scanner, "detectPackageManagers", abstract = true)
+        val linuxMethod = methodSymbol(linux, "detectPackageManagers")
+        val macMethod = methodSymbol(mac, "detectPackageManagers")
+
+        val target = resolver.resolve(
+            scannerMethod.signature,
+            index(
+                classes = listOf(scanner, linux, mac),
+                methods = listOf(scannerMethod, linuxMethod, macMethod),
+            ),
+        )
+
+        assertEquals(InvocationExpansionTargetKind.MULTIPLE_IMPLEMENTATIONS, target.kind)
+        assertEquals(listOf(linuxMethod.signature, macMethod.signature).sorted(), target.candidateSignatures)
+    }
+
+    @Test
     fun reportsNoImplementation() {
         val api = classSymbol("com.example.Api", kind = JvmClassKind.INTERFACE, abstract = true)
         val apiMethod = methodSymbol(api, "run", abstract = true)
         val target = resolver.resolve(apiMethod.signature, index(classes = listOf(api), methods = listOf(apiMethod)))
+
+        assertEquals(InvocationExpansionTargetKind.NO_IMPLEMENTATION, target.kind)
+    }
+
+    @Test
+    fun reportsNoImplementationForAbstractTemplateMethodWithoutConcreteSubclassOverride() {
+        val service = classSymbol("com.example.BaseWordServiceImpl", abstract = true)
+        val wordTable = classSymbol("com.example.IWordTable", kind = JvmClassKind.INTERFACE, abstract = true)
+        val abstractFactory = methodSymbol(service, "genderWordTableBean", returnType = "com.example.IWordTable", abstract = true)
+
+        val target = resolver.resolve(
+            "com.example.BaseWordServiceImpl.genderWordTableBean():IWordTable",
+            index(
+                classes = listOf(service, wordTable),
+                methods = listOf(abstractFactory),
+            ),
+        )
 
         assertEquals(InvocationExpansionTargetKind.NO_IMPLEMENTATION, target.kind)
     }
@@ -128,6 +212,8 @@ class InvocationExpansionTargetResolverTest {
         library: Boolean = false,
         jdk: Boolean = false,
         abstract: Boolean = false,
+        superClassName: String? = null,
+        interfaceNames: List<String> = emptyList(),
     ): JvmClassSymbol =
         JvmClassSymbol(
             id = stableJvmId("class", qualifiedName),
@@ -148,22 +234,26 @@ class InvocationExpansionTargetResolverTest {
                 decompiled = false,
             ),
             origin = origin,
+            superClassName = superClassName,
+            interfaceNames = interfaceNames,
         )
 
     private fun methodSymbol(
         owner: JvmClassSymbol,
         name: String,
+        parameterTypes: List<String> = emptyList(),
+        returnType: String = "void",
         abstract: Boolean = false,
     ): JvmMethodSymbol {
-        val signature = "${owner.qualifiedName}.$name():void"
+        val signature = "${owner.qualifiedName}.$name(${parameterTypes.joinToString(",")}):$returnType"
         return JvmMethodSymbol(
             id = stableJvmId("method", signature),
             qualifiedName = signature,
             simpleName = name,
             ownerClassName = owner.qualifiedName,
             signature = signature,
-            parameterTypes = emptyList(),
-            returnType = "void",
+            parameterTypes = parameterTypes,
+            returnType = returnType,
             abstract = abstract,
             source = owner.source,
             origin = owner.origin,

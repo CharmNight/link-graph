@@ -126,6 +126,28 @@ export interface LinkGraphLayoutState {
   positions: Record<string, GraphPosition>;
 }
 
+/** 调用展开上下文模式：默认按用户正在阅读的活动链过滤上下文。 */
+export type InvocationExpansionContextMode = "ACTIVE_CHAIN";
+
+/** 调用展开子状态快照，用于恢复父展开重新打开后的子展开状态。 */
+export interface ChildInvocationExpansionState {
+  activeExpansionId?: string | null;
+  activeExpansionPath?: string[];
+  collapsedExpansionIds?: string[];
+  activeSiblingByParentContext?: Record<string, string>;
+}
+
+/** 流程图调用展开的 UI/session 状态；不写入语义图 metadata。 */
+export interface InvocationExpansionSceneState {
+  activeExpansionId?: string | null;
+  activeExpansionPath: string[];
+  collapsedExpansionIds: string[];
+  activeSiblingByParentContext: Record<string, string>;
+  blockPositions: Record<string, GraphPosition>;
+  lastChildStateByExpansionId: Record<string, ChildInvocationExpansionState>;
+  contextMode: InvocationExpansionContextMode;
+}
+
 /**
  * 工作台支持的场景标识。
  * - 各 WORKSPACE_* 表示工作台的不同分析视图（事实、流程、资源、架构、类图、审查）；
@@ -152,6 +174,8 @@ export interface LinkGraphSceneState {
   layoutRevision: number;
   /** 已折叠的节点 ID 列表（这些节点的子节点不显示）。 */
   collapsedNodeIds: string[];
+  /** 流程图调用展开的折叠/激活状态，独立于普通节点折叠。 */
+  invocationExpansionState?: InvocationExpansionSceneState | null;
 }
 
 /** 图节点：图中任意一个可视化实体。 */

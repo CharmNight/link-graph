@@ -16,7 +16,7 @@ data class ProjectSliceManifest(
 ) {
     companion object {
         /** 当前 schema 版本号；升级时递增。 */
-        const val CURRENT_SCHEMA_VERSION = 4
+        const val CURRENT_SCHEMA_VERSION = 5
     }
 }
 

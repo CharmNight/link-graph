@@ -5,6 +5,7 @@ import type {
   IndexedClassDiagramOptions,
   IndexedGraphRequestStates,
   GraphPosition,
+  InvocationExpansionSceneState,
 } from "../types";
 
 /**
@@ -31,6 +32,8 @@ export interface BaseStageProps {
   hiddenNodeIds?: string[];
   /** 折叠的节点 ID 列表。 */
   collapsedNodeIds?: string[];
+  /** 流程图调用展开的折叠/激活状态。 */
+  invocationExpansionState?: InvocationExpansionSceneState | null;
   /** 节点 ID → 折叠子节点数 的映射；用于显示"已折叠 N 项"。 */
   collapsedDescendantCountByNodeId?: Record<string, number>;
   /** 视图实验标志；为空表示未启用任何实验。 */
@@ -63,6 +66,12 @@ export interface BaseStageProps {
   onExpandInvocation?: (nodeId: string) => void;
   /** 移除已展开的调用结构回调。 */
   onRemoveInvocationExpansion?: (expansionId: string) => void;
+  /** 折叠某个调用展开块。 */
+  onCollapseInvocationExpansion?: (expansionId: string) => void;
+  /** 打开某个折叠的调用展开块。 */
+  onOpenInvocationExpansion?: (expansionId: string) => void;
+  /** 激活某个调用展开阅读路径。 */
+  onActivateInvocationExpansion?: (expansionId: string) => void;
 }
 
 /**

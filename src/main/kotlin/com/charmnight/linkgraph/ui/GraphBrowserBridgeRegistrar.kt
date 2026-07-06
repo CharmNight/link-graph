@@ -166,6 +166,9 @@ internal class GraphBrowserBridgeRegistrar(
                 requestExpandOverflowNode: (nodeId) => sendCommand("requestExpandOverflowNode", { nodeId }),
                 requestExpandInvocation: (nodeId) => sendCommand("requestExpandInvocation", { nodeId }),
                 requestRemoveInvocationExpansion: (expansionId) => sendCommand("requestRemoveInvocationExpansion", { expansionId }),
+                collapseInvocationExpansion: (expansionId) => sendCommand("collapseInvocationExpansion", { expansionId }),
+                openInvocationExpansion: (expansionId) => sendCommand("openInvocationExpansion", { expansionId }),
+                activateInvocationExpansion: (expansionId) => sendCommand("activateInvocationExpansion", { expansionId }),
                 applyGraphEditScript: (payload) => sendCommand("applyGraphEditScript", payload || {})
               };
             }

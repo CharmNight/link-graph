@@ -4,6 +4,10 @@ import com.charmnight.linkgraph.application.model.ApplicationSnapshot
 import com.charmnight.linkgraph.application.model.ApplicationGraphView
 import com.charmnight.linkgraph.application.model.DraftPatchUndo
 import com.charmnight.linkgraph.application.model.WorkflowEditorSnapshot
+import com.charmnight.linkgraph.agent.model.ChildInvocationExpansionState as AgentChildInvocationExpansionState
+import com.charmnight.linkgraph.agent.model.InvocationExpansionBlockPosition
+import com.charmnight.linkgraph.agent.model.InvocationExpansionContextMode as AgentInvocationExpansionContextMode
+import com.charmnight.linkgraph.agent.model.InvocationExpansionSceneState as AgentInvocationExpansionSceneState
 
 /**
  * 将 UI 层持有的图编辑器状态快照转换为应用层使用的工作流编辑器快照。
@@ -25,6 +29,9 @@ internal fun GraphEditorStateSnapshot.toWorkflowEditorSnapshot(): WorkflowEditor
         reviewGraphView = reviewGraphView.toApplicationGraphView(),
         analysisDisplayMode = analysisDisplayMode,
         currentSceneId = currentSceneId,
+        flowchartInvocationExpansionState = sceneState(GraphSceneId.WORKSPACE_FLOWCHART)
+            .invocationExpansionState
+            .toAgentInvocationExpansionSceneState(),
         selectedNodeId = currentSceneState().selectedNodeId,
         selectedMethodSignature = selectedMethodSignature,
         workingGraphDirty = workingGraphDirty,
@@ -118,6 +125,28 @@ private fun com.charmnight.linkgraph.review.ReviewGraphResult.toApplicationGraph
         visibleGraph = visibleGraph,
         fullGraph = fullGraph,
         projectionIndex = projectionIndex,
+    )
+
+private fun InvocationExpansionSceneState.toAgentInvocationExpansionSceneState(): AgentInvocationExpansionSceneState =
+    AgentInvocationExpansionSceneState(
+        activeExpansionId = activeExpansionId,
+        activeExpansionPath = activeExpansionPath,
+        collapsedExpansionIds = collapsedExpansionIds,
+        activeSiblingByParentContext = activeSiblingByParentContext,
+        blockPositions = blockPositions.mapValues { (_, position) ->
+            InvocationExpansionBlockPosition(x = position.x, y = position.y)
+        },
+        lastChildStateByExpansionId = lastChildStateByExpansionId.mapValues { (_, childState) ->
+            AgentChildInvocationExpansionState(
+                activeExpansionId = childState.activeExpansionId,
+                activeExpansionPath = childState.activeExpansionPath,
+                collapsedExpansionIds = childState.collapsedExpansionIds,
+                activeSiblingByParentContext = childState.activeSiblingByParentContext,
+            )
+        },
+        contextMode = when (contextMode) {
+            InvocationExpansionContextMode.ACTIVE_CHAIN -> AgentInvocationExpansionContextMode.ACTIVE_CHAIN
+        },
     )
 
 /**

@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport
 import com.charmnight.linkgraph.agent.model.GenerationPlan
 import com.charmnight.linkgraph.agent.model.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.InvocationExpansionSceneState
 import com.charmnight.linkgraph.mermaid.MermaidIssue
 import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
@@ -48,6 +49,8 @@ data class WorkflowEditorSnapshot(
     val analysisDisplayMode: AnalysisDisplayMode = AnalysisDisplayMode.FACT_GRAPH,
     /** 当前场景 ID。 */
     val currentSceneId: GraphSceneId = GraphSceneId.WORKSPACE_FACT,
+    /** 流程图调用展开 UI/session 状态，用于 LLM 上下文过滤，不写入语义图。 */
+    val flowchartInvocationExpansionState: InvocationExpansionSceneState = InvocationExpansionSceneState(),
     /** 当前选中节点 ID。 */
     val selectedNodeId: String? = null,
     /** 当前选中的方法签名。 */

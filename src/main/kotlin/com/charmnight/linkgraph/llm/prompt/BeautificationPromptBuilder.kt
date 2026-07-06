@@ -35,6 +35,7 @@ internal fun buildBeautificationPromptPackage(
     val sourceSnippets = context.sourceContext.joinToString("\n") { snippet ->
         sourceSnippetSummary(snippet)
     }.ifBlank { "- 无" }
+    val invocationExpansionContextText = buildInvocationExpansionContextText(context.presentationContext.invocationExpansionContext)
     val steps = projectedSteps.joinToString("\n") { step ->
         "- ${step.stepId} | ${step.kind.name} | ${step.title} | nodeRefs=${step.nodeRefs.joinToString()}"
     }.ifBlank { "- 无" }
@@ -118,6 +119,8 @@ internal fun buildBeautificationPromptPackage(
                 偏好风格：${context.preferredStyle ?: "未指定"}
                 当前方法内部折叠节点：${context.presentationContext.hiddenCurrentMethodNodeCount}
                 跨方法扩展折叠节点：${context.presentationContext.hiddenCrossMethodNodeCount}
+                调用展开上下文：
+                $invocationExpansionContextText
                 锚点节点：${context.presentationContext.anchorNodeId ?: "未指定"}
                 当前粒度：${context.granularity.name}
                 """.trimIndent(),

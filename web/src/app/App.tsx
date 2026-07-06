@@ -136,6 +136,7 @@ export function App() {
     setSelectionGroupNodeIds,
     collapsedNodeIds,
     setCollapsedNodeIds,
+    invocationExpansionState,
     requestFailureNotice,
     setRequestFailureNotice,
     isImportDialogOpen,
@@ -839,6 +840,7 @@ export function App() {
     selectedGroupNodeIds: selectionGroupNodeIds,
     hiddenNodeIds,
     collapsedNodeIds,
+    invocationExpansionState,
     collapsedDescendantCountByNodeId: collapsedSummary.descendantCountByNodeId,
     experiments: graphSurfaceExperiments,
     onSelectNode: handleSelectNode,
@@ -855,6 +857,9 @@ export function App() {
     onExpandOverflowNode: handleExpandOverflowNode,
     onExpandInvocation: workbenchCommands.handleExpandInvocation,
     onRemoveInvocationExpansion: workbenchCommands.handleRemoveInvocationExpansion,
+    onCollapseInvocationExpansion: workbenchCommands.handleCollapseInvocationExpansion,
+    onOpenInvocationExpansion: workbenchCommands.handleOpenInvocationExpansion,
+    onActivateInvocationExpansion: workbenchCommands.handleActivateInvocationExpansion,
   };
 
   const editableStageProps: EditableStageProps = {

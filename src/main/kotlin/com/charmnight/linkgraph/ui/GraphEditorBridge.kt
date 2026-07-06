@@ -39,6 +39,12 @@ class GraphEditorBridge(
         when (message) {
             // 节点选中：直接更新状态服务
             is GraphEditorMessage.NodeSelected -> stateService.selectNode(message.nodeId)
+            is GraphEditorMessage.CollapseInvocationExpansion ->
+                stateService.collapseInvocationExpansion(message.expansionId)
+            is GraphEditorMessage.OpenInvocationExpansion ->
+                stateService.openInvocationExpansion(message.expansionId)
+            is GraphEditorMessage.ActivateInvocationExpansion ->
+                stateService.activateInvocationExpansion(message.expansionId)
             // 前端就绪：触发上层握手回调
             is GraphEditorMessage.FrontendReady -> onFrontendReady(message.lastAppliedRevision)
             // 快照确认：触发上层确认回调

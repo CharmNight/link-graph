@@ -80,6 +80,9 @@ export type BridgeCommandType =
   | "requestExpandOverflowNode"
   | "requestExpandInvocation"
   | "requestRemoveInvocationExpansion"
+  | "collapseInvocationExpansion"
+  | "openInvocationExpansion"
+  | "activateInvocationExpansion"
   | "applyGraphEditScript";
 
 /** 桥接命令信封：固定 schemaVersion + type + 弱类型 payload。 */
@@ -568,6 +571,21 @@ export function requestExpandInvocation(nodeId: string): BridgeInvocationResult 
 /** 请求移除某次调用展开（按展开 ID 撤销）。 */
 export function requestRemoveInvocationExpansion(expansionId: string): BridgeInvocationResult {
   return invokeBridgeAction("requestRemoveInvocationExpansion", { expansionId }, { expansionId });
+}
+
+/** 折叠某个调用展开块，仅更新 UI/session 状态。 */
+export function collapseInvocationExpansion(expansionId: string): BridgeInvocationResult {
+  return invokeBridgeAction("collapseInvocationExpansion", { expansionId }, { expansionId });
+}
+
+/** 打开某个调用展开块，仅更新 UI/session 状态。 */
+export function openInvocationExpansion(expansionId: string): BridgeInvocationResult {
+  return invokeBridgeAction("openInvocationExpansion", { expansionId }, { expansionId });
+}
+
+/** 激活某个调用展开阅读路径，仅更新 UI/session 状态。 */
+export function activateInvocationExpansion(expansionId: string): BridgeInvocationResult {
+  return invokeBridgeAction("activateInvocationExpansion", { expansionId }, { expansionId });
 }
 
 /**

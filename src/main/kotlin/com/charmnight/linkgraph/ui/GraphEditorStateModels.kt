@@ -50,6 +50,30 @@ data class DraftPatchUndoState(
 /** 复用应用层对图谱场景标识的定义，避免在 UI 层重复维护一份场景枚举。 */
 typealias GraphSceneId = com.charmnight.linkgraph.application.model.GraphSceneId
 
+/** 调用展开上下文过滤模式。当前默认只沿活动阅读链提供 full evidence。 */
+enum class InvocationExpansionContextMode {
+    ACTIVE_CHAIN,
+}
+
+/** 调用展开子状态快照，用于后续恢复父块重新打开后的子块状态。 */
+data class ChildInvocationExpansionState(
+    val activeExpansionId: String? = null,
+    val activeExpansionPath: List<String> = emptyList(),
+    val collapsedExpansionIds: Set<String> = emptySet(),
+    val activeSiblingByParentContext: Map<String, String> = emptyMap(),
+)
+
+/** 流程图调用展开的 UI/session 状态；不属于语义图 metadata。 */
+data class InvocationExpansionSceneState(
+    val activeExpansionId: String? = null,
+    val activeExpansionPath: List<String> = emptyList(),
+    val collapsedExpansionIds: Set<String> = emptySet(),
+    val activeSiblingByParentContext: Map<String, String> = emptyMap(),
+    val blockPositions: Map<String, GraphLayoutPosition> = emptyMap(),
+    val lastChildStateByExpansionId: Map<String, ChildInvocationExpansionState> = emptyMap(),
+    val contextMode: InvocationExpansionContextMode = InvocationExpansionContextMode.ACTIVE_CHAIN,
+)
+
 /**
  * 单个图谱场景（如事实图谱、工作台等）的交互状态集合。
  *
@@ -67,6 +91,8 @@ data class GraphSceneState(
     val layoutRevision: Long = 0,
     // 已折叠的节点 ID 集合，记录用户主动收起子结构的节点
     val collapsedNodeIds: Set<String> = emptySet(),
+    // 调用展开折叠/激活状态，独立于普通节点折叠
+    val invocationExpansionState: InvocationExpansionSceneState = InvocationExpansionSceneState(),
 )
 
 /** 为所有已知的图谱场景生成初始状态映射，确保新会话启动时每个场景都有可用的默认态。 */

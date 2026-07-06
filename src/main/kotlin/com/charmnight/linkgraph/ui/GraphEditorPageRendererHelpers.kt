@@ -165,10 +165,28 @@ internal data class GraphSceneLayoutStateDto(
     val positions: Map<String, GraphNodePositionDto>,
 )
 
+internal data class ChildInvocationExpansionStateDto(
+    val activeExpansionId: String?,
+    val activeExpansionPath: List<String>,
+    val collapsedExpansionIds: List<String>,
+    val activeSiblingByParentContext: Map<String, String>,
+)
+
+internal data class InvocationExpansionSceneStateDto(
+    val activeExpansionId: String?,
+    val activeExpansionPath: List<String>,
+    val collapsedExpansionIds: List<String>,
+    val activeSiblingByParentContext: Map<String, String>,
+    val blockPositions: Map<String, GraphNodePositionDto>,
+    val lastChildStateByExpansionId: Map<String, ChildInvocationExpansionStateDto>,
+    val contextMode: String,
+)
+
 internal data class GraphSceneStateDto(
     val selectedNodeId: String?,
     val anchorNodeId: String?,
     val collapsedNodeIds: List<String>,
+    val invocationExpansionState: InvocationExpansionSceneStateDto,
     val layoutRevision: Long,
     val layoutState: GraphSceneLayoutStateDto,
 )
@@ -327,12 +345,34 @@ internal fun graphSceneStateToDto(
     selectedNodeId = state.selectedNodeId,
     anchorNodeId = state.anchorNodeId,
     collapsedNodeIds = state.collapsedNodeIds.toList(),
+    invocationExpansionState = invocationExpansionSceneStateToDto(state.invocationExpansionState),
     layoutRevision = state.layoutRevision,
     layoutState = GraphSceneLayoutStateDto(
         positions = state.layoutState.positions.mapValues { (_, position) ->
             GraphNodePositionDto(x = position.x, y = position.y)
         },
     ),
+)
+
+private fun invocationExpansionSceneStateToDto(
+    state: InvocationExpansionSceneState,
+): InvocationExpansionSceneStateDto = InvocationExpansionSceneStateDto(
+    activeExpansionId = state.activeExpansionId,
+    activeExpansionPath = state.activeExpansionPath,
+    collapsedExpansionIds = state.collapsedExpansionIds.toList(),
+    activeSiblingByParentContext = state.activeSiblingByParentContext,
+    blockPositions = state.blockPositions.mapValues { (_, position) ->
+        GraphNodePositionDto(x = position.x, y = position.y)
+    },
+    lastChildStateByExpansionId = state.lastChildStateByExpansionId.mapValues { (_, childState) ->
+        ChildInvocationExpansionStateDto(
+            activeExpansionId = childState.activeExpansionId,
+            activeExpansionPath = childState.activeExpansionPath,
+            collapsedExpansionIds = childState.collapsedExpansionIds.toList(),
+            activeSiblingByParentContext = childState.activeSiblingByParentContext,
+        )
+    },
+    contextMode = state.contextMode.name,
 )
 
 /** 把场景状态集合映射为 sceneId → sceneState 的 DTO 结构。 */

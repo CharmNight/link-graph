@@ -23,6 +23,7 @@ import type {
   GraphSurfaceExperimentFlags,
   IndexedGraphRequestStates,
   IndexedGraphView,
+  InvocationExpansionSceneState,
   LinkGraphBootstrapState,
   LinkGraphDocument,
   LinkGraphEdge,
@@ -194,6 +195,19 @@ function createEmptySceneState(): LinkGraphSceneState {
     },
     layoutRevision: 0,
     collapsedNodeIds: [],
+    invocationExpansionState: createEmptyInvocationExpansionSceneState(),
+  };
+}
+
+function createEmptyInvocationExpansionSceneState(): InvocationExpansionSceneState {
+  return {
+    activeExpansionId: null,
+    activeExpansionPath: [],
+    collapsedExpansionIds: [],
+    activeSiblingByParentContext: {},
+    blockPositions: {},
+    lastChildStateByExpansionId: {},
+    contextMode: "ACTIVE_CHAIN",
   };
 }
 
@@ -267,6 +281,14 @@ function sameLayoutState(
   });
 }
 
+function sameInvocationExpansionSceneState(
+  left: InvocationExpansionSceneState | null | undefined,
+  right: InvocationExpansionSceneState | null | undefined,
+): boolean {
+  return JSON.stringify(left ?? createEmptyInvocationExpansionSceneState()) ===
+    JSON.stringify(right ?? createEmptyInvocationExpansionSceneState());
+}
+
 // 按字段语义判断场景状态某一字段是否等价：折叠列表和布局使用专用比较，其他字段回退到引用相等
 function sameSceneFieldValue<K extends keyof LinkGraphSceneState>(
   key: K,
@@ -280,6 +302,12 @@ function sameSceneFieldValue<K extends keyof LinkGraphSceneState>(
     return sameLayoutState(
       left as LinkGraphLayoutState | undefined,
       right as LinkGraphLayoutState | undefined,
+    );
+  }
+  if (key === "invocationExpansionState") {
+    return sameInvocationExpansionSceneState(
+      left as InvocationExpansionSceneState | null | undefined,
+      right as InvocationExpansionSceneState | null | undefined,
     );
   }
   return Object.is(left, right);
@@ -559,6 +587,9 @@ export function useWorkbenchState({
   const collapsedNodeIds = canvasState.sceneStates[canvasState.currentSceneId]?.collapsedNodeIds ?? [];
   // 更新折叠节点 ID 列表的便捷 setter，写入时会同步落到当前场景状态
   const setCollapsedNodeIds = updateCurrentSceneStateField(setCanvasState, "collapsedNodeIds");
+  const invocationExpansionState = canvasState.sceneStates[canvasState.currentSceneId]?.invocationExpansionState
+    ?? createEmptyInvocationExpansionSceneState();
+  const setInvocationExpansionState = updateCurrentSceneStateField(setCanvasState, "invocationExpansionState");
 
   // 画布状态各字段的等值短路 setter 集合，供调用方按字段名直接更新
   const canvasSetters = {
@@ -642,6 +673,8 @@ export function useWorkbenchState({
     setSelectionGroupNodeIds,
     collapsedNodeIds,
     setCollapsedNodeIds,
+    invocationExpansionState,
+    setInvocationExpansionState,
     requestFailureNotice,
     setRequestFailureNotice,
     isImportDialogOpen,

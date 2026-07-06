@@ -87,6 +87,29 @@ class LinkGraphDebugStartupActivityTest : BasePlatformTestCase() {
         assertTrue(request!!.autoRequestArchitectureGraph)
     }
 
+    fun testTriggersDebugOnlyStartupActionForAutoExpandInvocationRequest() {
+        val invocationSignature =
+            "com.cpescan.core.package_manager.AbstractPackageManagerScanner.detectPackageManagers():List<String>"
+        val capturedRequest = AtomicReference<LinkGraphDebugAutomationRequest?>()
+        val activity = LinkGraphDebugStartupActivity(
+            requestProvider = {
+                LinkGraphDebugAutomationRequest(
+                    autoloadMethodSignature =
+                        "com.cpescan.core.package_manager.AbstractPackageManagerScanner.scan():List<Software>",
+                    autoExpandInvocationSignature = invocationSignature,
+                )
+            },
+            startupAction = { _, request -> capturedRequest.set(request) },
+        )
+
+        activity.runActivity(project)
+        PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+
+        val request = capturedRequest.get()
+        assertNotNull("Expected debug startup to dispatch auto expand invocation requests", request)
+        assertEquals(invocationSignature, request!!.autoExpandInvocationSignature)
+    }
+
     fun testTriggersDebugOnlyStartupActionForClassDiagramRequest() {
         val capturedRequest = AtomicReference<LinkGraphDebugAutomationRequest?>()
         val activity = LinkGraphDebugStartupActivity(
@@ -133,6 +156,19 @@ class LinkGraphDebugStartupActivityTest : BasePlatformTestCase() {
         assertTrue(fromQualifiedName.autoRequestClassDiagram)
         assertEquals(classNodeId, fromNodeId.autoRequestClassDiagramScopeNodeId)
         assertTrue(fromNodeId.autoRequestClassDiagram)
+    }
+
+    fun testParsesAutoExpandInvocationRequestFromEnvironment() {
+        val invocationSignature =
+            "com.cpescan.core.package_manager.AbstractPackageManagerScanner.detectPackageManagers():List<String>"
+
+        val request = LinkGraphDebugAutomationRequest.fromEnvironment(
+            mapOf(LinkGraphDebugAutomationRequest.DEBUG_AUTO_EXPAND_INVOCATION_SIGNATURE_ENV to invocationSignature),
+        )
+
+        assertEquals(invocationSignature, request.autoExpandInvocationSignature)
+        assertTrue(request.hasAnyAction)
+        assertTrue(request.requiresToolWindowOpen)
     }
 
     fun testTriggersDebugOnlyStartupActionForClassUsageRequest() {

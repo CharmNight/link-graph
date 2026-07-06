@@ -14,6 +14,7 @@ import com.charmnight.linkgraph.agent.model.EditScope
 import com.charmnight.linkgraph.agent.model.GenerationPlan
 import com.charmnight.linkgraph.agent.model.GenerationPlanItem
 import com.charmnight.linkgraph.agent.model.GenerationPlanSource
+import com.charmnight.linkgraph.agent.model.InvocationExpansionContextMode
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
@@ -23,6 +24,9 @@ import com.charmnight.linkgraph.sync.SyncPreviewPlanner
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.ui.GraphEditorStateService
+import com.charmnight.linkgraph.ui.GraphSceneId
+import com.charmnight.linkgraph.ui.GraphSceneState
+import com.charmnight.linkgraph.ui.InvocationExpansionSceneState
 import com.charmnight.linkgraph.ui.toWorkflowEditorSnapshot
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
@@ -754,6 +758,164 @@ class PlanningContextFactoryTest {
         assertEquals(expandedMethod.id, focusedContext.presentationContext.anchorNodeId)
         assertEquals(listOf(expandedMethod.id), focusedContext.presentationContext.selectedNodeIds)
         assertTrue(focusedContext.presentationContext.graph.nodes.any { node -> node.id == expandedAction.id })
+    }
+
+    @Test
+    fun buildGraphBeautificationContextUsesActiveInvocationExpansionChainAndSummarizesCollapsedSiblings() {
+        fun expansionMetadata(expansionId: String, sourceInvocationNodeId: String): Map<String, String> =
+            mapOf(
+                "linkGraph.expansion.id" to expansionId,
+                "linkGraph.expansion.sourceInvocationNodeId" to sourceInvocationNodeId,
+                "linkGraph.expansion.kind" to "INVOCATION",
+            )
+
+        fun expandedMethod(
+            id: String,
+            title: String,
+            expansionId: String,
+            sourceInvocationNodeId: String,
+        ): GraphNode =
+            GraphNode(
+                id = id,
+                type = NodeType.METHOD,
+                title = title,
+                metadata = expansionMetadata(expansionId, sourceInvocationNodeId) + ("flowchart.kind" to "ENTRY"),
+            )
+
+        fun callEdge(expansionId: String, sourceInvocationNodeId: String, targetNodeId: String): GraphEdge =
+            GraphEdge(
+                id = "call:$sourceInvocationNodeId->$targetNodeId",
+                type = EdgeType.CALL,
+                fromNodeId = sourceInvocationNodeId,
+                toNodeId = targetNodeId,
+                metadata = expansionMetadata(expansionId, sourceInvocationNodeId),
+            )
+
+        val callerSignature = "com.example.PaymentController.pay():void"
+        val activeExpansionId = "invocation:stripe"
+        val collapsedExpansionId = "invocation:paypal"
+        val callerMethod = GraphNode(
+            id = "method:pay",
+            type = NodeType.METHOD,
+            title = "PaymentController.pay",
+            signature = callerSignature,
+            metadata = mapOf("flowchart.kind" to "ENTRY"),
+        )
+        val invocationNode = GraphNode(
+            id = "invoke:charge",
+            type = NodeType.FLOW_ACTION,
+            title = "processor.charge()",
+            signature = "com.example.PaymentProcessor.charge():void",
+            metadata = mapOf(
+                "flow.kind" to "INVOCATION",
+                "flow.ownerMethod" to callerSignature,
+                "flowchart.kind" to "SUBROUTINE",
+            ),
+        )
+        val stripeMethod = expandedMethod(
+            id = "method:stripe",
+            title = "StripeProcessor.charge",
+            expansionId = activeExpansionId,
+            sourceInvocationNodeId = invocationNode.id,
+        )
+        val stripeAction = GraphNode(
+            id = "action:stripe-capture",
+            type = NodeType.FLOW_ACTION,
+            title = "captureStripePayment()",
+            metadata = expansionMetadata(activeExpansionId, invocationNode.id) + ("flowchart.kind" to "PROCESS"),
+        )
+        val paypalMethod = expandedMethod(
+            id = "method:paypal",
+            title = "PaypalProcessor.charge",
+            expansionId = collapsedExpansionId,
+            sourceInvocationNodeId = invocationNode.id,
+        )
+        val paypalAction = GraphNode(
+            id = "action:paypal-capture",
+            type = NodeType.FLOW_ACTION,
+            title = "capturePaypalPayment()",
+            metadata = expansionMetadata(collapsedExpansionId, invocationNode.id) + ("flowchart.kind" to "PROCESS"),
+        )
+        val workingGraph = GraphDocument(
+            nodes = listOf(callerMethod, invocationNode, stripeMethod, stripeAction, paypalMethod, paypalAction),
+            edges = listOf(
+                GraphEdge(
+                    id = "control:pay-to-charge",
+                    type = EdgeType.CONTROL_FLOW,
+                    fromNodeId = callerMethod.id,
+                    toNodeId = invocationNode.id,
+                ),
+                callEdge(activeExpansionId, invocationNode.id, stripeMethod.id),
+                GraphEdge(
+                    id = "control:stripe-to-capture",
+                    type = EdgeType.CONTROL_FLOW,
+                    fromNodeId = stripeMethod.id,
+                    toNodeId = stripeAction.id,
+                    metadata = expansionMetadata(activeExpansionId, invocationNode.id),
+                ),
+                callEdge(collapsedExpansionId, invocationNode.id, paypalMethod.id),
+                GraphEdge(
+                    id = "control:paypal-to-capture",
+                    type = EdgeType.CONTROL_FLOW,
+                    fromNodeId = paypalMethod.id,
+                    toNodeId = paypalAction.id,
+                    metadata = expansionMetadata(collapsedExpansionId, invocationNode.id),
+                ),
+            ),
+        )
+        val snapshot = testSnapshot(
+            analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
+            currentSceneId = GraphSceneId.WORKSPACE_FLOWCHART,
+            visibleGraph = GraphDocument(
+                nodes = listOf(callerMethod, invocationNode),
+                edges = listOf(workingGraph.edges.first()),
+            ),
+            workingGraph = workingGraph,
+            selectedMethodSignature = callerSignature,
+            selectedNodeId = callerMethod.id,
+            workingGraphDirty = true,
+            sceneStates = mapOf(
+                GraphSceneId.WORKSPACE_FLOWCHART to GraphSceneState(
+                    selectedNodeId = callerMethod.id,
+                    invocationExpansionState = InvocationExpansionSceneState(
+                        activeExpansionId = activeExpansionId,
+                        activeExpansionPath = listOf(activeExpansionId),
+                        collapsedExpansionIds = setOf(collapsedExpansionId),
+                        activeSiblingByParentContext = mapOf("root:${callerMethod.id}" to activeExpansionId),
+                    ),
+                ),
+            ),
+        )
+
+        val context = planningContextFactory().buildGraphBeautificationContext(
+            snapshot = snapshot.toWorkflowEditorSnapshot(),
+            goal = "解释当前支付链路",
+            preferredStyle = null,
+            explanationFocus = null,
+            followUp = null,
+            granularity = com.charmnight.linkgraph.workbench.StepGranularity.BUSINESS,
+        )
+
+        assertEquals(
+            setOf(callerMethod.id, invocationNode.id, stripeMethod.id, stripeAction.id),
+            context.presentationContext.graph.nodes.map(GraphNode::id).toSet(),
+        )
+        assertEquals(
+            InvocationExpansionContextMode.ACTIVE_CHAIN,
+            context.presentationContext.invocationExpansionContext.mode,
+        )
+        assertEquals(
+            listOf(activeExpansionId),
+            context.presentationContext.invocationExpansionContext.fullExpansionIds,
+        )
+        assertEquals(
+            listOf(collapsedExpansionId),
+            context.presentationContext.invocationExpansionContext.summaryExpansionIds,
+        )
+        assertEquals(
+            collapsedExpansionId,
+            context.presentationContext.invocationExpansionContext.summaries.single().expansionId,
+        )
     }
 
     @Test

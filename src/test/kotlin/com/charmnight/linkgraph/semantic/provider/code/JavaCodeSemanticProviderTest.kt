@@ -359,6 +359,212 @@ class JavaCodeSemanticProviderTest : BasePlatformTestCase() {
         )
     }
 
+    fun testAutowiredConcreteFieldDispatchResolvesConcreteMethod() {
+        myFixture.configureByText(
+            "AutowiredConcreteFieldDispatch.java",
+            """
+                package com.example;
+
+                class AutowiredConcreteFieldDispatch {
+                    @Autowired
+                    private DemoService demoService;
+
+                    String <caret>load(String id) {
+                        return demoService.a(id);
+                    }
+                }
+
+                @interface Autowired {}
+
+                class DemoService {
+                    String a(String id) {
+                        return b(id);
+                    }
+
+                    String b(String id) {
+                        return id;
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        val handle = CaretSubjectLocator().locate(project, myFixture.editor)
+        val codeHandle = assertInstanceOf(handle, CodeSubjectHandle::class.java)
+        val result = JavaCodeSemanticProvider().analyze(
+            handle = codeHandle,
+            capturePolicy = SemanticCapturePolicy(),
+            budgetPolicy = TraversalBudgetPolicy(maxDownstreamDepth = 1, maxInvocationsPerUnit = 16),
+        )
+        val demoServiceA = result.semanticUnits.filterIsInstance<MethodLikeUnit>()
+            .firstOrNull { unit -> unit.signature == "com.example.DemoService.a(java.lang.String):java.lang.String" }
+
+        assertTrue("字段静态类型是具体类时，应直接解析到具体方法", demoServiceA != null)
+        assertTrue(
+            "具体类字段调用必须保持静态可证调用",
+            result.relations.any { relation ->
+                relation.kind == SemanticRelationKind.INVOKES &&
+                    relation.toUnitId == demoServiceA!!.id &&
+                    relation.metadata["relation.confidence"] == "PROVEN" &&
+                    relation.metadata["jvm.dispatch.kind"] == "STATIC"
+            },
+        )
+    }
+
+    fun testAutowiredInterfaceFieldDispatchKeepsInterfaceMethodWithoutReceiverProof() {
+        myFixture.configureByText(
+            "AutowiredInterfaceFieldDispatch.java",
+            """
+                package com.example;
+
+                class AutowiredInterfaceFieldDispatch {
+                    @Autowired
+                    private PaymentGateway gateway;
+
+                    String <caret>load(String id) {
+                        return gateway.fetch(id);
+                    }
+                }
+
+                @interface Autowired {}
+
+                interface PaymentGateway {
+                    String fetch(String id);
+                }
+
+                class StripeGateway implements PaymentGateway {
+                    public String fetch(String id) {
+                        return id;
+                    }
+                }
+
+                class PaypalGateway implements PaymentGateway {
+                    public String fetch(String id) {
+                        return id + "-paypal";
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        val handle = CaretSubjectLocator().locate(project, myFixture.editor)
+        val codeHandle = assertInstanceOf(handle, CodeSubjectHandle::class.java)
+        val result = JavaCodeSemanticProvider().analyze(
+            handle = codeHandle,
+            capturePolicy = SemanticCapturePolicy(),
+            budgetPolicy = TraversalBudgetPolicy(maxDownstreamDepth = 1, maxInvocationsPerUnit = 16),
+        )
+        val interfaceFetch = result.semanticUnits.filterIsInstance<MethodLikeUnit>()
+            .firstOrNull { unit -> unit.signature == "com.example.PaymentGateway.fetch(java.lang.String):java.lang.String" }
+        val implementationFetches = result.semanticUnits.filterIsInstance<MethodLikeUnit>()
+            .filter { unit ->
+                unit.signature == "com.example.StripeGateway.fetch(java.lang.String):java.lang.String" ||
+                    unit.signature == "com.example.PaypalGateway.fetch(java.lang.String):java.lang.String"
+            }
+
+        assertTrue("接口字段在没有具体接收者证据时，应保留接口方法", interfaceFetch != null)
+        assertEquals(emptyList<String>(), implementationFetches.map(MethodLikeUnit::signature))
+        assertTrue(
+            "接口字段调用必须显式标记为运行时分派",
+            result.relations.any { relation ->
+                relation.kind == SemanticRelationKind.INVOKES &&
+                    relation.toUnitId == interfaceFetch!!.id &&
+                    relation.metadata["relation.confidence"] == "RUNTIME_REQUIRED" &&
+                    relation.metadata["jvm.dispatch.kind"] == "INTERFACE_DISPATCH"
+            },
+        )
+    }
+
+    fun testAnalyzeJavaMethodRepresentsServiceLoaderAsSpiCandidatesInsteadOfProviderInvocations() {
+        myFixture.addFileToProject(
+            "src/main/java/com/example/spi/TaskProvider.java",
+            """
+                package com.example.spi;
+
+                public interface TaskProvider {
+                    void provide();
+                }
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/service/DefaultTaskProvider.java",
+            """
+                package com.example.service;
+
+                import com.example.spi.TaskProvider;
+
+                public class DefaultTaskProvider implements TaskProvider {
+                    @Override
+                    public void provide() {}
+                }
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/service/TaskRunner.java",
+            """
+                package com.example.service;
+
+                import com.example.spi.TaskProvider;
+                import java.util.ServiceLoader;
+
+                public class TaskRunner {
+                    public void <caret>run() {
+                        for (TaskProvider candidate : ServiceLoader.load(TaskProvider.class)) {
+                            candidate.provide();
+                        }
+                    }
+                }
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/resources/META-INF/services/com.example.spi.TaskProvider",
+            "com.example.service.DefaultTaskProvider\n",
+        )
+        myFixture.configureFromExistingVirtualFile(
+            requireNotNull(myFixture.findFileInTempDir("src/main/java/com/example/service/TaskRunner.java")),
+        )
+
+        val handle = CaretSubjectLocator().locate(project, myFixture.editor)
+        val codeHandle = assertInstanceOf(handle, CodeSubjectHandle::class.java)
+        val result = JavaCodeSemanticProvider(
+            CodeFlowSemanticExtractor(architectureIndexProvider = { buildArchitectureIndex() }),
+        ).analyze(
+            handle = codeHandle,
+            capturePolicy = SemanticCapturePolicy(),
+            budgetPolicy = TraversalBudgetPolicy(maxDownstreamDepth = 1, maxInvocationsPerUnit = 16),
+        )
+        val serviceLoaderCandidate = result.semanticUnits.filterIsInstance<ResourceUnit>()
+            .firstOrNull { unit ->
+                unit.metadata["jvm.relation.kind"] == "SERVICE_LOADER_LOADS" &&
+                    unit.metadata["service.loader.interface"] == "com.example.spi.TaskProvider"
+            }
+        val spiProviderCandidate = result.semanticUnits.filterIsInstance<ResourceUnit>()
+            .firstOrNull { unit ->
+                unit.metadata["jvm.relation.kind"] == "SPI_PROVIDES" &&
+                    unit.metadata["service.loader.provider"] == "com.example.service.DefaultTaskProvider"
+            }
+        val providerMethod = result.semanticUnits.filterIsInstance<MethodLikeUnit>()
+            .firstOrNull { unit -> unit.signature == "com.example.service.DefaultTaskProvider.provide():void" }
+
+        assertTrue("ServiceLoader.load 应展示为 SPI 候选资源节点", serviceLoaderCandidate != null)
+        assertTrue("META-INF/services provider 应展示为 SPI 候选资源节点", spiProviderCandidate != null)
+        assertTrue("当前 SPI 关系不应直接把 provider 方法伪装成普通调用展开目标", providerMethod == null)
+        assertTrue(
+            "当前方法到 ServiceLoader 候选应通过 SPI_RESOLVES_TO 关系表达",
+            result.relations.any { relation ->
+                relation.kind == SemanticRelationKind.REFERENCES &&
+                    relation.toUnitId == serviceLoaderCandidate!!.id &&
+                    relation.label == com.charmnight.linkgraph.model.EdgeType.SPI_RESOLVES_TO.name
+            },
+        )
+        assertTrue(
+            "当前方法到 provider 候选应通过 SPI_RESOLVES_TO 关系表达",
+            result.relations.any { relation ->
+                relation.kind == SemanticRelationKind.REFERENCES &&
+                    relation.toUnitId == spiProviderCandidate!!.id &&
+                    relation.label == com.charmnight.linkgraph.model.EdgeType.SPI_RESOLVES_TO.name
+            },
+        )
+    }
+
     fun testAnalyzeJavaMethodCapturesMethodDocComment() {
         loadFixtureWithCaret("simple/SimpleCallChain.java", "load(String orderId)")
 

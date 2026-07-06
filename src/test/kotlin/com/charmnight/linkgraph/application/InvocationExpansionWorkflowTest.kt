@@ -216,7 +216,7 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
         assertFalse(project.getService(GraphEditorStateService::class.java).snapshot().workspaceGraph.nodes.any { it.id == "action:save-info" })
     }
 
-    fun testDoesNotAutoExpandMultipleInterfaceImplementations() {
+    fun testExpandsMultipleInterfaceImplementationsIntoCurrentWorkspaceGraph() {
         val service = project.graphEditorApplicationServiceForTest()
         service.commandDispatcher.dispatch(
             ApplicationCommand.LoadGraph(
@@ -232,20 +232,35 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
                 "test",
             ),
         )
+        val targetSignatures = listOf(
+            "com.example.AInfoService.createInfo():void",
+            "com.example.BInfoService.createInfo():void",
+        )
         project.getService(LinkGraphProjectRuntimeHooks::class.java).invocationExpansionTargetResolver = { _, _ ->
             InvocationExpansionTarget(
                 kind = InvocationExpansionTargetKind.MULTIPLE_IMPLEMENTATIONS,
-                candidateSignatures = listOf(
-                    "com.example.AInfoService.createInfo():void",
-                    "com.example.BInfoService.createInfo():void",
-                ),
+                candidateSignatures = targetSignatures,
             )
         }
+        project.getService(LinkGraphProjectRuntimeHooks::class.java).invocationExpansionSubjectResolver = { signature -> testCodeSubject(signature) }
+        project.getService(LinkGraphProjectRuntimeHooks::class.java).semanticAnalyzer = SemanticAnalyzer(
+            registry = SemanticProviderRegistry(listOf(polymorphicTargetProvider(targetSignatures))),
+        )
 
         service.commandDispatcher.dispatch(ApplicationCommand.RequestExpandInvocation("invoke:service"))
-        PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+        val snapshot = waitForSnapshot {
+            it.workspaceGraph.nodes.any { node -> node.id == "method:a-info-service-create-info" } &&
+                it.workspaceGraph.nodes.any { node -> node.id == "method:b-info-service-create-info" }
+        }
 
-        assertFalse(project.getService(GraphEditorStateService::class.java).snapshot().workspaceGraph.nodes.any { it.id == "action:save-info" })
+        assertTrue(snapshot.workspaceGraph.nodes.any { node -> node.id == "method:a-info-service-create-info" })
+        assertTrue(snapshot.workspaceGraph.nodes.any { node -> node.id == "method:b-info-service-create-info" })
+        assertTrue(snapshot.workspaceGraph.edges.any { edge ->
+            edge.fromNodeId == "invoke:service" && edge.toNodeId == "method:a-info-service-create-info"
+        })
+        assertTrue(snapshot.workspaceGraph.edges.any { edge ->
+            edge.fromNodeId == "invoke:service" && edge.toNodeId == "method:b-info-service-create-info"
+        })
     }
 
     fun testDoesNotExpandThirdPartyLibraryInvocation() {
@@ -419,6 +434,45 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
                     ),
                     relations = listOf(
                         SemanticRelation(SemanticRelationKind.CONTROL_FLOW, "method:create-info", "action:save-info"),
+                    ),
+                    diagnostics = emptyList(),
+                    boundaries = emptyList(),
+                    sourceMappings = emptyList(),
+                )
+            }
+        }
+
+    private fun polymorphicTargetProvider(targetSignatures: List<String>): SemanticProvider =
+        object : CodeSubjectSemanticProvider {
+            override val supportedKinds: Set<CodeSubjectKind> = setOf(CodeSubjectKind.JAVA_METHOD)
+
+            override fun analyze(
+                handle: SubjectHandle,
+                capturePolicy: SemanticCapturePolicy,
+                budgetPolicy: TraversalBudgetPolicy,
+            ): SemanticAnalysisResult {
+                val codeHandle = handle as CodeSubjectHandle
+                val targetIndex = targetSignatures.indexOf(codeHandle.methodSignature).takeIf { it >= 0 } ?: 0
+                val owner = if (targetIndex == 0) "AInfoService" else "BInfoService"
+                val methodId = if (targetIndex == 0) "method:a-info-service-create-info" else "method:b-info-service-create-info"
+                val actionId = if (targetIndex == 0) "action:a-info-service-save-info" else "action:b-info-service-save-info"
+                return SemanticAnalysisResult(
+                    subject = codeHandle,
+                    anchors = listOf(SemanticAnchor(id = "anchor:$methodId", targetUnitId = methodId)),
+                    semanticUnits = listOf(
+                        MethodLikeUnit(
+                            id = methodId,
+                            title = "$owner.createInfo",
+                            signature = codeHandle.methodSignature,
+                        ),
+                        FlowActionUnit(
+                            id = actionId,
+                            title = "$owner.saveInfo()",
+                            actionKind = "ACTION",
+                        ),
+                    ),
+                    relations = listOf(
+                        SemanticRelation(SemanticRelationKind.CONTROL_FLOW, methodId, actionId),
                     ),
                     diagnostics = emptyList(),
                     boundaries = emptyList(),

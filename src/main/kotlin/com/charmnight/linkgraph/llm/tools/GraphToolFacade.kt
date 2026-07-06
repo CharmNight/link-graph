@@ -2,6 +2,8 @@ package com.charmnight.linkgraph.llm.tools
 
 import com.charmnight.linkgraph.agent.tools.*
 
+import com.charmnight.linkgraph.agent.model.buildInvocationExpansionActiveChainScope
+import com.charmnight.linkgraph.agent.model.hasExplicitInvocationExpansionScope
 import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
@@ -23,6 +25,20 @@ class GraphToolFacade(
             ?: workspaceGraph
         if (workspaceGraph.nodes.isEmpty() && workspaceGraph.edges.isEmpty()) {
             return visibleGraph
+        }
+        if (
+            snapshot.currentSceneId == ToolGraphSceneId.WORKSPACE_FLOWCHART &&
+            snapshot.currentSceneState().invocationExpansionState.hasExplicitInvocationExpansionScope()
+        ) {
+            buildInvocationExpansionActiveChainScope(
+                visibleGraph = visibleGraph,
+                fullGraph = snapshot.flowchartView.fullGraph.takeIf { graph ->
+                    graph.nodes.isNotEmpty() || graph.edges.isNotEmpty()
+                } ?: workspaceGraph,
+                sceneState = snapshot.currentSceneState().invocationExpansionState,
+            )?.let { scope ->
+                return scope.graph
+            }
         }
         val visibleNodeIds = visibleGraph.nodes.mapTo(linkedSetOf()) { node -> node.id }
         val nodeIds = linkedSetOf<String>().apply {

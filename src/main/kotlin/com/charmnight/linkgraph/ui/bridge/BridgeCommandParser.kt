@@ -125,6 +125,15 @@ internal object BridgeCommandParser {
             "requestRemoveInvocationExpansion" -> GraphEditorMessage.RequestRemoveInvocationExpansion(
                 expansionId = payload.requiredString("expansionId", "expansionId"),
             )
+            "collapseInvocationExpansion" -> GraphEditorMessage.CollapseInvocationExpansion(
+                expansionId = payload.requiredString("expansionId", "expansionId"),
+            )
+            "openInvocationExpansion" -> GraphEditorMessage.OpenInvocationExpansion(
+                expansionId = payload.requiredString("expansionId", "expansionId"),
+            )
+            "activateInvocationExpansion" -> GraphEditorMessage.ActivateInvocationExpansion(
+                expansionId = payload.requiredString("expansionId", "expansionId"),
+            )
             "applyGraphEditScript" -> GraphEditorMessage.ApplyGraphEditRequest(
                 GraphBrowserPayloadParser.parseGraphEditRequest(JsonCodec.toJson(payload)),
             )
@@ -222,6 +231,9 @@ internal object BridgeCommandParser {
             "requestExpandOverflowNode" -> "展开溢出节点"
             "requestExpandInvocation" -> "展开调用方法"
             "requestRemoveInvocationExpansion" -> "移除调用展开"
+            "collapseInvocationExpansion" -> "折叠调用展开"
+            "openInvocationExpansion" -> "打开调用展开"
+            "activateInvocationExpansion" -> "激活调用展开"
             "applyGraphEditScript" -> "链路图编辑请求同步"
             else -> type
         }

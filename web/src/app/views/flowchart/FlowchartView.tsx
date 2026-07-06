@@ -14,6 +14,12 @@ import { DraftCompareSummary } from "../../components/DraftCompareSummary";
 import type { EditableStageProps } from "../viewStageProps";
 import { layoutFlowchartView } from "./flowchartLayout";
 import {
+  buildFlowchartInvocationExpansionRegistry,
+  emptyFlowchartInvocationExpansionSceneState,
+  type FlowchartInvocationExpansionEntry,
+  type FlowchartInvocationExpansionRegistry,
+} from "./flowchartLayoutModel";
+import {
   buildFlowchartEdges,
   buildFlowchartNodes,
   FLOWCHART_NODE_TYPES,
@@ -62,6 +68,12 @@ function resolveInvocationExpansionNodeId(
     }
   }
   return null;
+}
+
+const INVOCATION_EXPANSION_SYNTHETIC_NODE_PREFIX = "expansion-block:";
+
+function invocationExpansionBlockNodeId(expansionId: string): string {
+  return `${INVOCATION_EXPANSION_SYNTHETIC_NODE_PREFIX}${expansionId}`;
 }
 
 /**
@@ -172,6 +184,159 @@ function scopeFlowchartGraphToAnchorMethod(
   };
 }
 
+function canonicalScopedNodeIds(nodes: LinkGraphDocument["nodes"]): Set<string> {
+  const nodeIds = new Set<string>();
+  nodes.forEach((node) => {
+    nodeIds.add(node.id);
+    projectedAliasNodeIds(node).forEach((aliasNodeId) => nodeIds.add(aliasNodeId));
+  });
+  return nodeIds;
+}
+
+function reachableExpansionIdsForAnchor(
+  registry: FlowchartInvocationExpansionRegistry,
+  scopedNodes: LinkGraphDocument["nodes"],
+): Set<string> {
+  const scopedNodeIds = canonicalScopedNodeIds(scopedNodes);
+  const reachableExpansionIds = new Set<string>();
+  const visit = (expansionId: string) => {
+    if (reachableExpansionIds.has(expansionId)) {
+      return;
+    }
+    reachableExpansionIds.add(expansionId);
+    registry.entriesById[expansionId]?.childExpansionIds.forEach(visit);
+  };
+  registry.entries
+    .filter((entry) => !entry.parentExpansionId)
+    .filter((entry) => entry.sourceInvocationNodeId && scopedNodeIds.has(entry.sourceInvocationNodeId))
+    .forEach((entry) => visit(entry.expansionId));
+  return reachableExpansionIds;
+}
+
+function hasCollapsedAncestor(
+  entry: FlowchartInvocationExpansionEntry,
+  registry: FlowchartInvocationExpansionRegistry,
+): boolean {
+  let currentParentId = entry.parentExpansionId;
+  const visited = new Set<string>();
+  while (currentParentId && !visited.has(currentParentId)) {
+    visited.add(currentParentId);
+    const parent = registry.entriesById[currentParentId];
+    if (!parent) {
+      return false;
+    }
+    if (parent.state === "collapsed") {
+      return true;
+    }
+    currentParentId = parent.parentExpansionId;
+  }
+  return false;
+}
+
+function invocationExpansionSummaryTitle(entry: FlowchartInvocationExpansionEntry): string {
+  return entry.targetSignature ?? entry.rootNodeId ?? entry.expansionId;
+}
+
+function syntheticInvocationExpansionNode(entry: FlowchartInvocationExpansionEntry): LinkGraphDocument["nodes"][number] {
+  return {
+    id: invocationExpansionBlockNodeId(entry.expansionId),
+    type: "DOC_PAGE",
+    title: invocationExpansionSummaryTitle(entry),
+    inputs: [],
+    outputs: [],
+    certainty: "PROVEN",
+    bindingStatus: "BOUND",
+    metadata: {
+      "flowchart.synthetic": "invocation-expansion-summary",
+      "flowchart.kind": "INVOCATION_EXPANSION_SUMMARY",
+      "linkGraph.expansion.id": entry.expansionId,
+      "linkGraph.expansion.sourceInvocationNodeId": entry.sourceInvocationNodeId ?? "",
+      "linkGraph.expansion.rootNodeId": entry.rootNodeId ?? "",
+      "linkGraph.expansion.targetSignature": entry.targetSignature ?? "",
+      "linkGraph.expansion.summary.nodeCount": String(entry.summary.nodeCount),
+      "linkGraph.expansion.summary.branchCount": String(entry.summary.branchCount),
+      "linkGraph.expansion.summary.returnCount": String(entry.summary.returnCount),
+      "linkGraph.expansion.summary.childExpansionCount": String(entry.summary.childExpansionCount),
+      "linkGraph.expansion.summary.hasBorrowedRoot": String(entry.summary.hasBorrowedRoot),
+    },
+  };
+}
+
+function graphWithInvocationExpansionScene(args: {
+  scopedGraph: LinkGraphDocument;
+  fullGraph: LinkGraphDocument;
+  registry: FlowchartInvocationExpansionRegistry;
+}): LinkGraphDocument {
+  const reachableExpansionIds = reachableExpansionIdsForAnchor(args.registry, args.scopedGraph.nodes);
+  if (reachableExpansionIds.size === 0) {
+    return args.scopedGraph;
+  }
+
+  const visibleExpansionEntries = args.registry.entries
+    .filter((entry) => reachableExpansionIds.has(entry.expansionId))
+    .filter((entry) => !hasCollapsedAncestor(entry, args.registry));
+  const visibleExpansionIds = new Set(visibleExpansionEntries.map((entry) => entry.expansionId));
+  const collapsedVisibleEntries = visibleExpansionEntries.filter((entry) => entry.state === "collapsed");
+  const collapsedVisibleExpansionIds = new Set(collapsedVisibleEntries.map((entry) => entry.expansionId));
+  const hiddenOwnedNodeIds = new Set(
+    args.registry.entries
+      .filter((entry) => reachableExpansionIds.has(entry.expansionId))
+      .filter((entry) => entry.state === "collapsed" || hasCollapsedAncestor(entry, args.registry))
+      .flatMap((entry) => entry.ownedNodeIds),
+  );
+  const scopedNodeIds = new Set(args.scopedGraph.nodes.map((node) => node.id));
+  const expansionNodes = args.fullGraph.nodes.filter((node) => {
+    const expansionId = node.metadata?.["linkGraph.expansion.id"]?.trim();
+    return Boolean(expansionId && visibleExpansionIds.has(expansionId) && !hiddenOwnedNodeIds.has(node.id));
+  });
+  const nodesById = new Map(
+    [
+      ...args.scopedGraph.nodes,
+      ...expansionNodes,
+      ...collapsedVisibleEntries.map(syntheticInvocationExpansionNode),
+    ].map((node) => [node.id, node]),
+  );
+
+  const callEdgeTargetById = new Map<string, string>();
+  collapsedVisibleEntries.forEach((entry) => {
+    entry.callEdgeIds.forEach((edgeId) => {
+      callEdgeTargetById.set(edgeId, invocationExpansionBlockNodeId(entry.expansionId));
+    });
+  });
+  const candidateEdges = [...args.scopedGraph.edges, ...args.fullGraph.edges.filter((edge) => {
+    const expansionId = edge.metadata?.["linkGraph.expansion.id"]?.trim();
+    return Boolean(expansionId && visibleExpansionIds.has(expansionId));
+  })];
+  const edgesById = new Map<string, LinkGraphEdge>();
+  candidateEdges.forEach((edge) => {
+    const targetOverride = callEdgeTargetById.get(edge.id);
+    const nextEdge = targetOverride ? { ...edge, target: targetOverride } : edge;
+    const expansionId = edge.metadata?.["linkGraph.expansion.id"]?.trim();
+    if (expansionId && !visibleExpansionIds.has(expansionId)) {
+      return;
+    }
+    if (expansionId && collapsedVisibleExpansionIds.has(expansionId) && edge.type !== "CALL") {
+      return;
+    }
+    if (!nodesById.has(nextEdge.source) || !nodesById.has(nextEdge.target)) {
+      return;
+    }
+    if (hiddenOwnedNodeIds.has(nextEdge.source) || hiddenOwnedNodeIds.has(nextEdge.target)) {
+      return;
+    }
+    edgesById.set(nextEdge.id, nextEdge);
+  });
+
+  if (nodesById.size === scopedNodeIds.size && edgesById.size === args.scopedGraph.edges.length) {
+    return args.scopedGraph;
+  }
+  return {
+    ...args.scopedGraph,
+    nodes: Array.from(nodesById.values()),
+    edges: Array.from(edgesById.values()),
+  };
+}
+
 /**
  * 推断当前流程图应聚焦的方法节点：优先按锚点签名查找 METHOD 节点，
  * 其次按选中节点签名查找，再退而求其次取 ENTRY 标记节点或任意 METHOD 节点，最终回退到锚点本身。
@@ -220,6 +385,9 @@ function flowchartNodeActions(args: {
   onOpenQa: (selectedNodeId?: string) => void;
   onExpandInvocation: (nodeId: string) => void;
   onRemoveInvocationExpansion: (expansionId: string) => void;
+  onCollapseInvocationExpansion: (expansionId: string) => void;
+  onOpenInvocationExpansion: (expansionId: string) => void;
+  onActivateInvocationExpansion: (expansionId: string) => void;
   onFormatLayout: () => void;
   onClose: () => void;
 }) {
@@ -291,6 +459,30 @@ function flowchartNodeActions(args: {
   if (args.expansionId) {
     const expansionId = args.expansionId;
     actions.push({
+      id: "activate-invocation-expansion",
+      label: "激活此展开",
+      onSelect: () => {
+        args.onActivateInvocationExpansion(expansionId);
+        args.onClose();
+      },
+    });
+    actions.push({
+      id: "open-invocation-expansion",
+      label: "打开此展开",
+      onSelect: () => {
+        args.onOpenInvocationExpansion(expansionId);
+        args.onClose();
+      },
+    });
+    actions.push({
+      id: "collapse-invocation-expansion",
+      label: "折叠此展开",
+      onSelect: () => {
+        args.onCollapseInvocationExpansion(expansionId);
+        args.onClose();
+      },
+    });
+    actions.push({
       id: "remove-invocation-expansion",
       label: "移除此展开",
       onSelect: () => {
@@ -344,10 +536,23 @@ export function FlowchartView({
   onImportMermaid,
   onExpandInvocation = () => undefined,
   onRemoveInvocationExpansion = () => undefined,
+  invocationExpansionState = null,
+  onCollapseInvocationExpansion = () => undefined,
+  onOpenInvocationExpansion = () => undefined,
+  onActivateInvocationExpansion = () => undefined,
 }: FlowchartViewProps) {
   const nodeSizeRegistry = useMemo(() => createNodeSizeRegistry(), []);
   const presentedGraph = draftCompareProjection?.compareGraph ?? view.visibleGraph;
   const layoutSourceGraph = layoutView?.visibleGraph ?? view.visibleGraph;
+  const invocationExpansionRegistry = useMemo(
+    () => buildFlowchartInvocationExpansionRegistry({
+      nodes: view.fullGraph.nodes,
+      edges: view.fullGraph.edges,
+      anchorNodeId: view.anchorNodeId ?? null,
+      sceneState: invocationExpansionState ?? emptyFlowchartInvocationExpansionSceneState(),
+    }),
+    [invocationExpansionState, view.anchorNodeId, view.fullGraph.edges, view.fullGraph.nodes],
+  );
   const scopedLayoutGraph = useMemo(
     () => scopeFlowchartGraphToAnchorMethod(layoutSourceGraph, view.anchorNodeId ?? null),
     [layoutSourceGraph, view.anchorNodeId],
@@ -356,13 +561,29 @@ export function FlowchartView({
     () => scopeFlowchartGraphToAnchorMethod(presentedGraph, view.anchorNodeId ?? null),
     [presentedGraph, view.anchorNodeId],
   );
+  const expansionScopedLayoutGraph = useMemo(
+    () => graphWithInvocationExpansionScene({
+      scopedGraph: scopedLayoutGraph,
+      fullGraph: view.fullGraph,
+      registry: invocationExpansionRegistry,
+    }),
+    [invocationExpansionRegistry, scopedLayoutGraph, view.fullGraph],
+  );
+  const expansionScopedPresentedGraph = useMemo(
+    () => graphWithInvocationExpansionScene({
+      scopedGraph: scopedPresentedGraph,
+      fullGraph: view.fullGraph,
+      registry: invocationExpansionRegistry,
+    }),
+    [invocationExpansionRegistry, scopedPresentedGraph, view.fullGraph],
+  );
   const viewGraph = useMemo(
-    () => sanitizeFlowchartGraph(scopedLayoutGraph, view.anchorNodeId ?? null),
-    [scopedLayoutGraph, view.anchorNodeId],
+    () => sanitizeFlowchartGraph(expansionScopedLayoutGraph, view.anchorNodeId ?? null),
+    [expansionScopedLayoutGraph, view.anchorNodeId],
   );
   const presentedViewGraph = useMemo(
-    () => sanitizeFlowchartGraph(scopedPresentedGraph, view.anchorNodeId ?? null),
-    [scopedPresentedGraph, view.anchorNodeId],
+    () => sanitizeFlowchartGraph(expansionScopedPresentedGraph, view.anchorNodeId ?? null),
+    [expansionScopedPresentedGraph, view.anchorNodeId],
   );
   const layoutAnchorNodeId = useMemo(
     () => resolveCurrentMethodNode({
@@ -614,6 +835,9 @@ export function FlowchartView({
               onOpenQa,
               onExpandInvocation,
               onRemoveInvocationExpansion,
+              onCollapseInvocationExpansion,
+              onOpenInvocationExpansion,
+              onActivateInvocationExpansion,
               onFormatLayout: layoutState.requestRelayout,
               onClose: close,
             });

@@ -36,6 +36,7 @@ internal fun buildQaCapabilityInput(
             selectedNodeIds = modeContext.selectedNodeIds,
             sourceContext = qaGraphs.sourceContext,
             evidenceTrace = qaGraphs.evidenceTrace,
+            invocationExpansionContext = qaGraphs.invocationExpansionContext,
         ),
         settings = settings,
         session = request.baseSession ?: snapshot.qaResult?.qaSession,

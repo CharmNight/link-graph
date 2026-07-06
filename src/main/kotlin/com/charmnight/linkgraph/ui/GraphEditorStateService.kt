@@ -112,6 +112,12 @@ class GraphEditorStateService {
     /** 选中指定节点，触发节点级别的视图高亮与详情展示。 */
     fun selectNode(nodeId: String) = graph.selectNode(nodeId)
 
+    fun collapseInvocationExpansion(expansionId: String) = graph.collapseInvocationExpansion(expansionId)
+
+    fun openInvocationExpansion(expansionId: String) = graph.openInvocationExpansion(expansionId)
+
+    fun activateInvocationExpansion(expansionId: String) = graph.activateInvocationExpansion(expansionId)
+
     /** 切换分析结果的展示模式，例如在概览和详情之间切换。 */
     fun switchAnalysisDisplayMode(displayMode: AnalysisDisplayMode) = graph.switchAnalysisDisplayMode(displayMode)
 

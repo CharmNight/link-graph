@@ -15,6 +15,25 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class JvmSymbolIndexBuilderMixedJvmTest : BasePlatformTestCase() {
+    fun testJavaClassKeepsImportedSuperTypeWhenPsiCannotResolveIt() {
+        myFixture.addFileToProject(
+            "src/main/java/com/example/runtime/scanner/LinuxPackageManagerScanner.java",
+            """
+            package com.example.runtime.scanner;
+
+            import com.example.runtime.AbstractPackageManagerScanner;
+
+            public class LinuxPackageManagerScanner extends AbstractPackageManagerScanner {
+            }
+            """.trimIndent(),
+        )
+
+        val symbolIndex = JvmSymbolIndexBuilder(project).build()
+        val scanner = requireNotNull(symbolIndex.findClass("com.example.runtime.scanner.LinuxPackageManagerScanner"))
+
+        assertEquals("com.example.runtime.AbstractPackageManagerScanner", scanner.superClassName)
+    }
+
     fun testJavaFieldDependencyOnScalaSourceAppearsInClassDiagram() {
         myFixture.addFileToProject(
             "src/main/scala/com/example/mixed/ScalaDependency.scala",

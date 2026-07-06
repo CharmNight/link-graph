@@ -7,10 +7,15 @@ import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
 import com.charmnight.linkgraph.application.port.WorkspaceGraphCommitter
+import com.charmnight.linkgraph.application.runtime.SameThreadTaskRunner
+import com.charmnight.linkgraph.application.runtime.TaskRunner
 import com.charmnight.linkgraph.application.usecase.InvocationExpansionTarget
 import com.charmnight.linkgraph.application.usecase.InvocationExpansionTargetKind
 import com.charmnight.linkgraph.application.usecase.InvocationExpansionUseCase
 import com.charmnight.linkgraph.architecture.architectureIndexRuntime
+import com.charmnight.linkgraph.foundation.LinkGraphDebugEnvironment
+import com.charmnight.linkgraph.jvm.index.JvmImplementationSignatureResolver
+import com.charmnight.linkgraph.jvm.index.NoopJvmImplementationSignatureResolver
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.semantic.SemanticAnalyzer
@@ -22,7 +27,6 @@ import com.charmnight.linkgraph.semantic.policy.SemanticCapturePolicy
 import com.charmnight.linkgraph.semantic.policy.TraversalBudgetPolicy
 import com.charmnight.linkgraph.semantic.subject.CodeSubjectHandle
 import com.charmnight.linkgraph.semantic.subject.CodeSubjectHandleFactory
-import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 
@@ -52,6 +56,10 @@ internal class InvocationExpansionWorkflow(
     private val subjectResolverHook: () -> ((String) -> CodeSubjectHandle?)?,
     /** 日志记录器。 */
     private val logger: Logger,
+    /** 平台读锁/UI/后台调度端口，避免 workflow 直接依赖 IntelliJ threading API。 */
+    private val taskRunner: TaskRunner = SameThreadTaskRunner(),
+    /** 索引缺失实现边时的实现签名 fallback。 */
+    private val implementationSignatureResolver: JvmImplementationSignatureResolver = NoopJvmImplementationSignatureResolver,
     /** 封装展开/合并/移除核心规则的业务用例。 */
     private val useCase: InvocationExpansionUseCase = InvocationExpansionUseCase(),
     /** 把签名解析为可展开目标的解析器。 */
@@ -80,62 +88,67 @@ internal class InvocationExpansionWorkflow(
 
         val sourceSignature = node.signature.orEmpty().trim()
         val target = resolveTarget(sourceSignature)
-        if (target.kind != InvocationExpansionTargetKind.PROJECT_SOURCE) {
+        val targetSignatures = expandableTargetSignatures(target, sourceSignature)
+        if (targetSignatures.isEmpty()) {
             emitFeedback(ApplicationFeedbackLevel.INFO, nonExpandableMessage(target, sourceSignature))
             return
         }
 
-        val targetSignature = target.signature?.takeIf(String::isNotBlank) ?: sourceSignature
-        val handle = resolveSubject(targetSignature)
-        if (handle == null) {
-            emitFeedback(ApplicationFeedbackLevel.WARNING, "未在当前项目中找到方法：$targetSignature")
-            return
+        var analysisFailed = false
+        var workingGraph = snapshot.workspaceGraph
+        var mergedCount = 0
+        val missingSignatures = mutableListOf<String>()
+        targetSignatures.forEach { targetSignature ->
+            val handle = resolveSubject(targetSignature)
+            if (handle == null) {
+                missingSignatures += targetSignature
+                return@forEach
+            }
+            val mergeResult = runCatching {
+                val analysisResult = semanticAnalyzerProvider().analyze(
+                    handle = handle,
+                    capturePolicy = SemanticCapturePolicy(),
+                    budgetPolicy = TraversalBudgetPolicy(),
+                )
+                val targetGraph = analysisOutcomeFactoryProvider()
+                    .create(analysisResult, AnalysisDisplayMode.FLOWCHART)
+                    .fullGraph
+                val targetEntryNodeId = resolveTargetEntryNodeId(analysisResult, targetGraph, targetSignature)
+                targetEntryNodeId ?: return@runCatching null
+                useCase.mergeExpansion(
+                    workspace = workingGraph,
+                    sourceInvocationNode = node,
+                    targetGraph = targetGraph,
+                    targetEntryNodeId = targetEntryNodeId,
+                    targetSignature = targetSignature,
+                )
+            }.onFailure { throwable ->
+                analysisFailed = true
+                logger.warn("展开调用方法失败", throwable)
+                emitFeedback(
+                    ApplicationFeedbackLevel.ERROR,
+                    "展开调用方法失败：${throwable.message ?: throwable.javaClass.simpleName}",
+                )
+            }.getOrNull()
+            if (mergeResult != null) {
+                workingGraph = mergeResult.graph
+                mergedCount += 1
+            }
         }
 
-        var analysisFailed = false
-        val mergeResult = runCatching {
-            val analysisResult = semanticAnalyzerProvider().analyze(
-                handle = handle,
-                capturePolicy = SemanticCapturePolicy(),
-                budgetPolicy = TraversalBudgetPolicy(),
-            )
-            val targetGraph = analysisOutcomeFactoryProvider()
-                .create(analysisResult, AnalysisDisplayMode.FLOWCHART)
-                .fullGraph
-            logger.warn("expand diagnosis: targetSignature=$targetSignature")
-            logger.warn("expand diagnosis: analysisResult anchors=${analysisResult.anchors.size} semanticUnits=${analysisResult.semanticUnits.size}")
-            logger.warn("expand diagnosis: targetGraph nodes=${targetGraph.nodes.size} edges=${targetGraph.edges.size}")
-            val targetEntryNodeId = resolveTargetEntryNodeId(analysisResult, targetGraph, targetSignature)
-            logger.warn("expand diagnosis: targetEntryNodeId=$targetEntryNodeId")
-            targetEntryNodeId ?: return@runCatching null
-            val merged = useCase.mergeExpansion(
-                workspace = snapshot.workspaceGraph,
-                sourceInvocationNode = node,
-                targetGraph = targetGraph,
-                targetEntryNodeId = targetEntryNodeId,
-                targetSignature = targetSignature,
-            )
-            logger.warn("expand diagnosis: merged graph nodes=${merged.graph.nodes.size} edges=${merged.graph.edges.size} workspaceBefore=${snapshot.workspaceGraph.nodes.size}")
-            merged
-        }.onFailure { throwable ->
-            analysisFailed = true
-            logger.warn("展开调用方法失败", throwable)
-            emitFeedback(
-                ApplicationFeedbackLevel.ERROR,
-                "展开调用方法失败：${throwable.message ?: throwable.javaClass.simpleName}",
-            )
-        }.getOrNull()
-
-        if (mergeResult == null) {
-            if (!analysisFailed) {
-                emitFeedback(ApplicationFeedbackLevel.WARNING, "目标方法没有可合入当前图的链路。")
+        if (mergedCount == 0) {
+            when {
+                missingSignatures.isNotEmpty() ->
+                    emitFeedback(ApplicationFeedbackLevel.WARNING, "未在当前项目中找到方法：${missingSignatures.joinToString("；")}")
+                !analysisFailed ->
+                    emitFeedback(ApplicationFeedbackLevel.WARNING, "目标方法没有可合入当前图的链路。")
             }
             return
         }
 
         val committed = workspaceGraphCommitter.commitWorkspaceGraph(
             expectedSnapshotRevision = snapshot.snapshotRevision,
-            graph = mergeResult.graph,
+            graph = workingGraph,
             selectedMethodSignature = snapshot.selectedMethodSignature,
             preserveDraftPatchUndo = true,
             workingGraphDirty = true,
@@ -147,6 +160,19 @@ internal class InvocationExpansionWorkflow(
             emitFeedback(ApplicationFeedbackLevel.WARNING, "当前图已变化，请重新选择调用节点后再展开。")
         }
     }
+
+    /** 将可展开目标归一化为一个或多个目标签名；外部/未解析目标返回空列表。 */
+    private fun expandableTargetSignatures(
+        target: InvocationExpansionTarget,
+        sourceSignature: String,
+    ): List<String> =
+        when (target.kind) {
+            InvocationExpansionTargetKind.PROJECT_SOURCE ->
+                listOf(target.signature?.takeIf(String::isNotBlank) ?: sourceSignature)
+            InvocationExpansionTargetKind.MULTIPLE_IMPLEMENTATIONS ->
+                target.candidateSignatures.map(String::trim).filter(String::isNotBlank).distinct()
+            else -> emptyList()
+        }
 
     /** 根据展开批次 ID，撤销之前已合入工作区图谱的展开内容。 */
     fun requestRemoveInvocationExpansion(expansionId: String) {
@@ -181,17 +207,48 @@ internal class InvocationExpansionWorkflow(
     private fun resolveTarget(signature: String): InvocationExpansionTarget {
         targetResolverHook()?.invoke(project, signature)?.let { target -> return target }
         val index = project.architectureIndexRuntime().index()
-        return targetResolver.resolve(signature, index)
+        return targetResolver.resolve(signature, index, implementationSignatureResolver)
     }
 
     /** 把签名解析为可分析的代码主题句柄，优先使用自定义覆盖，否则在 PSI 中定位方法并包装。 */
     private fun resolveSubject(signature: String): CodeSubjectHandle? {
         subjectResolverHook()?.invoke(signature)?.let { handle -> return handle }
-        return ReadAction.compute<CodeSubjectHandle?, RuntimeException> {
-            val method = DebugMethodSignatureLocator.find(project, signature) ?: return@compute null
-            val file = method.containingFile ?: method.navigationElement.containingFile ?: return@compute null
+        return taskRunner.read {
+            val method = DebugMethodSignatureLocator.find(project, signature)
+            if (method == null) {
+                logResolveSubjectFailure(signature, "methodNotFound")
+                return@read null
+            }
+            val file = method.containingFile ?: method.navigationElement.containingFile
+            if (file == null) {
+                logResolveSubjectFailure(
+                    signature = signature,
+                    reason = "fileMissing",
+                    method = method,
+                )
+                return@read null
+            }
             codeSubjectHandleFactory.create(file, method)
         }
+    }
+
+    private fun logResolveSubjectFailure(
+        signature: String,
+        reason: String,
+        method: com.intellij.psi.PsiMethod? = null,
+    ) {
+        if (!LinkGraphDebugEnvironment.isEnabled(DEBUG_TRACE_ENV)) {
+            return
+        }
+        logger.warn(
+            "debug 调用展开定位目标失败: " +
+                "signature=$signature, " +
+                "reason=$reason, " +
+                "methodSignature=${method?.let { candidate -> com.charmnight.linkgraph.semantic.subject.methodSignature(candidate) }.orEmpty()}, " +
+                "methodClass=${method?.containingClass?.qualifiedName.orEmpty()}, " +
+                "containingFile=${method?.containingFile?.virtualFile?.path ?: method?.containingFile?.name.orEmpty()}, " +
+                "navigationFile=${method?.navigationElement?.containingFile?.virtualFile?.path ?: method?.navigationElement?.containingFile?.name.orEmpty()}",
+        )
     }
 
     /** 在编辑器快照的多张视图与工作区图谱中查找代表该调用的可展开节点。 */
@@ -257,7 +314,7 @@ internal class InvocationExpansionWorkflow(
             InvocationExpansionTargetKind.EXTERNAL_LIBRARY -> "三方组件方法不合入当前图，可使用打开源码/详情查看：$signature"
             InvocationExpansionTargetKind.MULTIPLE_IMPLEMENTATIONS ->
                 "接口或抽象方法存在多个实现，暂不自动展开：${target.candidateSignatures.joinToString("；").ifBlank { signature }}"
-            InvocationExpansionTargetKind.NO_IMPLEMENTATION -> "未找到接口或抽象方法的唯一实现，暂不展开：$signature"
+            InvocationExpansionTargetKind.NO_IMPLEMENTATION -> "未找到接口或抽象方法的项目内实现，暂不展开：$signature"
             InvocationExpansionTargetKind.CROSS_SERVICE -> "跨服务调用暂不合入当前图：$signature"
             InvocationExpansionTargetKind.NOT_FOUND -> "未找到可展开的目标方法：$signature"
             InvocationExpansionTargetKind.PROJECT_SOURCE -> "目标方法可展开：$signature"
@@ -270,6 +327,10 @@ internal class InvocationExpansionWorkflow(
         message: String,
     ) {
         eventSink.emit(GraphEditorApplicationEvent.Feedback(level, message))
+    }
+
+    private companion object {
+        private const val DEBUG_TRACE_ENV = "LINKGRAPH_DEBUG_TRACE"
     }
 
 }

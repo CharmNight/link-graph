@@ -107,6 +107,65 @@ internal fun GraphEditorStateSnapshot.withSelectedNode(
     ).withAssistantContextFromCurrentState()
 }
 
+/** 折叠调用展开块，仅修改流程图 scene state，不删除图谱内容。 */
+internal fun GraphEditorStateSnapshot.withCollapsedInvocationExpansion(
+    expansionId: String,
+): GraphEditorStateSnapshot {
+    val trimmedExpansionId = expansionId.trim()
+    if (trimmedExpansionId.isEmpty()) {
+        return this
+    }
+    val sceneState = currentSceneState()
+    val currentInvocationState = sceneState.invocationExpansionState
+    val nextInvocationState = currentInvocationState.copy(
+        activeExpansionId = currentInvocationState.activeExpansionId.takeUnless { it == trimmedExpansionId },
+        activeExpansionPath = currentInvocationState.activeExpansionPath.takeUnless { path -> trimmedExpansionId in path }.orEmpty(),
+        collapsedExpansionIds = currentInvocationState.collapsedExpansionIds + trimmedExpansionId,
+    )
+    return copy(
+        sceneStates = sceneStates.withSceneState(
+            currentSceneId,
+            sceneState.copy(invocationExpansionState = nextInvocationState),
+        ),
+        lastMessageType = "collapseInvocationExpansion",
+        snapshotRevision = snapshotRevision + 1,
+    ).withAssistantContextFromCurrentState()
+}
+
+/** 打开调用展开块，仅修改流程图 scene state，不创建或删除图谱内容。 */
+internal fun GraphEditorStateSnapshot.withOpenedInvocationExpansion(
+    expansionId: String,
+): GraphEditorStateSnapshot = withActivatedInvocationExpansion(
+    expansionId = expansionId,
+    messageType = "openInvocationExpansion",
+)
+
+/** 激活调用展开阅读路径，仅修改流程图 scene state，不改普通节点选中。 */
+internal fun GraphEditorStateSnapshot.withActivatedInvocationExpansion(
+    expansionId: String,
+    messageType: String = "activateInvocationExpansion",
+): GraphEditorStateSnapshot {
+    val trimmedExpansionId = expansionId.trim()
+    if (trimmedExpansionId.isEmpty()) {
+        return this
+    }
+    val sceneState = currentSceneState()
+    val currentInvocationState = sceneState.invocationExpansionState
+    val nextInvocationState = currentInvocationState.copy(
+        activeExpansionId = trimmedExpansionId,
+        activeExpansionPath = listOf(trimmedExpansionId),
+        collapsedExpansionIds = currentInvocationState.collapsedExpansionIds - trimmedExpansionId,
+    )
+    return copy(
+        sceneStates = sceneStates.withSceneState(
+            currentSceneId,
+            sceneState.copy(invocationExpansionState = nextInvocationState),
+        ),
+        lastMessageType = messageType,
+        snapshotRevision = snapshotRevision + 1,
+    ).withAssistantContextFromCurrentState()
+}
+
 /**
  * 应用一次布局位置变更。
  *

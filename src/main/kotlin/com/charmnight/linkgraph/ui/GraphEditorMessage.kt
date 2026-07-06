@@ -125,6 +125,21 @@ sealed interface GraphEditorMessage {
         val expansionId: String,
     ) : GraphEditorMessage
 
+    /** 请求折叠某个调用展开块；仅更新 UI/session 状态。 */
+    data class CollapseInvocationExpansion(
+        val expansionId: String,
+    ) : GraphEditorMessage
+
+    /** 请求打开某个折叠调用展开块；仅更新 UI/session 状态。 */
+    data class OpenInvocationExpansion(
+        val expansionId: String,
+    ) : GraphEditorMessage
+
+    /** 请求激活某个调用展开阅读路径；仅更新 UI/session 状态。 */
+    data class ActivateInvocationExpansion(
+        val expansionId: String,
+    ) : GraphEditorMessage
+
     /** 请求计算同步预览。 */
     data object RequestSyncPreview : GraphEditorMessage
 

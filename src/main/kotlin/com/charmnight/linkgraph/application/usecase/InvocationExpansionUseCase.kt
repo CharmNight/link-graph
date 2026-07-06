@@ -154,11 +154,24 @@ class InvocationExpansionUseCase(
         graph: GraphDocument,
         expansionId: String,
     ): InvocationExpansionRemovalResult {
+        val expansionRegistry = buildExpansionRemovalRegistry(graph)
+        if (expansionId !in expansionRegistry.entriesById) {
+            return InvocationExpansionRemovalResult(graph = graph, removed = false)
+        }
+        val removalExpansionIds = linkedSetOf<String>()
+        fun collect(expansionId: String) {
+            if (!removalExpansionIds.add(expansionId)) {
+                return
+            }
+            expansionRegistry.entriesById[expansionId]?.childExpansionIds.orEmpty().forEach(::collect)
+        }
+        collect(expansionId)
+
         val removedNodeIds = graph.nodes
-            .filter { node -> node.metadata[EXPANSION_ID] == expansionId }
+            .filter { node -> node.metadata[EXPANSION_ID] in removalExpansionIds }
             .mapTo(linkedSetOf(), GraphNode::id)
         val removedEdgeIds = graph.edges
-            .filter { edge -> edge.metadata[EXPANSION_ID] == expansionId }
+            .filter { edge -> edge.metadata[EXPANSION_ID] in removalExpansionIds }
             .mapTo(linkedSetOf(), GraphEdge::id)
         if (removedNodeIds.isEmpty() && removedEdgeIds.isEmpty()) {
             return InvocationExpansionRemovalResult(graph = graph, removed = false)
@@ -176,6 +189,80 @@ class InvocationExpansionUseCase(
             removed = true,
         )
     }
+
+    private data class ExpansionRemovalEntry(
+        val expansionId: String,
+        val sourceInvocationNodeId: String?,
+        val ownedNodeIds: Set<String>,
+        val childExpansionIds: List<String>,
+    )
+
+    private data class ExpansionRemovalRegistry(
+        val entriesById: Map<String, ExpansionRemovalEntry>,
+    )
+
+    private data class ExpansionRemovalDraft(
+        val expansionId: String,
+        val taggedNodes: MutableList<GraphNode> = mutableListOf(),
+        val taggedEdges: MutableList<GraphEdge> = mutableListOf(),
+        val ownedNodeIds: MutableSet<String> = linkedSetOf(),
+    )
+
+    private fun buildExpansionRemovalRegistry(graph: GraphDocument): ExpansionRemovalRegistry {
+        val draftsById = linkedMapOf<String, ExpansionRemovalDraft>()
+        fun draftFor(expansionId: String): ExpansionRemovalDraft =
+            draftsById.getOrPut(expansionId) { ExpansionRemovalDraft(expansionId) }
+
+        graph.nodes.forEach { node ->
+            val expansionId = node.metadata[EXPANSION_ID]?.takeIf(String::isNotBlank) ?: return@forEach
+            draftFor(expansionId).also { draft ->
+                draft.taggedNodes += node
+                draft.ownedNodeIds += node.id
+            }
+        }
+        graph.edges.forEach { edge ->
+            val expansionId = edge.metadata[EXPANSION_ID]?.takeIf(String::isNotBlank) ?: return@forEach
+            draftFor(expansionId).taggedEdges += edge
+        }
+
+        val ownerExpansionIdByNodeId = linkedMapOf<String, String>()
+        draftsById.values.forEach { draft ->
+            draft.ownedNodeIds.forEach { nodeId -> ownerExpansionIdByNodeId[nodeId] = draft.expansionId }
+        }
+        val childExpansionIdsByParentId = linkedMapOf<String, MutableList<String>>()
+        val parentExpansionIdByExpansionId = linkedMapOf<String, String?>()
+        draftsById.values.forEach { draft ->
+            val sourceInvocationNodeId = firstExpansionMetadataValue(draft, EXPANSION_SOURCE_INVOCATION_NODE_ID)
+            val parentExpansionId = sourceInvocationNodeId?.let(ownerExpansionIdByNodeId::get)
+                ?.takeUnless { parentExpansionId -> parentExpansionId == draft.expansionId }
+            parentExpansionIdByExpansionId[draft.expansionId] = parentExpansionId
+            if (parentExpansionId != null) {
+                childExpansionIdsByParentId.getOrPut(parentExpansionId) { mutableListOf() } += draft.expansionId
+            }
+        }
+
+        return ExpansionRemovalRegistry(
+            entriesById = draftsById.values.associate { draft ->
+                draft.expansionId to ExpansionRemovalEntry(
+                    expansionId = draft.expansionId,
+                    sourceInvocationNodeId = firstExpansionMetadataValue(draft, EXPANSION_SOURCE_INVOCATION_NODE_ID),
+                    ownedNodeIds = draft.ownedNodeIds.toSet(),
+                    childExpansionIds = childExpansionIdsByParentId[draft.expansionId].orEmpty(),
+                )
+            },
+        )
+    }
+
+    private fun firstExpansionMetadataValue(
+        draft: ExpansionRemovalDraft,
+        key: String,
+    ): String? =
+        draft.taggedNodes.asSequence()
+            .mapNotNull { node -> node.metadata[key]?.takeIf(String::isNotBlank) }
+            .firstOrNull()
+            ?: draft.taggedEdges.asSequence()
+                .mapNotNull { edge -> edge.metadata[key]?.takeIf(String::isNotBlank) }
+                .firstOrNull()
 
     /**
      * 构造单次展开所用的元数据标签映射。

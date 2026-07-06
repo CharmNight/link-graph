@@ -20,7 +20,10 @@ import {
   resolveDecisionSourcePort,
   resolveDecisionTargetPort,
 } from "./decisionPortGeometry";
-import { buildFlowchartLayoutModel, type FlowchartExpansionGroup } from "./flowchartLayoutModel";
+import {
+  buildFlowchartInvocationExpansionRegistry,
+  type FlowchartInvocationExpansionEntry,
+} from "./flowchartLayoutModel";
 
 // ELK 分层布局的全局参数：自上而下流向、正交折线路由、Brandes-Koepf 节点对齐策略，
 // 同时保留模型中节点与边的顺序以稳定输出，并按层次间距与节点间距生成舒展的画布。
@@ -40,6 +43,7 @@ const FLOWCHART_LAYOUT_OPTIONS: LayoutOptions = {
 const DEFAULT_FLOWCHART_NODE_HEIGHT = 156;
 // 调用展开泳道与主控流之间的横向间距，把被展开的子图整体推到画布右侧。
 const EXPANSION_LANE_GAP = 160;
+const EXPANSION_DEPTH_LANE_WIDTH = 420;
 // 同一调用源下多个展开分组在纵向上的额外间隔，避免堆叠重叠。
 const EXPANSION_SOURCE_GAP = 96;
 // 调用边绕开障碍时与节点或既有折线之间保留的安全留白。
@@ -372,11 +376,11 @@ function translateEdgeRoute(edge: LinkGraphEdge, delta: GraphPosition): LinkGrap
 }
 
 /** 计算一个调用展开分组内所有节点构成的最小包围盒，用于在右侧泳道中确定整体摆放位置。 */
-function expansionGroupBounds(
-  group: FlowchartExpansionGroup,
+function expansionNodeBounds(
+  nodeIds: string[],
   nodeIndex: Map<string, LinkGraphNode>,
 ) {
-  const groupNodes = group.nodeIds.map((nodeId) => nodeIndex.get(nodeId)).filter((node): node is LinkGraphNode => Boolean(node?.position));
+  const groupNodes = nodeIds.map((nodeId) => nodeIndex.get(nodeId)).filter((node): node is LinkGraphNode => Boolean(node?.position));
   if (groupNodes.length === 0) {
     return null;
   }
@@ -387,6 +391,35 @@ function expansionGroupBounds(
     top: Math.min(...bounds.map((bound) => bound.top)),
     bottom: Math.max(...bounds.map((bound) => bound.bottom)),
   };
+}
+
+function invocationExpansionBlockNodeId(expansionId: string): string {
+  return `expansion-block:${expansionId}`;
+}
+
+function expansionLayoutNodeIds(
+  entry: FlowchartInvocationExpansionEntry,
+  nodeIndex: Map<string, LinkGraphNode>,
+): string[] {
+  const syntheticNodeId = invocationExpansionBlockNodeId(entry.expansionId);
+  if (nodeIndex.has(syntheticNodeId)) {
+    return [syntheticNodeId];
+  }
+  return entry.ownedNodeIds.filter((nodeId) => nodeIndex.has(nodeId));
+}
+
+function expansionRootLayoutNodeId(
+  entry: FlowchartInvocationExpansionEntry,
+  layoutNodeIds: string[],
+  nodeIndex: Map<string, LinkGraphNode>,
+): string | null {
+  if (nodeIndex.has(invocationExpansionBlockNodeId(entry.expansionId))) {
+    return invocationExpansionBlockNodeId(entry.expansionId);
+  }
+  if (entry.rootNodeId && layoutNodeIds.includes(entry.rootNodeId)) {
+    return entry.rootNodeId;
+  }
+  return layoutNodeIds[0] ?? null;
 }
 
 /** 节点包围盒类型，包含上下左右与宽高信息，复用 nodeBounds 的返回结构。 */
@@ -862,12 +895,17 @@ function applyInvocationExpansionLayout(
   nodes: LinkGraphNode[],
   edges: LinkGraphEdge[],
 ): { nodes: LinkGraphNode[]; edges: LinkGraphEdge[] } {
-  const model = buildFlowchartLayoutModel(nodes, edges);
-  if (model.expansionGroups.length === 0) {
+  const registry = buildFlowchartInvocationExpansionRegistry({
+    nodes,
+    edges,
+    defaultCollapseSiblings: false,
+  });
+  if (registry.entries.length === 0) {
     return { nodes, edges };
   }
   const nodeIndex = new Map(nodes.map((node) => [node.id, node]));
-  const mainNodes = model.mainNodeIds.map((nodeId) => nodeIndex.get(nodeId)).filter((node): node is LinkGraphNode => Boolean(node?.position));
+  const expansionOwnedNodeIds = new Set(registry.entries.flatMap((entry) => entry.ownedNodeIds));
+  const mainNodes = nodes.filter((node) => !expansionOwnedNodeIds.has(node.id) && node.position);
   if (mainNodes.length === 0) {
     return { nodes, edges };
   }
@@ -879,33 +917,52 @@ function applyInvocationExpansionLayout(
       .flatMap(routeSegmentsFromEdge)
       .flatMap((segment) => [segment.startPoint.x, segment.endPoint.x]),
   );
-  const expansionLaneLeft = mainRouteRight + EXPANSION_LANE_GAP;
   const nodeDeltas = new Map<string, GraphPosition>();
   const sourceStackCounts = new Map<string, number>();
-  let nextExpansionLaneTop: number | null = null;
+  const nextLaneTopByDepth = new Map<number, number>();
+  const workingNodeIndex = new Map(nodes.map((node) => [node.id, node]));
 
-  model.expansionGroups.forEach((group) => {
-    const sourceNode = group.sourceInvocationNodeId ? nodeIndex.get(group.sourceInvocationNodeId) : null;
-    const rootNode = group.rootNodeId ? nodeIndex.get(group.rootNodeId) : null;
-    const bounds = expansionGroupBounds(group, nodeIndex);
+  registry.entries
+    .filter((entry) => entry.state === "expanded" || nodeIndex.has(invocationExpansionBlockNodeId(entry.expansionId)))
+    .sort((left, right) => {
+      if (left.depth !== right.depth) {
+        return left.depth - right.depth;
+      }
+      return left.expansionId.localeCompare(right.expansionId);
+    })
+    .forEach((entry) => {
+      const layoutNodeIds = expansionLayoutNodeIds(entry, workingNodeIndex);
+      const rootNodeId = expansionRootLayoutNodeId(entry, layoutNodeIds, workingNodeIndex);
+      const sourceNode = entry.sourceInvocationNodeId ? workingNodeIndex.get(entry.sourceInvocationNodeId) : null;
+      const rootNode = rootNodeId ? workingNodeIndex.get(rootNodeId) : null;
+      const bounds = expansionNodeBounds(layoutNodeIds, workingNodeIndex);
     if (!sourceNode?.position || !rootNode?.position || !bounds) {
       return;
     }
     const sourceBounds = nodeBounds(sourceNode);
     const rootBounds = nodeBounds(rootNode);
-    const stackKey = group.sourceInvocationNodeId ?? group.expansionId;
+    const stackKey = `${entry.parentExpansionId ?? "root"}:${entry.sourceInvocationNodeId ?? entry.expansionId}`;
     const stackIndex = sourceStackCounts.get(stackKey) ?? 0;
     sourceStackCounts.set(stackKey, stackIndex + 1);
-    const targetLeft = expansionLaneLeft;
+    const targetLeft = mainRouteRight + EXPANSION_LANE_GAP + Math.max(0, entry.depth - 1) * (EXPANSION_DEPTH_LANE_WIDTH + EXPANSION_LANE_GAP);
     const preferredRootTop = sourceBounds.top + stackIndex * (bounds.bottom - bounds.top + EXPANSION_SOURCE_GAP);
-    const targetRootTop = Math.max(preferredRootTop, nextExpansionLaneTop ?? preferredRootTop);
+    const targetRootTop = Math.max(preferredRootTop, nextLaneTopByDepth.get(entry.depth) ?? preferredRootTop);
     const delta = {
       x: Math.round(targetLeft - rootBounds.left),
       y: Math.round(targetRootTop - rootBounds.top),
     };
-    group.nodeIds.forEach((nodeId) => nodeDeltas.set(nodeId, delta));
-    nextExpansionLaneTop = bounds.bottom + delta.y + EXPANSION_SOURCE_GAP;
-  });
+      layoutNodeIds.forEach((nodeId) => {
+        const node = workingNodeIndex.get(nodeId);
+        nodeDeltas.set(nodeId, delta);
+        if (node?.position) {
+          workingNodeIndex.set(nodeId, {
+            ...node,
+            position: translatePoint(node.position, delta),
+          });
+        }
+      });
+      nextLaneTopByDepth.set(entry.depth, bounds.bottom + delta.y + EXPANSION_SOURCE_GAP);
+    });
 
   if (nodeDeltas.size === 0) {
     return { nodes, edges };
@@ -928,18 +985,18 @@ function applyInvocationExpansionLayout(
     };
   });
   const adjustedNodeIndex = new Map(adjustedNodes.map((node) => [node.id, node]));
-  const internalEdgeIds = new Set(model.expansionGroups.flatMap((group) => group.internalEdgeIds));
-  const callEdgeIds = new Set(model.expansionGroups.flatMap((group) => group.callEdgeIds));
+  const internalEdgeIds = new Set(registry.entries.flatMap((entry) => entry.internalEdgeIds));
+  const callEdgeIds = new Set(registry.entries.flatMap((entry) => entry.callEdgeIds));
   const callObstacleSegments = edges
     .filter((edge) => edge.type === "CONTROL_FLOW" && !internalEdgeIds.has(edge.id))
     .flatMap(routeSegmentsFromEdge);
   const edgeDeltaById = new Map<string, GraphPosition>();
-  model.expansionGroups.forEach((group) => {
-    const firstDelta = group.nodeIds.map((nodeId) => nodeDeltas.get(nodeId)).find((delta): delta is GraphPosition => Boolean(delta));
+  registry.entries.forEach((entry) => {
+    const firstDelta = expansionLayoutNodeIds(entry, adjustedNodeIndex).map((nodeId) => nodeDeltas.get(nodeId)).find((delta): delta is GraphPosition => Boolean(delta));
     if (!firstDelta) {
       return;
     }
-    group.internalEdgeIds.forEach((edgeId) => edgeDeltaById.set(edgeId, firstDelta));
+    entry.internalEdgeIds.forEach((edgeId) => edgeDeltaById.set(edgeId, firstDelta));
   });
 
   const adjustedEdges = edges.map((edge) => {
