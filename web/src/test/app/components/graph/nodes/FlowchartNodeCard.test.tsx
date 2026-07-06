@@ -20,6 +20,44 @@ function flowNode(): LinkGraphNode {
   };
 }
 
+function expandedInvocationNode(): LinkGraphNode {
+  return {
+    id: "action:expanded-save",
+    type: "FLOW_ACTION",
+    title: "saveInfo()",
+    inputs: [],
+    outputs: [],
+    certainty: "PROVEN",
+    bindingStatus: "BOUND",
+    metadata: {
+      "flow.kind": "ACTION",
+      "flowchart.kind": "PROCESS",
+      "flow.ownerMethod": "com.example.SystemService.createInfo():void",
+      "linkGraph.expansion.id": "invocation:expansion-1",
+      "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+    },
+  };
+}
+
+function expandedScopeNode(): LinkGraphNode {
+  return {
+    id: "scope:expanded-if",
+    type: "FLOW_SCOPE",
+    title: "if (saved)",
+    inputs: [],
+    outputs: [],
+    certainty: "PROVEN",
+    bindingStatus: "BOUND",
+    metadata: {
+      "flow.kind": "IF",
+      "flowchart.kind": "DECISION",
+      "flow.ownerMethod": "com.example.SystemService.createInfo():void",
+      "linkGraph.expansion.id": "invocation:expansion-1",
+      "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+    },
+  };
+}
+
 const originalOffsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
 const originalOffsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
 
@@ -63,6 +101,30 @@ describe("FlowchartNodeCard", () => {
     );
 
     expect(container.textContent).toContain("草稿修改");
+  });
+
+  it("labels opened invocation expansion nodes with their expanded method", () => {
+    const { container } = render(
+      <FlowchartNodeCard
+        node={expandedInvocationNode()}
+        selected={false}
+      />,
+    );
+
+    expect(container.textContent).toContain("调用展开");
+    expect(container.textContent).toContain("展开方法 · SystemService.createInfo");
+  });
+
+  it("shows the expanded method on non-action nodes inside opened invocation expansions", () => {
+    const { container } = render(
+      <FlowchartNodeCard
+        node={expandedScopeNode()}
+        selected={false}
+      />,
+    );
+
+    expect(container.textContent).toContain("调用展开");
+    expect(container.textContent).toContain("展开方法 · SystemService.createInfo");
   });
 
   it("constrains long code-like labels inside flowchart node bounds", () => {

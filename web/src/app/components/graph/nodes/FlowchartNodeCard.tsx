@@ -1,6 +1,12 @@
 import { memo } from "react";
 import type { DraftCompareStatus, LinkGraphNode } from "../../../types";
-import { flowchartKind, flowchartKindLabel, nodeTooltip, signaturePreview } from "./nodePresentation";
+import {
+  flowchartKind,
+  flowchartKindLabel,
+  isInvocationExpansionNode,
+  nodeTooltip,
+  signaturePreview,
+} from "./nodePresentation";
 import { NodeCardBase } from "./NodeCardBase";
 import { IssueBadge } from "../../IssueBadge";
 
@@ -38,6 +44,7 @@ export const FlowchartNodeCard = memo(function FlowchartNodeCard({
   draftCompareStatus,
   onMeasure,
 }: FlowchartNodeCardProps) {
+  const signatureText = signaturePreview(node);
   return (
     <NodeCardBase
       node={node}
@@ -51,15 +58,16 @@ export const FlowchartNodeCard = memo(function FlowchartNodeCard({
       <div className="flow-node-head">
         <span className="flowchart-node-kind">{flowchartKindLabel(node)}</span>
         <div className="flow-node-tags">
+          {isInvocationExpansionNode(node) ? <span className="flowchart-node-kind is-invocation-expansion">调用展开</span> : null}
           <IssueBadge draftCompareStatus={draftCompareStatus} />
         </div>
       </div>
       <strong className="flowchart-node-title" title={node.title}>
         {node.title}
       </strong>
-      {signaturePreview(node) ? (
+      {signatureText ? (
         <span className="flowchart-node-detail" title={nodeTooltip(node)}>
-          {signaturePreview(node)}
+          {signatureText}
         </span>
       ) : null}
     </NodeCardBase>

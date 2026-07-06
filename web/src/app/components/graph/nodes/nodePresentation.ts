@@ -89,7 +89,7 @@ export function flowScopeKindLabel(node: LinkGraphNode): string | null {
 }
 
 /** 从方法签名中提取"宿主类.方法名"格式的简化显示字符串，括号后部分会被丢弃。 */
-function methodDisplayFromSignature(signature?: string): string | null {
+export function methodDisplayFromSignature(signature?: string): string | null {
   if (!signature?.trim()) {
     return null;
   }
@@ -128,6 +128,21 @@ function flowActionAnchorMethod(node: LinkGraphNode): string | null {
   return methodDisplayFromSignature(node.metadata?.["flow.anchorMethod"]) ?? null;
 }
 
+/** 判断节点是否来自一次已打开的调用展开。 */
+export function isInvocationExpansionNode(node: LinkGraphNode): boolean {
+  return Boolean(node.metadata?.["linkGraph.expansion.id"]?.trim());
+}
+
+/** 读取调用展开节点对应的被调方法展示名。 */
+export function invocationExpansionMethodLabel(node: LinkGraphNode): string | null {
+  if (!isInvocationExpansionNode(node)) {
+    return null;
+  }
+  return methodDisplayFromSignature(node.metadata?.["linkGraph.expansion.targetSignature"])
+    ?? methodDisplayFromSignature(node.metadata?.["flow.ownerMethod"])
+    ?? null;
+}
+
 /** 返回流程动作节点的展示文本，优先使用签名，否则退回到标题。 */
 function flowActionText(node: LinkGraphNode): string | null {
   const actionText = node.signature?.trim() || node.title.trim();
@@ -163,6 +178,10 @@ export function ownerPreview(node: LinkGraphNode): string {
 
 /** 生成节点签名预览：根据节点类型展示方法名+参数+返回类型、流程节点描述或入出参摘要。 */
 export function signaturePreview(node: LinkGraphNode): string | null {
+  const expansionMethod = invocationExpansionMethodLabel(node);
+  if (expansionMethod) {
+    return `展开方法 · ${expansionMethod}`;
+  }
   if (node.type === "TERMINAL") {
     return node.metadata?.["terminal.kind"] === "RETURN" ? "返回路径结束" : nodeTypeLabel(node.type);
   }
