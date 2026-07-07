@@ -91,14 +91,16 @@ data class ContextBudgetController(
         if (estimateTokens(charTrimmed) <= remainingTokens) {
             return charTrimmed
         }
-        val result = StringBuilder()
-        charTrimmed.forEach { ch ->
-            result.append(ch)
-            if (estimateTokens(result.toString()) > remainingTokens) {
-                result.setLength(result.length - 1)
-                return result.toString()
+        var lowerInclusive = 0
+        var upperExclusive = charTrimmed.length + 1
+        while (lowerInclusive + 1 < upperExclusive) {
+            val midpoint = (lowerInclusive + upperExclusive) / 2
+            if (estimateTokens(charTrimmed.take(midpoint)) <= remainingTokens) {
+                lowerInclusive = midpoint
+            } else {
+                upperExclusive = midpoint
             }
         }
-        return result.toString()
+        return charTrimmed.take(lowerInclusive)
     }
 }

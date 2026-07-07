@@ -23,6 +23,7 @@ import {
 import {
   buildFlowchartInvocationExpansionRegistry,
   type FlowchartInvocationExpansionEntry,
+  type FlowchartInvocationExpansionRegistry,
 } from "./flowchartLayoutModel";
 
 // ELK 分层布局的全局参数：自上而下流向、正交折线路由、Brandes-Koepf 节点对齐策略，
@@ -894,22 +895,20 @@ function routeCallEdge(
 function applyInvocationExpansionLayout(
   nodes: LinkGraphNode[],
   edges: LinkGraphEdge[],
+  registry: FlowchartInvocationExpansionRegistry,
 ): { nodes: LinkGraphNode[]; edges: LinkGraphEdge[] } {
-  const registry = buildFlowchartInvocationExpansionRegistry({
-    nodes,
-    edges,
-    defaultCollapseSiblings: false,
-  });
   if (registry.entries.length === 0) {
     return { nodes, edges };
   }
   const nodeIndex = new Map(nodes.map((node) => [node.id, node]));
   const expansionOwnedNodeIds = new Set(registry.entries.flatMap((entry) => entry.ownedNodeIds));
   const mainNodes = nodes.filter((node) => !expansionOwnedNodeIds.has(node.id) && node.position);
-  if (mainNodes.length === 0) {
+  const positionedNodes = nodes.filter((node) => node.position);
+  if (positionedNodes.length === 0) {
     return { nodes, edges };
   }
-  const mainRight = Math.max(...mainNodes.map((node) => nodeBounds(node).right));
+  const baselineNodes = mainNodes.length > 0 ? mainNodes : positionedNodes;
+  const mainRight = Math.max(...baselineNodes.map((node) => nodeBounds(node).right));
   const mainRouteRight = Math.max(
     mainRight,
     ...edges
@@ -936,21 +935,21 @@ function applyInvocationExpansionLayout(
       const sourceNode = entry.sourceInvocationNodeId ? workingNodeIndex.get(entry.sourceInvocationNodeId) : null;
       const rootNode = rootNodeId ? workingNodeIndex.get(rootNodeId) : null;
       const bounds = expansionNodeBounds(layoutNodeIds, workingNodeIndex);
-    if (!sourceNode?.position || !rootNode?.position || !bounds) {
-      return;
-    }
-    const sourceBounds = nodeBounds(sourceNode);
-    const rootBounds = nodeBounds(rootNode);
-    const stackKey = `${entry.parentExpansionId ?? "root"}:${entry.sourceInvocationNodeId ?? entry.expansionId}`;
-    const stackIndex = sourceStackCounts.get(stackKey) ?? 0;
-    sourceStackCounts.set(stackKey, stackIndex + 1);
-    const targetLeft = mainRouteRight + EXPANSION_LANE_GAP + Math.max(0, entry.depth - 1) * (EXPANSION_DEPTH_LANE_WIDTH + EXPANSION_LANE_GAP);
-    const preferredRootTop = sourceBounds.top + stackIndex * (bounds.bottom - bounds.top + EXPANSION_SOURCE_GAP);
-    const targetRootTop = Math.max(preferredRootTop, nextLaneTopByDepth.get(entry.depth) ?? preferredRootTop);
-    const delta = {
-      x: Math.round(targetLeft - rootBounds.left),
-      y: Math.round(targetRootTop - rootBounds.top),
-    };
+      if (!sourceNode?.position || !rootNode?.position || !bounds) {
+        return;
+      }
+      const sourceBounds = nodeBounds(sourceNode);
+      const rootBounds = nodeBounds(rootNode);
+      const stackKey = `${entry.parentExpansionId ?? "root"}:${entry.sourceInvocationNodeId ?? entry.expansionId}`;
+      const stackIndex = sourceStackCounts.get(stackKey) ?? 0;
+      sourceStackCounts.set(stackKey, stackIndex + 1);
+      const targetLeft = mainRouteRight + EXPANSION_LANE_GAP + Math.max(0, entry.depth - 1) * (EXPANSION_DEPTH_LANE_WIDTH + EXPANSION_LANE_GAP);
+      const preferredRootTop = sourceBounds.top + stackIndex * (bounds.bottom - bounds.top + EXPANSION_SOURCE_GAP);
+      const targetRootTop = Math.max(preferredRootTop, nextLaneTopByDepth.get(entry.depth) ?? preferredRootTop);
+      const delta = {
+        x: Math.round(targetLeft - rootBounds.left),
+        y: Math.round(targetRootTop - rootBounds.top),
+      };
       layoutNodeIds.forEach((nodeId) => {
         const node = workingNodeIndex.get(nodeId);
         nodeDeltas.set(nodeId, delta);
@@ -1031,6 +1030,7 @@ function applyInvocationExpansionLayout(
  * 之后重新投射决策节点的连接锚点，最后把调用展开的子图搬到右侧泳道完成最终输出。
  */
 export async function layoutFlowchartView({
+  graph,
   nodes,
   edges,
   anchorNodeId,
@@ -1122,5 +1122,11 @@ export async function layoutFlowchartView({
         nodeIndex,
       );
     });
-  return applyInvocationExpansionLayout(laidOut.nodes, projectedEdges);
+  const invocationExpansionRegistry = buildFlowchartInvocationExpansionRegistry({
+    nodes,
+    anchorNodeId,
+    defaultCollapseSiblings: false,
+    serverRegistry: graph.invocationExpansionRegistry ?? null,
+  });
+  return applyInvocationExpansionLayout(laidOut.nodes, projectedEdges, invocationExpansionRegistry);
 }

@@ -48,6 +48,8 @@ export type {
   GraphSourceTag,
   ChildInvocationExpansionState,
   InvocationExpansionContextMode,
+  InvocationExpansionRegistry,
+  InvocationExpansionRegistryEntry,
   InvocationExpansionSceneState,
   LinkGraphDocument,
   LinkGraphEdge,

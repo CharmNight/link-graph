@@ -22,6 +22,27 @@ internal data class GraphDocumentDto(
     val nodeCount: Int,
     val edgeCount: Int,
     val truncated: Boolean,
+    val invocationExpansionRegistry: InvocationExpansionRegistryDto,
+)
+
+internal data class InvocationExpansionRegistryDto(
+    val entries: List<InvocationExpansionRegistryEntryDto> = emptyList(),
+)
+
+internal data class InvocationExpansionRegistryEntryDto(
+    val expansionId: String,
+    val sourceInvocationNodeId: String?,
+    val rootNodeId: String?,
+    val targetSignature: String?,
+    val createdAt: String?,
+    val parentExpansionId: String?,
+    val depth: Int,
+    val ownedNodeIds: List<String>,
+    val borrowedNodeIds: List<String>,
+    val callEdgeIds: List<String>,
+    val internalEdgeIds: List<String>,
+    val childExpansionIds: List<String>,
+    val warnings: List<String>,
 )
 
 internal data class GraphProjectionNodeMappingDto(

@@ -8,6 +8,7 @@ import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.PsiModifier
+import com.intellij.psi.PsiType
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.searches.ClassInheritorsSearch
 
@@ -29,10 +30,10 @@ class PsiJvmImplementationSignatureResolver(
             ClassInheritorsSearch.search(ownerPsiClass, GlobalSearchScope.projectScope(project), true)
                 .findAll()
                 .asSequence()
-                .filter(::isConcretePsiClass)
+                .filter(::isProjectImplementationHostPsiClass)
                 .flatMap { candidateClass ->
                     candidateClass.findMethodsByName(method.simpleName, false).asSequence()
-                        .filter { candidateMethod -> overridesPsiMethod(candidateMethod, ownerPsiMethod) }
+                        .filter { candidateMethod -> implementationMethodMatches(candidateMethod, ownerPsiMethod, method) }
                 }
                 .map(::methodSignature)
                 .distinct()
@@ -53,13 +54,13 @@ class PsiJvmImplementationSignatureResolver(
                 val ownerMethods = ownerPsiClass.findMethodsByName(method.simpleName, false).toList()
                 val ownerPsiMethod = ownerMethods.firstOrNull { candidate -> psiMethodShapeMatches(candidate, method) }
                 val inheritors = ClassInheritorsSearch.search(ownerPsiClass, scope, true).findAll().toList()
-                val concreteInheritors = inheritors.filter(::isConcretePsiClass)
+                val implementationHostInheritors = inheritors.filter(::isProjectImplementationHostPsiClass)
                 val candidateMethods = ownerPsiMethod?.let { baseMethod ->
-                    concreteInheritors
+                    implementationHostInheritors
                         .asSequence()
                         .flatMap { candidateClass ->
                             candidateClass.findMethodsByName(method.simpleName, false).asSequence()
-                                .filter { candidateMethod -> overridesPsiMethod(candidateMethod, baseMethod) }
+                                .filter { candidateMethod -> implementationMethodMatches(candidateMethod, baseMethod, method) }
                         }
                         .map(::methodSignature)
                         .distinct()
@@ -70,7 +71,7 @@ class PsiJvmImplementationSignatureResolver(
                     "ownerMethods=${ownerMethods.size}[${ownerMethods.map(::methodSignature).take(SAMPLE_LIMIT).joinToString("|")}], " +
                     "ownerPsiMethod=${ownerPsiMethod?.let(::methodSignature)}, " +
                     "inheritors=${inheritors.size}[${inheritors.mapNotNull(PsiClass::getQualifiedName).take(SAMPLE_LIMIT).joinToString("|")}], " +
-                    "concreteInheritors=${concreteInheritors.size}[${concreteInheritors.mapNotNull(PsiClass::getQualifiedName).take(SAMPLE_LIMIT).joinToString("|")}], " +
+                    "implementationHostInheritors=${implementationHostInheritors.size}[${implementationHostInheritors.mapNotNull(PsiClass::getQualifiedName).take(SAMPLE_LIMIT).joinToString("|")}], " +
                     "psiCandidates=${candidateMethods.size}[${candidateMethods.take(SAMPLE_LIMIT).joinToString("|")}]"
             }
         }.getOrElse { throwable ->
@@ -80,15 +81,36 @@ class PsiJvmImplementationSignatureResolver(
     private fun psiMethodShapeMatches(
         candidate: PsiMethod,
         method: JvmMethodSymbol,
-    ): Boolean =
-        candidate.name == method.simpleName &&
-            candidate.parameterList.parametersCount == method.parameterTypes.size
+    ): Boolean {
+        if (candidate.name != method.simpleName) return false
+        val parameters = candidate.parameterList.parameters
+        if (parameters.size != method.parameterTypes.size) return false
+        return parameters.asSequence().map { parameter -> parameter.type }
+            .zip(method.parameterTypes.asSequence())
+            .all { (candidateType, methodType) -> JvmTypeEraser.typesCompatible(candidateType.jvmComparableText(), methodType) }
+    }
 
-    private fun isConcretePsiClass(psiClass: PsiClass): Boolean =
-        !psiClass.isInterface &&
+    private fun isProjectImplementationHostPsiClass(psiClass: PsiClass): Boolean =
+        psiClass.qualifiedName?.isNotBlank() == true &&
+            !psiClass.isInterface &&
             !psiClass.isEnum &&
-            !psiClass.isAnnotationType &&
-            !psiClass.hasModifierProperty(PsiModifier.ABSTRACT)
+            !psiClass.isAnnotationType
+
+    private fun implementationMethodMatches(
+        candidate: PsiMethod,
+        ownerMethod: PsiMethod,
+        method: JvmMethodSymbol,
+    ): Boolean {
+        if (candidate.isConstructor) return false
+        if (candidate.hasModifierProperty(PsiModifier.ABSTRACT)) return false
+        if (candidate.hasModifierProperty(PsiModifier.PRIVATE)) return false
+        if (candidate.hasModifierProperty(PsiModifier.STATIC)) return false
+        if (!psiMethodShapeMatches(candidate, method)) return false
+        return overridesPsiMethod(candidate, ownerMethod) || ownerMethod.hasModifierProperty(PsiModifier.ABSTRACT)
+    }
+
+    private fun PsiType.jvmComparableText(): String =
+        canonicalText
 
     private fun overridesPsiMethod(
         candidate: PsiMethod,

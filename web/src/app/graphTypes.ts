@@ -148,6 +148,28 @@ export interface InvocationExpansionSceneState {
   contextMode: InvocationExpansionContextMode;
 }
 
+/** 服务端计算出的调用展开条目；前端只叠加 UI 状态，不重新推导层级。 */
+export interface InvocationExpansionRegistryEntry {
+  expansionId: string;
+  sourceInvocationNodeId?: string | null;
+  rootNodeId?: string | null;
+  targetSignature?: string | null;
+  createdAt?: string | null;
+  parentExpansionId?: string | null;
+  depth: number;
+  ownedNodeIds: string[];
+  borrowedNodeIds: string[];
+  callEdgeIds: string[];
+  internalEdgeIds: string[];
+  childExpansionIds: string[];
+  warnings: string[];
+}
+
+/** 服务端随图文档下发的调用展开 registry。 */
+export interface InvocationExpansionRegistry {
+  entries: InvocationExpansionRegistryEntry[];
+}
+
 /**
  * 工作台支持的场景标识。
  * - 各 WORKSPACE_* 表示工作台的不同分析视图（事实、流程、资源、架构、类图、审查）；
@@ -248,6 +270,8 @@ export interface LinkGraphDocument {
   edgeCount?: number;
   /** 是否被截断（节点/边未全部加载）。 */
   truncated?: boolean;
+  /** 服务端计算出的调用展开 registry；缺失时仅用于兼容旧 bootstrap 数据。 */
+  invocationExpansionRegistry?: InvocationExpansionRegistry;
 }
 
 /** 单条图补丁操作：对节点或边的原子变更。 */

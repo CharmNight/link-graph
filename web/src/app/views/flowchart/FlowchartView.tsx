@@ -547,11 +547,11 @@ export function FlowchartView({
   const invocationExpansionRegistry = useMemo(
     () => buildFlowchartInvocationExpansionRegistry({
       nodes: view.fullGraph.nodes,
-      edges: view.fullGraph.edges,
       anchorNodeId: view.anchorNodeId ?? null,
       sceneState: invocationExpansionState ?? emptyFlowchartInvocationExpansionSceneState(),
+      serverRegistry: view.fullGraph.invocationExpansionRegistry ?? null,
     }),
-    [invocationExpansionState, view.anchorNodeId, view.fullGraph.edges, view.fullGraph.nodes],
+    [invocationExpansionState, view.anchorNodeId, view.fullGraph.invocationExpansionRegistry, view.fullGraph.nodes],
   );
   const scopedLayoutGraph = useMemo(
     () => scopeFlowchartGraphToAnchorMethod(layoutSourceGraph, view.anchorNodeId ?? null),

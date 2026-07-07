@@ -114,6 +114,8 @@ data class CachedArchitectureGraph(
     val index: ArchitectureGraphIndex,
     /** 创建时间毫秒。 */
     val createdAtMillis: Long,
+    /** 最近命中或写入时间毫秒，用于 LRU 淘汰。 */
+    val lastAccessedMillis: Long,
     /** 源码修改时间戳。 */
     val sourceModificationStamp: Long,
 )
@@ -135,9 +137,9 @@ class ArchitectureGraphCache(
     /** 失效代际，用于在并发构建过程中检测整体失效。 */
     private val generation = AtomicLong()
 
-    /** 读取缓存条目，不存在时返回 null。 */
+    /** 读取缓存条目，不存在时返回 null；命中时刷新最近访问时间。 */
     fun get(key: ArchitectureGraphCacheKey): CachedArchitectureGraph? =
-        cached[key]
+        touch(key, cached[key])
 
     /** 写入缓存条目并返回。 */
     fun put(
@@ -146,11 +148,13 @@ class ArchitectureGraphCache(
         graphDocument: GraphDocument? = null,
         sourceModificationStamp: Long = 0L,
     ): CachedArchitectureGraph {
+        val now = clockMillis()
         val value = CachedArchitectureGraph(
             architectureGraph = index.graph,
             graphDocument = graphDocument,
             index = index,
-            createdAtMillis = clockMillis(),
+            createdAtMillis = now,
+            lastAccessedMillis = now,
             sourceModificationStamp = sourceModificationStamp,
         )
         cached[key] = value
@@ -180,16 +184,18 @@ class ArchitectureGraphCache(
             synchronized(lock) {
                 if (!forceRebuild) {
                     cached[key]?.let { cachedGraph ->
-                        return@synchronized cachedGraph
+                        return@synchronized touch(key, cachedGraph) ?: cachedGraph
                     }
                 }
                 val generationAtStart = generation.get()
                 val index = builder()
+                val now = clockMillis()
                 val cachedGraph = CachedArchitectureGraph(
                     architectureGraph = index.graph,
                     graphDocument = graphDocument,
                     index = index,
-                    createdAtMillis = clockMillis(),
+                    createdAtMillis = now,
+                    lastAccessedMillis = now,
                     sourceModificationStamp = sourceModificationStamp,
                 )
                 if (generation.get() == generationAtStart) {
@@ -200,6 +206,21 @@ class ArchitectureGraphCache(
             }
         } finally {
             buildLocks.remove(key, lock)
+        }
+    }
+
+    private fun touch(
+        key: ArchitectureGraphCacheKey,
+        value: CachedArchitectureGraph?,
+    ): CachedArchitectureGraph? {
+        if (value == null) {
+            return null
+        }
+        val touched = value.copy(lastAccessedMillis = clockMillis())
+        return if (cached.replace(key, value, touched)) {
+            touched
+        } else {
+            cached[key]
         }
     }
 
@@ -221,7 +242,7 @@ class ArchitectureGraphCache(
         cached.entries
             .sortedWith(
                 compareBy<Map.Entry<ArchitectureGraphCacheKey, CachedArchitectureGraph>> { entry ->
-                    entry.value.createdAtMillis
+                    entry.value.lastAccessedMillis
                 }.thenBy { entry ->
                     entry.key.hashCode()
                 },

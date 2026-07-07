@@ -4,7 +4,7 @@ import {
   FLOWCHART_DECISION_WIDTH,
   flowchartNodeCardWidth,
 } from "../../../../app/graphNodeSizing";
-import type { GraphPosition } from "../../../../app/types";
+import type { GraphPosition, InvocationExpansionRegistry, InvocationExpansionRegistryEntry } from "../../../../app/types";
 import type { LinkGraphEdge, LinkGraphNode } from "../../../../app/types";
 import { layoutFlowchartView } from "../../../../app/views/flowchart/flowchartLayout";
 
@@ -18,6 +18,28 @@ function methodNode(id: string, title: string): LinkGraphNode {
     certainty: "PROVEN",
     bindingStatus: "BOUND",
   };
+}
+
+function expansionEntry(entry: Partial<InvocationExpansionRegistryEntry> & { expansionId: string }): InvocationExpansionRegistryEntry {
+  return {
+    sourceInvocationNodeId: null,
+    targetSignature: null,
+    rootNodeId: null,
+    createdAt: null,
+    parentExpansionId: null,
+    depth: 1,
+    ownedNodeIds: [],
+    borrowedNodeIds: [],
+    callEdgeIds: [],
+    internalEdgeIds: [],
+    childExpansionIds: [],
+    warnings: [],
+    ...entry,
+  };
+}
+
+function invocationExpansionRegistry(entries: InvocationExpansionRegistryEntry[]): InvocationExpansionRegistry {
+  return { entries };
 }
 
 function runtimeFileDownloadTopology(): { nodes: LinkGraphNode[]; edges: LinkGraphEdge[] } {
@@ -1342,7 +1364,20 @@ describe("layoutFlowchartView", () => {
     ];
 
     const laidOut = await layoutFlowchartView({
-      graph: { nodes, edges },
+      graph: {
+        nodes,
+        edges,
+        invocationExpansionRegistry: invocationExpansionRegistry([
+          expansionEntry({
+            expansionId: "invocation:1",
+            sourceInvocationNodeId: "invoke:create-info",
+            rootNodeId: "method:create-info",
+            ownedNodeIds: ["method:create-info", "action:save-info"],
+            callEdgeIds: ["invoke-expanded"],
+            internalEdgeIds: ["expanded-save"],
+          }),
+        ]),
+      },
       nodes,
       edges,
       anchorNodeId: "method:caller",
@@ -1409,7 +1444,20 @@ describe("layoutFlowchartView", () => {
     ];
 
     const laidOut = await layoutFlowchartView({
-      graph: { nodes, edges },
+      graph: {
+        nodes,
+        edges,
+        invocationExpansionRegistry: invocationExpansionRegistry([
+          expansionEntry({
+            expansionId: "invocation:branch",
+            sourceInvocationNodeId: "invoke:create-info",
+            rootNodeId: "method:create-info",
+            ownedNodeIds: ["method:create-info", "action:save-info"],
+            callEdgeIds: ["call-create"],
+            internalEdgeIds: ["create-internal"],
+          }),
+        ]),
+      },
       nodes,
       edges,
       anchorNodeId: "method:caller",
@@ -1463,7 +1511,20 @@ describe("layoutFlowchartView", () => {
     ];
 
     const laidOut = await layoutFlowchartView({
-      graph: { nodes, edges },
+      graph: {
+        nodes,
+        edges,
+        invocationExpansionRegistry: invocationExpansionRegistry([
+          expansionEntry({
+            expansionId: "invocation:file-check",
+            sourceInvocationNodeId: "invoke:check-allow-download",
+            rootNodeId: "method:check-allow-download",
+            ownedNodeIds: ["method:check-allow-download", "action:check-extension"],
+            callEdgeIds: ["call:check-allow-download"],
+            internalEdgeIds: ["expanded:check-extension"],
+          }),
+        ]),
+      },
       nodes,
       edges,
       anchorNodeId: "method:anchor",
@@ -1513,7 +1574,28 @@ describe("layoutFlowchartView", () => {
     ];
 
     const laidOut = await layoutFlowchartView({
-      graph: { nodes, edges },
+      graph: {
+        nodes,
+        edges,
+        invocationExpansionRegistry: invocationExpansionRegistry([
+          expansionEntry({
+            expansionId: "invocation:1",
+            sourceInvocationNodeId: "invoke:first",
+            rootNodeId: "method:first",
+            ownedNodeIds: ["method:first", "action:first"],
+            callEdgeIds: ["call-first"],
+            internalEdgeIds: ["first-internal"],
+          }),
+          expansionEntry({
+            expansionId: "invocation:2",
+            sourceInvocationNodeId: "invoke:second",
+            rootNodeId: "method:second",
+            ownedNodeIds: ["method:second", "action:second"],
+            callEdgeIds: ["call-second"],
+            internalEdgeIds: ["second-internal"],
+          }),
+        ]),
+      },
       nodes,
       edges,
       anchorNodeId: "method:caller",
@@ -1532,5 +1614,83 @@ describe("layoutFlowchartView", () => {
     expect(secondTop).toBeGreaterThan(firstBottom + 40);
     expect(firstAction.position?.y).toBeGreaterThan(firstRoot.position?.y ?? 0);
     expect(secondAction.position?.y).toBeGreaterThan(secondRoot.position?.y ?? 0);
+  });
+
+  it("still moves invocation expansion lanes when every positioned node is expansion-owned", async () => {
+    const parentExpansionMetadata = {
+      "linkGraph.expansion.id": "invocation:parent",
+      "linkGraph.expansion.sourceInvocationNodeId": "invoke:missing-parent",
+      "linkGraph.expansion.rootNodeId": "method:parent",
+    };
+    const childExpansionMetadata = {
+      "linkGraph.expansion.id": "invocation:child",
+      "linkGraph.expansion.sourceInvocationNodeId": "invoke:child",
+      "linkGraph.expansion.rootNodeId": "method:child",
+    };
+    const nodes: LinkGraphNode[] = [
+      {
+        ...methodNode("method:parent", "ParentTarget.run"),
+        metadata: { "flowchart.kind": "ENTRY", ...parentExpansionMetadata },
+      },
+      {
+        ...methodNode("invoke:child", "调用 child"),
+        type: "FLOW_ACTION",
+        metadata: { "flow.kind": "INVOCATION", "flowchart.kind": "SUBROUTINE", ...parentExpansionMetadata },
+      },
+      {
+        ...methodNode("method:child", "ChildTarget.run"),
+        metadata: { "flowchart.kind": "ENTRY", ...childExpansionMetadata },
+      },
+      {
+        ...methodNode("action:child", "work()"),
+        type: "FLOW_ACTION",
+        metadata: { "flowchart.kind": "PROCESS", ...childExpansionMetadata },
+      },
+    ];
+    const edges: LinkGraphEdge[] = [
+      { id: "parent-invoke-child", type: "CONTROL_FLOW", source: "method:parent", target: "invoke:child", metadata: parentExpansionMetadata },
+      { id: "call-child", type: "CALL", source: "invoke:child", target: "method:child", metadata: childExpansionMetadata },
+      { id: "child-internal", type: "CONTROL_FLOW", source: "method:child", target: "action:child", metadata: childExpansionMetadata },
+    ];
+
+    const laidOut = await layoutFlowchartView({
+      graph: {
+        nodes,
+        edges,
+        invocationExpansionRegistry: invocationExpansionRegistry([
+          expansionEntry({
+            expansionId: "invocation:parent",
+            sourceInvocationNodeId: "invoke:missing-parent",
+            rootNodeId: "method:parent",
+            ownedNodeIds: ["method:parent", "invoke:child"],
+            internalEdgeIds: ["parent-invoke-child"],
+            childExpansionIds: ["invocation:child"],
+          }),
+          expansionEntry({
+            expansionId: "invocation:child",
+            sourceInvocationNodeId: "invoke:child",
+            rootNodeId: "method:child",
+            parentExpansionId: "invocation:parent",
+            depth: 2,
+            ownedNodeIds: ["method:child", "action:child"],
+            callEdgeIds: ["call-child"],
+            internalEdgeIds: ["child-internal"],
+          }),
+        ]),
+      },
+      nodes,
+      edges,
+      anchorNodeId: "invoke:only",
+      sizeSnapshot: new Map(),
+      reason: "graph",
+    });
+    const index = new Map(laidOut.nodes.map((node) => [node.id, node]));
+    const source = index.get("invoke:child")!;
+    const root = index.get("method:child")!;
+    const action = index.get("action:child")!;
+
+    expect(root.position?.x).toBeGreaterThan((source.position?.x ?? 0) + flowchartNodeCardWidth(source) + 100);
+    expect(action.position?.x).toBe(root.position?.x);
+    expect(action.position?.y).toBeGreaterThan(root.position?.y ?? 0);
   });
 });

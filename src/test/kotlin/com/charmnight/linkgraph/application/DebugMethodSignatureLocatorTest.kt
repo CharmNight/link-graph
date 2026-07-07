@@ -65,6 +65,31 @@ class DebugMethodSignatureLocatorTest : BasePlatformTestCase() {
         )
     }
 
+    fun testFindsMethodWhenSignatureUsesKotlinArrayNotation() {
+        myFixture.configureByText(
+            "ArrayHandler.java",
+            """
+                package com.example;
+
+                class ArrayHandler {
+                    void accept(String[] values) {}
+                }
+            """.trimIndent(),
+        )
+
+        val method = DebugMethodSignatureLocator.find(
+            project,
+            "com.example.ArrayHandler.accept(Array<String>):void",
+        )
+        val locatedMethod = requireNotNull(method)
+
+        assertEquals("accept", locatedMethod.name)
+        assertEquals(
+            "com.example.ArrayHandler.accept(String[]):void",
+            methodSignature(locatedMethod),
+        )
+    }
+
     fun testFindsMethodFromContentRootJavaFileWithoutSourceRoot() {
         val contentRoot = Files.createTempDirectory("debug-method-signature-locator-content-root")
         val sourceFile = contentRoot.resolve("src/main/java/com/example/AbstractPackageManagerScanner.java")

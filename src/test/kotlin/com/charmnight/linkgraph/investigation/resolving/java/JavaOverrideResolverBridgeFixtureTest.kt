@@ -267,6 +267,58 @@ class JavaOverrideResolverBridgeFixtureTest : BasePlatformTestCase() {
         )
     }
 
+    fun testPsiFallbackSelectsOwnerOverloadByParameterType() {
+        myFixture.addFileToProject(
+            "src/main/java/com/example/overload/Base.java",
+            """
+            package com.example.overload;
+
+            public abstract class Base {
+                protected abstract String convert(String value);
+                protected abstract String convert(Integer value);
+            }
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/overload/Impl.java",
+            """
+            package com.example.overload;
+
+            public class Impl extends Base {
+                @Override
+                protected String convert(String value) {
+                    return value;
+                }
+
+                @Override
+                protected String convert(Integer value) {
+                    return String.valueOf(value);
+                }
+            }
+            """.trimIndent(),
+        )
+        val ownerClass = classSymbol(
+            qualifiedName = "com.example.overload.Base",
+            abstract = true,
+        )
+        val integerMethod = methodSymbol(
+            owner = ownerClass,
+            name = "convert",
+            parameterTypes = listOf("java.lang.Integer"),
+            returnType = "java.lang.String",
+            abstract = true,
+        )
+
+        val signatures = psiImplementationResolver().implementationSignatures(integerMethod, ownerClass)
+        val diagnostic = psiImplementationResolver().diagnostic(integerMethod, ownerClass)
+
+        assertEquals(
+            listOf("com.example.overload.Impl.convert(java.lang.Integer):java.lang.String"),
+            signatures,
+            diagnostic,
+        )
+    }
+
     fun testInvocationExpansionFallsBackToPsiForCpePackageManagerScannerShape() {
         myFixture.addFileToProject(
             "src/main/java/com/cpescan/core/package_manager/AbstractPackageManagerScanner.java",
@@ -816,15 +868,16 @@ class JavaOverrideResolverBridgeFixtureTest : BasePlatformTestCase() {
         name: String,
         returnType: String,
         abstract: Boolean = false,
+        parameterTypes: List<String> = emptyList(),
     ): JvmMethodSymbol {
-        val signature = "${owner.qualifiedName}.$name():$returnType"
+        val signature = "${owner.qualifiedName}.$name(${parameterTypes.joinToString(",")}):$returnType"
         return JvmMethodSymbol(
             id = stableJvmId("method", signature),
             qualifiedName = signature,
             simpleName = name,
             ownerClassName = owner.qualifiedName,
             signature = signature,
-            parameterTypes = emptyList(),
+            parameterTypes = parameterTypes,
             returnType = returnType,
             abstract = abstract,
             source = owner.source,

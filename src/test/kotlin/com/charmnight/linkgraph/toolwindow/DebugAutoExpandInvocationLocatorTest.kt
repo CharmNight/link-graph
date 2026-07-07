@@ -37,6 +37,29 @@ class DebugAutoExpandInvocationLocatorTest {
     }
 
     @Test
+    fun findsWorkspaceInvocationNodeWhenRequestedSignatureUsesKotlinArrayNotation() {
+        val snapshot = testSnapshot(
+            workspaceGraph = GraphDocument(
+                nodes = listOf(
+                    invocationNode(
+                        id = "invoke:accept",
+                        signature = "com.example.ArrayHandler.accept(java.lang.String[]):void",
+                    ),
+                ),
+            ),
+        )
+
+        val match = DebugAutoExpandInvocationLocator.find(
+            snapshot,
+            "com.example.ArrayHandler.accept(Array<String>):void",
+        )
+
+        assertNotNull(match)
+        assertEquals("workspace", match.matchedGraphName)
+        assertEquals("invoke:accept", match.targetNode.id)
+    }
+
+    @Test
     fun resolvesProjectedFlowchartActionBackToCanonicalInvocationNode() {
         val workspaceInvocation = invocationNode(
             id = "invoke:create-info",

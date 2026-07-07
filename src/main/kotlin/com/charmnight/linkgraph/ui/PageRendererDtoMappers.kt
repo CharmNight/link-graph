@@ -6,6 +6,8 @@ import com.charmnight.linkgraph.agent.model.EvidenceTraceEntry
 import com.charmnight.linkgraph.agent.model.GraphBeautificationResult
 import com.charmnight.linkgraph.agent.model.GraphPatchResult
 import com.charmnight.linkgraph.agent.model.SourceSnippetContext
+import com.charmnight.linkgraph.application.usecase.InvocationExpansionRegistryBuilder
+import com.charmnight.linkgraph.application.usecase.InvocationExpansionRegistryEntry
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.CandidatePatchIntent
@@ -73,8 +75,34 @@ internal fun graphDocumentToDto(
         nodeCount = document.nodes.size,
         edgeCount = document.edges.size,
         truncated = !shouldInlineContent,
+        invocationExpansionRegistry = invocationExpansionRegistryToDto(document),
     )
 }
+
+private fun invocationExpansionRegistryToDto(document: GraphDocument): InvocationExpansionRegistryDto =
+    InvocationExpansionRegistryDto(
+        entries = InvocationExpansionRegistryBuilder.build(document)
+            .map(::invocationExpansionRegistryEntryToDto),
+    )
+
+private fun invocationExpansionRegistryEntryToDto(
+    entry: InvocationExpansionRegistryEntry,
+): InvocationExpansionRegistryEntryDto =
+    InvocationExpansionRegistryEntryDto(
+        expansionId = entry.expansionId,
+        sourceInvocationNodeId = entry.sourceInvocationNodeId,
+        rootNodeId = entry.rootNodeId,
+        targetSignature = entry.targetSignature,
+        createdAt = entry.createdAt,
+        parentExpansionId = entry.parentExpansionId,
+        depth = entry.depth,
+        ownedNodeIds = entry.ownedNodeIds.toList(),
+        borrowedNodeIds = entry.borrowedNodeIds.toList(),
+        callEdgeIds = entry.callEdgeIds.toList(),
+        internalEdgeIds = entry.internalEdgeIds.toList(),
+        childExpansionIds = entry.childExpansionIds,
+        warnings = entry.warnings,
+    )
 
 /** 把投影索引转换为 DTO。 */
 internal fun graphProjectionIndexToDto(

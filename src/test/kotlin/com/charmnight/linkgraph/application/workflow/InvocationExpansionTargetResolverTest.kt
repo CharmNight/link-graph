@@ -141,6 +141,79 @@ class InvocationExpansionTargetResolverTest {
     }
 
     @Test
+    fun resolvesConcreteImplementationDeclaredOnAbstractSubclass() {
+        val api = classSymbol("com.example.Api", kind = JvmClassKind.INTERFACE, abstract = true)
+        val abstractBase = classSymbol("com.example.AbstractApi", abstract = true, interfaceNames = listOf(api.qualifiedName))
+        val apiMethod = methodSymbol(api, "run", abstract = true)
+        val baseMethod = methodSymbol(abstractBase, "run")
+
+        val target = resolver.resolve(
+            apiMethod.signature,
+            index(
+                classes = listOf(api, abstractBase),
+                methods = listOf(apiMethod, baseMethod),
+                relations = listOf(relation(JvmRelationKind.IMPLEMENTS, abstractBase, api)),
+            ),
+        )
+
+        assertEquals(InvocationExpansionTargetKind.PROJECT_SOURCE, target.kind)
+        assertEquals(baseMethod.signature, target.signature)
+    }
+
+    @Test
+    fun ignoresAbstractMethodDeclarationsOnAbstractSubclasses() {
+        val api = classSymbol("com.example.Api", kind = JvmClassKind.INTERFACE, abstract = true)
+        val abstractBase = classSymbol("com.example.AbstractApi", abstract = true, interfaceNames = listOf(api.qualifiedName))
+        val concreteImpl = classSymbol("com.example.ApiImpl", superClassName = abstractBase.qualifiedName)
+        val apiMethod = methodSymbol(api, "run", abstract = true)
+        val abstractBaseMethod = methodSymbol(abstractBase, "run", abstract = true)
+        val concreteMethod = methodSymbol(concreteImpl, "run")
+
+        val target = resolver.resolve(
+            apiMethod.signature,
+            index(
+                classes = listOf(api, abstractBase, concreteImpl),
+                methods = listOf(apiMethod, abstractBaseMethod, concreteMethod),
+                relations = listOf(
+                    relation(JvmRelationKind.IMPLEMENTS, abstractBase, api),
+                    relation(JvmRelationKind.EXTENDS, concreteImpl, abstractBase),
+                ),
+            ),
+        )
+
+        assertEquals(InvocationExpansionTargetKind.PROJECT_SOURCE, target.kind)
+        assertEquals(concreteMethod.signature, target.signature)
+    }
+
+    @Test
+    fun findsMethodFallbackWithKotlinArrayNotation() {
+        val service = classSymbol("com.example.ArrayService")
+        val method = methodSymbol(service, "accept", parameterTypes = listOf("java.lang.String[]"))
+
+        val target = resolver.resolve(
+            "com.example.ArrayService.accept(Array<String>):void",
+            index(classes = listOf(service), methods = listOf(method)),
+        )
+
+        assertEquals(InvocationExpansionTargetKind.PROJECT_SOURCE, target.kind)
+        assertEquals(method.signature, target.signature)
+    }
+
+    @Test
+    fun findsMethodFallbackWithNullableKotlinArrayNotation() {
+        val service = classSymbol("com.example.ArrayService")
+        val method = methodSymbol(service, "accept", parameterTypes = listOf("java.lang.String[]"))
+
+        val target = resolver.resolve(
+            "com.example.ArrayService.accept(Array<String>?):void",
+            index(classes = listOf(service), methods = listOf(method)),
+        )
+
+        assertEquals(InvocationExpansionTargetKind.PROJECT_SOURCE, target.kind)
+        assertEquals(method.signature, target.signature)
+    }
+
+    @Test
     fun reportsNoImplementation() {
         val api = classSymbol("com.example.Api", kind = JvmClassKind.INTERFACE, abstract = true)
         val apiMethod = methodSymbol(api, "run", abstract = true)

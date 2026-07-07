@@ -302,6 +302,68 @@ class InvocationExpansionUseCaseTest {
         assertTrue(result.graph.edges.isEmpty())
     }
 
+    @Test
+    fun `remove expansion cascades through projected child invocation aliases`() {
+        val parentExpansionId = "invocation:parent"
+        val childExpansionId = "invocation:child"
+        val graph = GraphDocument(
+            nodes = listOf(
+                GraphNode(id = "invoke:parent", type = NodeType.FLOW_ACTION, title = "call parent", metadata = mapOf("flow.kind" to "INVOCATION")),
+                GraphNode(
+                    id = "method:parent",
+                    type = NodeType.METHOD,
+                    title = "Parent.run",
+                    metadata = expansionMetadata(parentExpansionId, "invoke:parent", "method:parent"),
+                ),
+                GraphNode(
+                    id = "alias:child-invoke",
+                    type = NodeType.FLOW_ACTION,
+                    title = "call child",
+                    metadata = expansionMetadata(parentExpansionId, "invoke:parent", "method:parent") +
+                        mapOf(
+                            "flow.kind" to "INVOCATION",
+                            "flowchart.projectedFromNodeIds" to "invoke:child",
+                        ),
+                ),
+                GraphNode(
+                    id = "method:child",
+                    type = NodeType.METHOD,
+                    title = "Child.run",
+                    metadata = expansionMetadata(childExpansionId, "invoke:child", "method:child"),
+                ),
+            ),
+            edges = listOf(
+                GraphEdge(
+                    id = "call:parent",
+                    type = EdgeType.CALL,
+                    fromNodeId = "invoke:parent",
+                    toNodeId = "method:parent",
+                    metadata = expansionMetadata(parentExpansionId, "invoke:parent", "method:parent"),
+                ),
+                GraphEdge(
+                    id = "parent-to-child-invoke",
+                    type = EdgeType.CONTROL_FLOW,
+                    fromNodeId = "method:parent",
+                    toNodeId = "alias:child-invoke",
+                    metadata = expansionMetadata(parentExpansionId, "invoke:parent", "method:parent"),
+                ),
+                GraphEdge(
+                    id = "call:child",
+                    type = EdgeType.CALL,
+                    fromNodeId = "invoke:child",
+                    toNodeId = "method:child",
+                    metadata = expansionMetadata(childExpansionId, "invoke:child", "method:child"),
+                ),
+            ),
+        )
+
+        val result = useCase.removeExpansion(graph, parentExpansionId)
+
+        assertTrue(result.removed)
+        assertEquals(listOf("invoke:parent"), result.graph.nodes.map(GraphNode::id))
+        assertTrue(result.graph.edges.isEmpty())
+    }
+
     private fun invocationNode(signature: String?): GraphNode =
         GraphNode(
             id = "invoke:create-info",

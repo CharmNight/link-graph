@@ -10,6 +10,7 @@ import com.charmnight.linkgraph.jvm.index.JvmMethodSymbol
 import com.charmnight.linkgraph.jvm.index.NoopJvmImplementationSignatureResolver
 import com.charmnight.linkgraph.jvm.index.JvmOverrideShapeMatcher
 import com.charmnight.linkgraph.jvm.index.JvmSymbol
+import com.charmnight.linkgraph.jvm.index.JvmTypeEraser
 import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
 import com.charmnight.linkgraph.source.SourceOrigin
 import com.intellij.openapi.diagnostic.Logger
@@ -148,11 +149,12 @@ class InvocationExpansionTargetResolver {
             .asSequence()
             .mapNotNull(index::findSymbol)
             .filterIsInstance<JvmClassSymbol>()
-            .filter(::isConcreteJvmClass)
+            .filter(::isProjectImplementationHostClass)
             .flatMap { classSymbol ->
                 index.symbolIndex.methodsBySignature.values.asSequence()
                     .filter { candidate ->
                         candidate.ownerClassName == classSymbol.qualifiedName &&
+                            !candidate.abstract &&
                             JvmOverrideShapeMatcher.matchesOverride(candidate, method)
                     }
             }
@@ -192,10 +194,9 @@ class InvocationExpansionTargetResolver {
             .firstOrNull()
     }
 
-    private fun isConcreteJvmClass(classSymbol: JvmClassSymbol): Boolean =
+    private fun isProjectImplementationHostClass(classSymbol: JvmClassSymbol): Boolean =
         classSymbol.origin == SourceOrigin.PROJECT_SOURCE &&
-            classSymbol.kind != JvmClassKind.INTERFACE &&
-            !classSymbol.abstract
+            classSymbol.kind != JvmClassKind.INTERFACE
 
     /**
      * 通过广度优先遍历实现/继承关系，收集目标类的全部子类与实现类标识。
@@ -346,27 +347,12 @@ class InvocationExpansionTargetResolver {
     }
 
     private fun methodTypesCompatible(indexedType: String, requestedType: String): Boolean {
-        val indexed = eraseMethodType(indexedType)
-        val requested = eraseMethodType(requestedType)
-        return indexed == requested || isLikelyTypeParameterName(indexed) || isLikelyTypeParameterName(requested)
+        val indexed = JvmTypeEraser.eraseTypeWithArrayNormalization(indexedType)
+        val requested = JvmTypeEraser.eraseTypeWithArrayNormalization(requestedType)
+        return indexed == requested ||
+            JvmTypeEraser.isLikelyTypeParameterName(indexed) ||
+            JvmTypeEraser.isLikelyTypeParameterName(requested)
     }
-
-    private fun eraseMethodType(type: String): String {
-        val trimmed = type.trim().removeSuffix("?")
-        val arraySuffix = buildString {
-            var rest = trimmed
-            while (rest.endsWith("[]")) {
-                append("[]")
-                rest = rest.removeSuffix("[]")
-            }
-        }
-        val withoutArrays = trimmed.removeSuffix(arraySuffix)
-        val erased = withoutArrays.substringBefore('<').substringAfterLast('.').trim()
-        return erased + arraySuffix
-    }
-
-    private fun isLikelyTypeParameterName(type: String): Boolean =
-        type.length == 1 && type[0].isUpperCase()
 
     private fun logNoImplementationDiagnostic(
         signature: String,
@@ -381,11 +367,11 @@ class InvocationExpansionTargetResolver {
         val implementationClasses = implementationClassIds
             .mapNotNull(index::findSymbol)
             .filterIsInstance<JvmClassSymbol>()
-        val concreteImplementationClasses = implementationClasses.filter(::isConcreteJvmClass)
+        val implementationHostClasses = implementationClasses.filter(::isProjectImplementationHostClass)
         val sameOwnerNameMethods = index.symbolIndex.methodsBySignature.values
             .filter { candidate -> candidate.ownerClassName == method.ownerClassName && candidate.simpleName == method.simpleName }
             .sortedBy(JvmMethodSymbol::signature)
-        val candidateMethodsByName = concreteImplementationClasses
+        val candidateMethodsByName = implementationHostClasses
             .asSequence()
             .flatMap { classSymbol ->
                 index.symbolIndex.methodsBySignature.values.asSequence()
@@ -413,7 +399,7 @@ class InvocationExpansionTargetResolver {
                 "relationImplementationClassIds=${relationClassIds.size}[${relationClassIds.sampleIds(index)}], " +
                 "classSymbolImplementationClassIds=${classSymbolClassIds.size}[${classSymbolClassIds.sampleIds(index)}], " +
                 "implementationClasses=${implementationClasses.size}[${implementationClasses.sampleClasses()}], " +
-                "concreteImplementationClasses=${concreteImplementationClasses.size}[${concreteImplementationClasses.sampleClasses()}], " +
+                "implementationHostClasses=${implementationHostClasses.size}[${implementationHostClasses.sampleClasses()}], " +
                 "candidateMethodsByName=${candidateMethodsByName.size}[${candidateMethodsByName.sampleMethods()}], " +
                 "matchedOverrideMethods=${matchedMethods.size}[${matchedMethods.sampleMethods()}], " +
                 implementationResolver.diagnostic(method, ownerClass),

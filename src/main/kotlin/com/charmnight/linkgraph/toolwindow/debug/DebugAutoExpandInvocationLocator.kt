@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.toolwindow.debug
 
 import com.charmnight.linkgraph.application.model.GraphProjectionIndex
+import com.charmnight.linkgraph.jvm.index.JvmMethodSignatureNormalizer
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.ui.GraphEditorStateSnapshot
@@ -106,48 +107,8 @@ internal object DebugAutoExpandInvocationLocator {
     ): Boolean {
         val normalizedCandidate = candidateSignature?.trim()?.takeIf(String::isNotBlank) ?: return false
         return normalizedCandidate == requestedSignature ||
-            comparableMethodSignature(normalizedCandidate) == comparableMethodSignature(requestedSignature)
-    }
-
-    private fun comparableMethodSignature(signature: String): String {
-        val argumentsStart = signature.indexOf('(')
-        if (argumentsStart <= 0) {
-            return signature.trim()
-        }
-        val ownerAndMethod = signature.substring(0, argumentsStart)
-        val owner = ownerAndMethod.substringBeforeLast('.', missingDelimiterValue = ownerAndMethod)
-        val methodName = ownerAndMethod.substringAfterLast('.')
-        val simpleOwner = owner.substringAfterLast('.')
-        val argumentsEnd = signature.indexOf(')', startIndex = argumentsStart)
-        if (argumentsEnd < argumentsStart) {
-            return "$simpleOwner.$methodName${signature.substring(argumentsStart)}"
-        }
-        val parameters = signature.substring(argumentsStart + 1, argumentsEnd)
-            .split(',')
-            .map(String::trim)
-            .filter(String::isNotBlank)
-            .joinToString(",") { type -> comparableType(type) }
-        val returnType = signature.substring(argumentsEnd + 1)
-            .removePrefix(":")
-            .trim()
-            .takeIf(String::isNotBlank)
-            ?.let(::comparableType)
-            ?: ""
-        return "$simpleOwner.$methodName($parameters):$returnType"
-    }
-
-    private fun comparableType(type: String): String {
-        val trimmed = type.trim().removeSuffix("?")
-        val arraySuffix = buildString {
-            var rest = trimmed
-            while (rest.endsWith("[]")) {
-                append("[]")
-                rest = rest.removeSuffix("[]")
-            }
-        }
-        val withoutArrays = trimmed.removeSuffix(arraySuffix)
-        val erased = withoutArrays.substringBefore('<').substringAfterLast('.').trim()
-        return erased + arraySuffix
+            JvmMethodSignatureNormalizer.comparableMethodSignature(normalizedCandidate) ==
+            JvmMethodSignatureNormalizer.comparableMethodSignature(requestedSignature)
     }
 
     private data class CandidateGraph(

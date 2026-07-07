@@ -133,6 +133,25 @@ class ArchitectureGraphCacheTest {
     }
 
     @Test
+    fun evictsLeastRecentlyUsedEntryWhenCacheExceedsCapacity() {
+        var now = 100L
+        val cache = ArchitectureGraphCache(clockMillis = { now++ })
+        val keys = (1..9).map(::cacheKey)
+
+        keys.take(8).forEach { key ->
+            cache.put(key, ArchitectureGraphIndex.from(JvmSymbolIndex(), JvmRelationIndex()))
+        }
+        assertNotNull(cache.get(keys.first()))
+        cache.put(keys.last(), ArchitectureGraphIndex.from(JvmSymbolIndex(), JvmRelationIndex()))
+
+        assertNotNull(cache.get(keys.first()))
+        assertNull(cache.get(keys[1]))
+        (listOf(keys.first()) + keys.drop(2)).forEach { key ->
+            assertNotNull(cache.get(key))
+        }
+    }
+
+    @Test
     fun invalidateDoesNotBlockBehindLongRunningBuildForSameKey() {
         val cache = ArchitectureGraphCache(clockMillis = { 123L })
         val key = ArchitectureGraphCacheKey(

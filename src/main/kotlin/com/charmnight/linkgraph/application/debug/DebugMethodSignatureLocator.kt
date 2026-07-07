@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.application.debug
 
 import com.charmnight.linkgraph.foundation.LinkGraphDebugEnvironment
+import com.charmnight.linkgraph.jvm.index.JvmMethodSignatureNormalizer
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.module.ModuleUtilCore
 import com.charmnight.linkgraph.semantic.subject.methodSignature
@@ -87,7 +88,7 @@ internal object DebugMethodSignatureLocator {
         }
 
         // 统一把签名转换为可比较形式，抹平限定名与简单类名的差异。
-        val comparableExpectedSignature = comparableMethodSignature(normalizedSignature)
+        val comparableExpectedSignature = JvmMethodSignatureNormalizer.comparableMethodSignature(normalizedSignature)
         val candidateMethods = candidateClasses
             .asSequence()
             .flatMap { psiClass -> psiClass.findMethodsByName(parsedSignature.methodName, false).asSequence() }
@@ -96,7 +97,7 @@ internal object DebugMethodSignatureLocator {
         val matchedMethod = candidateMethods.firstOrNull { method ->
                 val candidateSignature = methodSignature(method)
                 candidateSignature == normalizedSignature ||
-                    comparableMethodSignature(candidateSignature) == comparableExpectedSignature
+                    JvmMethodSignatureNormalizer.comparableMethodSignature(candidateSignature) == comparableExpectedSignature
             }
         if (matchedMethod == null) {
             logFailure(
@@ -132,56 +133,6 @@ internal object DebugMethodSignatureLocator {
             simpleOwner = owner.substringAfterLast('.').takeIf(String::isNotBlank),
             methodName = methodName,
         )
-    }
-
-    /**
-     * 把方法签名转换为便于宽松比较的形式。
-     */
-    private fun comparableMethodSignature(signature: String): String {
-        val argumentsStart = signature.indexOf('(')
-        if (argumentsStart <= 0) {
-            return signature
-        }
-        val ownerAndMethod = signature.substring(0, argumentsStart)
-        val owner = ownerAndMethod.substringBeforeLast('.', missingDelimiterValue = ownerAndMethod)
-        val methodName = ownerAndMethod.substringAfterLast('.')
-        val simpleOwner = owner.substringAfterLast('.')
-        val argumentsEnd = signature.indexOf(')', startIndex = argumentsStart)
-        if (argumentsEnd < argumentsStart) {
-            return "$simpleOwner.$methodName${signature.substring(argumentsStart)}"
-        }
-        val parameters = signature.substring(argumentsStart + 1, argumentsEnd)
-            .split(',')
-            .map(String::trim)
-            .filter(String::isNotBlank)
-            .joinToString(",") { type -> comparableType(type) }
-        val returnType = signature
-            .substring(argumentsEnd + 1)
-            .removePrefix(":")
-            .takeIf(String::isNotBlank)
-            ?.let(::comparableType)
-            ?: ""
-        return "$simpleOwner.$methodName($parameters):$returnType"
-    }
-
-    /**
-     * 把类型文本转换成宽松比较形式：
-     * - 去掉泛型参数，`List<String>` 与 `List` 可匹配；
-     * - 去掉包名前缀，`java.util.List` 与 `List` 可匹配；
-     * - 保留数组维度，避免 `String` 与 `String[]` 误匹配。
-     */
-    private fun comparableType(type: String): String {
-        val trimmed = type.trim().removeSuffix("?")
-        val arraySuffix = buildString {
-            var rest = trimmed
-            while (rest.endsWith("[]")) {
-                append("[]")
-                rest = rest.removeSuffix("[]")
-            }
-        }
-        val withoutArrays = trimmed.removeSuffix(arraySuffix)
-        val erased = withoutArrays.substringBefore('<').substringAfterLast('.').trim()
-        return erased + arraySuffix
     }
 
     /**
@@ -370,7 +321,7 @@ internal object DebugMethodSignatureLocator {
         methods.take(SAMPLE_LIMIT).joinToString("|") { method ->
             runCatching {
                 val candidateSignature = methodSignature(method)
-                "$candidateSignature=>${comparableMethodSignature(candidateSignature)}"
+                "$candidateSignature=>${JvmMethodSignatureNormalizer.comparableMethodSignature(candidateSignature)}"
             }.getOrElse { throwable ->
                 "${method.name}(signatureError=${throwable.javaClass.simpleName}:${throwable.message})"
             }
