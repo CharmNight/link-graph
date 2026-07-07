@@ -32,7 +32,13 @@ vi.mock("../../app/views/fact/FactGraphView", () => ({
 vi.mock("../../app/views/flowchart/FlowchartView", () => ({
   FlowchartView: ({
     view,
+    invocationExpansionState,
   }: {
+    invocationExpansionState?: {
+      activeExpansionId?: string | null;
+      activeExpansionPath?: string[];
+      collapsedExpansionIds?: string[];
+    } | null;
     view: {
       visibleGraph: {
         nodes: Array<{
@@ -57,6 +63,15 @@ vi.mock("../../app/views/flowchart/FlowchartView", () => ({
           {`${edge.id}:${edge.route ? "route" : "no-route"}`}
         </div>
       ))}
+      <div data-testid="flowchart-active-expansion">
+        {invocationExpansionState?.activeExpansionId ?? ""}
+      </div>
+      <div data-testid="flowchart-active-path">
+        {(invocationExpansionState?.activeExpansionPath ?? []).join("|")}
+      </div>
+      <div data-testid="flowchart-collapsed-expansions">
+        {(invocationExpansionState?.collapsedExpansionIds ?? []).join("|")}
+      </div>
     </div>
   ),
 }));
@@ -371,6 +386,89 @@ describe("App bootstrap revisions", () => {
     });
 
     expect(await screen.findByText("edge:entry->decision:route")).toBeInTheDocument();
+  });
+
+  it("applies backend scene-state changes from same-graph bootstrap snapshots", async () => {
+    const flowchartGraphWithExpansions = {
+      nodes: structuredClone(flowchartBootstrapState.visibleGraph.nodes).map((node) => {
+        if (node.id === "flow:entry") {
+          return {
+            ...node,
+            metadata: {
+              ...(node.metadata ?? {}),
+              "linkGraph.expansion.id": "invocation:paypal",
+            },
+          };
+        }
+        return {
+          ...node,
+          metadata: {
+            ...(node.metadata ?? {}),
+            "linkGraph.expansion.id": "invocation:stripe",
+          },
+        };
+      }),
+      edges: structuredClone(flowchartBootstrapState.visibleGraph.edges),
+    };
+    const initialState = materializeThreeViewDocuments({
+      ...structuredClone(flowchartBootstrapState),
+      visibleGraph: flowchartGraphWithExpansions,
+      workingGraph: flowchartGraphWithExpansions,
+      sceneStates: {
+        ...structuredClone(flowchartBootstrapState.sceneStates),
+        WORKSPACE_FLOWCHART: {
+          ...structuredClone(flowchartBootstrapState.sceneStates.WORKSPACE_FLOWCHART),
+          invocationExpansionState: {
+            activeExpansionId: "invocation:stripe",
+            activeExpansionPath: ["invocation:stripe"],
+            collapsedExpansionIds: ["invocation:paypal"],
+            activeSiblingByParentContext: {
+              "root:flow:entry": "invocation:stripe",
+            },
+            blockPositions: {},
+            lastChildStateByExpansionId: {},
+            contextMode: "ACTIVE_CHAIN",
+          },
+        },
+      },
+      snapshotRevision: 4,
+    });
+    window.linkGraphBootstrap = initialState;
+    installBridgeCommandSpy();
+
+    render(<App />);
+
+    expect(await screen.findByTestId("flowchart-active-expansion")).toHaveTextContent("invocation:stripe");
+
+    act(() => {
+      dispatchBootstrapState({
+        ...structuredClone(initialState),
+        sceneStates: {
+          ...structuredClone(initialState.sceneStates),
+          WORKSPACE_FLOWCHART: {
+            ...structuredClone(initialState.sceneStates.WORKSPACE_FLOWCHART),
+            invocationExpansionState: {
+              activeExpansionId: "invocation:paypal",
+              activeExpansionPath: ["invocation:paypal"],
+              collapsedExpansionIds: ["invocation:stripe"],
+              activeSiblingByParentContext: {
+                "root:flow:entry": "invocation:paypal",
+              },
+              blockPositions: {},
+              lastChildStateByExpansionId: {},
+              contextMode: "ACTIVE_CHAIN",
+            },
+          },
+        },
+        semanticRevision: initialState.semanticRevision,
+        workspaceRevision: initialState.workspaceRevision,
+        snapshotRevision: 5,
+      });
+    });
+
+    expect(await screen.findByTestId("flowchart-active-expansion")).toHaveTextContent("invocation:paypal");
+    expect(screen.getByTestId("flowchart-active-path")).toHaveTextContent("invocation:paypal");
+    expect(screen.getByTestId("flowchart-collapsed-expansions")).toHaveTextContent("invocation:stripe");
   });
 
   it("does not reuse an empty current architecture graph when a same-revision architecture result arrives", async () => {

@@ -66,6 +66,7 @@ interface BuildFlowchartNodesOptions {
   selectedNodeId: string | null;
   explanationFocusNodeId?: string | null;
   draftChangedNodeIds?: string[];
+  activeExpansionIds?: string[];
   draftCompareNodeStatuses?: Record<string, DraftCompareStatus>;
   projectionIndex?: GraphProjectionIndex | null;
   nodeSizeRegistry: NodeSizeRegistry;
@@ -351,6 +352,10 @@ function isInvocationExpansionSummaryNode(node: LinkGraphNode): boolean {
   return node.metadata?.["flowchart.synthetic"] === "invocation-expansion-summary";
 }
 
+function invocationExpansionId(node: LinkGraphNode): string | null {
+  return node.metadata?.["linkGraph.expansion.id"]?.trim() || null;
+}
+
 /** 根据节点类型生成节点外壳的内联样式，覆盖宽度、最小高度、圆角、边框、背景与阴影等视觉差异。 */
 function flowchartNodeStyle(node: LinkGraphNode) {
   if (isInvocationExpansionSummaryNode(node)) {
@@ -542,12 +547,14 @@ export function buildFlowchartNodes({
   selectedNodeId,
   explanationFocusNodeId = null,
   draftChangedNodeIds = [],
+  activeExpansionIds = [],
   draftCompareNodeStatuses = {},
   projectionIndex = null,
   nodeSizeRegistry,
 }: BuildFlowchartNodesOptions): FlowchartFlowNode[] {
   const nodeIndex = new Map(nodes.map((node) => [node.id, node]));
   const draftChangedNodeIdSet = new Set(draftChangedNodeIds);
+  const activeExpansionIdSet = new Set(activeExpansionIds);
   const outgoingControlFlowBySource = buildOutgoingControlFlowIndex(edges);
   const incomingControlFlowByTarget = buildIncomingControlFlowIndex(edges);
   const mergeTargetPortLayout = buildMergeTargetPortLayout(
@@ -557,11 +564,16 @@ export function buildFlowchartNodes({
     incomingControlFlowByTarget,
   );
   return nodes.map((node) => {
+    const expansionId = invocationExpansionId(node);
+    const activeInvocationExpansion = expansionId ? activeExpansionIdSet.has(expansionId) : false;
     if (isInvocationExpansionSummaryNode(node)) {
       return {
         id: node.id,
         type: "invocationExpansionSummaryNode",
-        className: "flowchart-rf-node kind-invocation-expansion-summary",
+        className: [
+          "flowchart-rf-node kind-invocation-expansion-summary",
+          activeInvocationExpansion ? "is-active-invocation-expansion" : "",
+        ].join(" ").trim(),
         selected: selectedNodeId === node.id,
         draggable: canEditNodeLayout(node, "FLOWCHART", projectionIndex),
         position: node.position ?? { x: 80, y: 88 },
@@ -582,13 +594,16 @@ export function buildFlowchartNodes({
     return {
       id: node.id,
       type: "flowchartNode",
-      className: resolveGraphNodeHighlightClassName({
-        baseClassName: `flowchart-rf-node kind-${kind.toLowerCase()}`,
-        nodeId: node.id,
-        explanationFocusNodeId,
-        draftChangedNodeIdSet: projectedDraftChanged ? new Set([node.id]) : new Set(),
-        draftCompareStatus: projectedDraftCompareStatus,
-      }),
+      className: [
+        resolveGraphNodeHighlightClassName({
+          baseClassName: `flowchart-rf-node kind-${kind.toLowerCase()}`,
+          nodeId: node.id,
+          explanationFocusNodeId,
+          draftChangedNodeIdSet: projectedDraftChanged ? new Set([node.id]) : new Set(),
+          draftCompareStatus: projectedDraftCompareStatus,
+        }),
+        activeInvocationExpansion ? "is-active-invocation-expansion" : "",
+      ].join(" ").trim(),
       selected: selectedNodeId === node.id,
       draggable: canEditNodeLayout(node, "FLOWCHART", projectionIndex),
       position: node.position ?? { x: 80, y: 88 },

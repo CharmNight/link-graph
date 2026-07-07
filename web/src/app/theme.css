@@ -2978,6 +2978,14 @@ button {
     0 12px 24px rgba(185, 104, 47, 0.14) !important;
 }
 
+.react-flow__node.is-active-invocation-expansion:not(.flowchart-rf-node.kind-decision) :is(.flow-node-card, .flowchart-invocation-summary) {
+  border-color: color-mix(in srgb, var(--accent) 52%, transparent);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--accent) 46%, transparent),
+    0 0 0 6px color-mix(in srgb, var(--accent) 14%, transparent),
+    0 12px 24px rgba(14, 139, 114, 0.14) !important;
+}
+
 .react-flow__node.is-explanation-focus.is-draft-change:not(.flowchart-rf-node.kind-decision) :is(.flow-node-card, .uml-class-card) {
   border-color: color-mix(in srgb, var(--accent) 40%, transparent);
   background:
@@ -3059,6 +3067,13 @@ button {
   box-shadow:
     inset 0 0 0 2px rgba(149, 64, 58, 0.56),
     0 0 0 6px rgba(149, 64, 58, 0.16);
+}
+
+.react-flow__node.is-active-invocation-expansion.flowchart-rf-node.kind-decision>.flowchart-react-node::after {
+  inset: 1px;
+  box-shadow:
+    inset 0 0 0 2px color-mix(in srgb, var(--accent) 56%, transparent),
+    0 0 0 6px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
 .react-flow__node.is-explanation-focus.is-draft-change.flowchart-rf-node.kind-decision>.flowchart-react-node::after {

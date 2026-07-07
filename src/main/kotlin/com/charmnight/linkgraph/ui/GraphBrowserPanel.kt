@@ -102,6 +102,7 @@ class GraphBrowserPanel private constructor(
             interactionProbeEnabled = interactionProbeEnabled,
             dispatchArtifactSlice = { artifactIds -> transportDispatcher.dispatchArtifactSlice(artifactIds) },
             dispatchBridgeAsync = ::dispatchBridgeAsync,
+            requestBrowserSync = ::syncFromProjectState,
             shouldLogFrontendTrace = ::shouldLogFrontendTrace,
             runtimeTrace = if (debugTracingEnabled) {
                 { message -> logger.warn(message) }

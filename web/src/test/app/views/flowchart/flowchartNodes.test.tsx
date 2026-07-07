@@ -1295,6 +1295,48 @@ describe("buildFlowchartNodes", () => {
     expect(builtNodes.find((node) => node.id === "action:guard")?.className ?? "").toContain("is-draft-change");
   });
 
+  it("marks every node in the active invocation expansion path", () => {
+    const builtNodes = buildFlowchartNodes({
+      nodes: [
+        {
+          ...methodNode("action:stripe-root", "StripeClient.charge"),
+          type: "FLOW_ACTION",
+          metadata: {
+            "flowchart.kind": "PROCESS",
+            "linkGraph.expansion.id": "invocation:stripe",
+          },
+        },
+        {
+          ...methodNode("action:paypal-root", "PaypalClient.charge"),
+          type: "FLOW_ACTION",
+          metadata: {
+            "flowchart.kind": "PROCESS",
+            "linkGraph.expansion.id": "invocation:paypal",
+          },
+        },
+        {
+          ...methodNode("expansion-block:invocation:stripe", "StripeClient.charge"),
+          type: "DOC_PAGE",
+          metadata: {
+            "flowchart.synthetic": "invocation-expansion-summary",
+            "linkGraph.expansion.id": "invocation:stripe",
+          },
+        },
+      ],
+      edges: [],
+      selectedNodeId: null,
+      activeExpansionIds: ["invocation:stripe"],
+      nodeSizeRegistry: createNodeSizeRegistry(),
+    });
+
+    expect(builtNodes.find((node) => node.id === "action:stripe-root")?.className ?? "")
+      .toContain("is-active-invocation-expansion");
+    expect(builtNodes.find((node) => node.id === "expansion-block:invocation:stripe")?.className ?? "")
+      .toContain("is-active-invocation-expansion");
+    expect(builtNodes.find((node) => node.id === "action:paypal-root")?.className ?? "")
+      .not.toContain("is-active-invocation-expansion");
+  });
+
   it("uses theme-aware node backgrounds in the dark graph stage instead of hardcoded light cards", () => {
     const builtNodes = buildFlowchartNodes({
       nodes: [

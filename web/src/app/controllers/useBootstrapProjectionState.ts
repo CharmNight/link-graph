@@ -123,6 +123,62 @@ function createEmptyInvocationExpansionSceneState(): InvocationExpansionSceneSta
   };
 }
 
+function sameStringList(left: string[] | null | undefined, right: string[] | null | undefined): boolean {
+  const normalizedLeft = left ?? [];
+  const normalizedRight = right ?? [];
+  return normalizedLeft.length === normalizedRight.length &&
+    normalizedLeft.every((item, index) => item === normalizedRight[index]);
+}
+
+function sameLayoutState(
+  left: LinkGraphLayoutState | null | undefined,
+  right: LinkGraphLayoutState | null | undefined,
+): boolean {
+  const leftPositions = left?.positions ?? {};
+  const rightPositions = right?.positions ?? {};
+  const leftKeys = Object.keys(leftPositions);
+  const rightKeys = Object.keys(rightPositions);
+  return leftKeys.length === rightKeys.length &&
+    leftKeys.every((nodeId) => {
+      const leftPosition = leftPositions[nodeId];
+      const rightPosition = rightPositions[nodeId];
+      return rightPosition != null &&
+        leftPosition.x === rightPosition.x &&
+        leftPosition.y === rightPosition.y;
+    });
+}
+
+function sameInvocationExpansionSceneState(
+  left: InvocationExpansionSceneState | null | undefined,
+  right: InvocationExpansionSceneState | null | undefined,
+): boolean {
+  return JSON.stringify(left ?? createEmptyInvocationExpansionSceneState()) ===
+    JSON.stringify(right ?? createEmptyInvocationExpansionSceneState());
+}
+
+function sameSceneStateField<K extends keyof LinkGraphSceneState>(
+  key: K,
+  left: LinkGraphSceneState[K],
+  right: LinkGraphSceneState[K],
+): boolean {
+  if (key === "collapsedNodeIds") {
+    return sameStringList(left as string[] | null | undefined, right as string[] | null | undefined);
+  }
+  if (key === "layoutState") {
+    return sameLayoutState(
+      left as LinkGraphLayoutState | null | undefined,
+      right as LinkGraphLayoutState | null | undefined,
+    );
+  }
+  if (key === "invocationExpansionState") {
+    return sameInvocationExpansionSceneState(
+      left as InvocationExpansionSceneState | null | undefined,
+      right as InvocationExpansionSceneState | null | undefined,
+    );
+  }
+  return Object.is(left, right);
+}
+
 /** 判断 bootstrap 快照是否显式携带了某个字段（区分"未提供"与"显式为 null"），用于像图谱美化结果这类需要保留本地覆写、仅在后台明确下发时才更新的字段。 */
 function hasOwnBootstrapField(
   state: LinkGraphBootstrapState,
@@ -404,6 +460,7 @@ function resolveSceneViewAnchorNodeId(
 /** 把 bootstrap 下发的场景状态与前端当前的场景状态合并：当后端语义未变化且锚点未被权威源切换时保留本地的选中/折叠/布局；否则以后端为准并最终归一化。 */
 function mergeSceneState(args: {
   nextSceneState: LinkGraphSceneState | undefined;
+  previousServerSceneState: LinkGraphSceneState | undefined;
   currentSceneState: LinkGraphSceneState | undefined;
   nodes: LinkGraphNode[];
   authoritativeAnchorNodeId?: string | null;
@@ -411,6 +468,7 @@ function mergeSceneState(args: {
   resolveAnchorNodeId: (nodes: LinkGraphNode[], preferredNodeId: string | null) => string | null;
 }): LinkGraphSceneState {
   const bootstrapSceneState = args.nextSceneState ?? createEmptySceneState();
+  const previousServerSceneState = args.previousServerSceneState ?? bootstrapSceneState;
   const currentSceneState = args.currentSceneState ?? bootstrapSceneState;
   const nodeIds = new Set(args.nodes.map((node) => node.id));
   const authoritativeAnchorNodeId = args.authoritativeAnchorNodeId && nodeIds.has(args.authoritativeAnchorNodeId)
@@ -424,16 +482,24 @@ function mergeSceneState(args: {
         && bootstrapSceneState.anchorNodeId !== currentSceneState.anchorNodeId,
   );
   const preserveLocalSceneUi = args.preserveLocalSceneUi && !incomingAnchorChanged;
+  const serverFieldChanged = <K extends keyof LinkGraphSceneState>(key: K): boolean =>
+    !sameSceneStateField(key, bootstrapSceneState[key], previousServerSceneState[key]);
+  const sceneField = <K extends keyof LinkGraphSceneState>(key: K): LinkGraphSceneState[K] =>
+    preserveLocalSceneUi && !serverFieldChanged(key)
+      ? currentSceneState[key]
+      : bootstrapSceneState[key];
+  const serverLayoutChanged = serverFieldChanged("layoutState") || serverFieldChanged("layoutRevision");
   const preserveLocalLayout = preserveLocalSceneUi
+    && !serverLayoutChanged
     && currentSceneState.layoutRevision >= bootstrapSceneState.layoutRevision;
 
   const mergedSceneState = preserveLocalSceneUi
     ? {
         ...bootstrapSceneState,
-        selectedNodeId: currentSceneState.selectedNodeId,
-        anchorNodeId: currentSceneState.anchorNodeId,
-        collapsedNodeIds: currentSceneState.collapsedNodeIds,
-        invocationExpansionState: currentSceneState.invocationExpansionState,
+        selectedNodeId: sceneField("selectedNodeId"),
+        anchorNodeId: sceneField("anchorNodeId"),
+        collapsedNodeIds: sceneField("collapsedNodeIds"),
+        invocationExpansionState: sceneField("invocationExpansionState"),
         layoutState: preserveLocalLayout ? currentSceneState.layoutState : bootstrapSceneState.layoutState,
         layoutRevision: preserveLocalLayout ? currentSceneState.layoutRevision : bootstrapSceneState.layoutRevision,
     }
@@ -584,32 +650,52 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
     }, nextAnalysisDisplayMode).visibleGraph;
 
     // 汇总 bootstrap 与当前画布中出现过的所有场景 id，确保不会因为某一方未提及就丢失对应场景的状态
+    const currentServerSceneStates = currentCanvasState.serverSceneStates ?? currentCanvasState.sceneStates;
     const sceneIds = Array.from(new Set([
       ...Object.keys(nextState.sceneStates),
       ...Object.keys(currentCanvasState.sceneStates),
+      ...Object.keys(currentServerSceneStates),
     ])) as LinkGraphSceneId[];
-
-    // 逐个场景合并 bootstrap 与本地场景状态，得到这一帧最终采用的场景状态集合
-    const mergedSceneStates = Object.fromEntries(
-      sceneIds.map((sceneId) => {
-        const projectedViews = {
-          factGraphView: projectedFactGraphView,
-          flowchartView: projectedFlowchartView,
-          resourceRelationView: projectedResourceRelationView,
-          architectureGraphView: projectedArchitectureGraphView,
-          classDiagramView: projectedClassDiagramView,
-          reviewGraphView: projectedReviewGraphView,
-        };
-        const nodes = resolveSceneNodes(
+    const projectedViews = {
+      factGraphView: projectedFactGraphView,
+      flowchartView: projectedFlowchartView,
+      resourceRelationView: projectedResourceRelationView,
+      architectureGraphView: projectedArchitectureGraphView,
+      classDiagramView: projectedClassDiagramView,
+      reviewGraphView: projectedReviewGraphView,
+    };
+    const sceneNodesById = Object.fromEntries(
+      sceneIds.map((sceneId) => [
+        sceneId,
+        resolveSceneNodes(
           sceneId,
           projectedViews,
           provisionalVisibleGraph,
           nextState.currentSceneId,
-        );
+        ),
+      ]),
+    ) as Record<LinkGraphSceneId, LinkGraphNode[]>;
+    const nextServerSceneStates = Object.fromEntries(
+      sceneIds.map((sceneId) => [
+        sceneId,
+        normalizeSceneState(
+          nextState.sceneStates[sceneId] ?? currentServerSceneStates[sceneId],
+          sceneNodesById[sceneId] ?? [],
+          args.resolveAnchorNodeId,
+          resolveSceneViewAnchorNodeId(sceneId, projectedViews),
+        ),
+      ]),
+    ) as Record<LinkGraphSceneId, LinkGraphSceneState>;
+
+    // 逐个场景合并 bootstrap 与本地场景状态，得到这一帧最终采用的场景状态集合
+    const mergedSceneStates = Object.fromEntries(
+      sceneIds.map((sceneId) => {
+        const nodes = sceneNodesById[sceneId] ?? [];
         return [
           sceneId,
           mergeSceneState({
-            nextSceneState: nextState.sceneStates[sceneId],
+            nextSceneState: nextServerSceneStates[sceneId],
+            previousServerSceneState: currentServerSceneStates[sceneId],
             currentSceneState: currentCanvasState.sceneStates[sceneId],
             nodes,
             authoritativeAnchorNodeId: resolveSceneViewAnchorNodeId(sceneId, projectedViews),
@@ -702,6 +788,7 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       anchorNodeId: nextAnchorNodeId,
       currentSceneId: nextState.currentSceneId,
       sceneStates: mergedSceneStates,
+      serverSceneStates: nextServerSceneStates,
       workspaceGraph: nextWorkspaceGraph,
       workspaceBaseGraph: args.resolveWorkspaceBaseGraph(nextState),
       semanticFactGraph: args.resolveSemanticFactGraph(nextState),

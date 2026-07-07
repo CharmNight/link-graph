@@ -28,6 +28,7 @@ internal class GraphBrowserBridgeRegistrar(
     private val interactionProbeEnabled: Boolean,
     private val dispatchArtifactSlice: (List<String>) -> Unit,
     private val dispatchBridgeAsync: (String, () -> GraphEditorMessage) -> Unit,
+    private val requestBrowserSync: () -> Unit,
     private val shouldLogFrontendTrace: (String) -> Boolean,
     private val runtimeTrace: ((String) -> Unit)?,
 ) {
@@ -59,7 +60,7 @@ internal class GraphBrowserBridgeRegistrar(
                             if (parsed.async) {
                                 dispatchBridgeAsync(parsed.actionLabel) { message }
                             } else {
-                                bridge.dispatch(message)
+                                dispatchBridgeSynchronously(message)
                             }
                         }
                         JBCefJSQuery.Response("ok")
@@ -77,6 +78,19 @@ internal class GraphBrowserBridgeRegistrar(
                 }
                 JBCefJSQuery.Response("ok")
             }
+        }
+    }
+
+    /**
+     * 同步 bridge 命令通常只修改编辑器 session 状态；dispatch 后如果 snapshot revision 变化，
+     * 需要主动把新快照推回前端，否则 UI 会停留在旧状态。
+     */
+    private fun dispatchBridgeSynchronously(message: GraphEditorMessage) {
+        val beforeRevision = bridge.currentState().snapshotRevision
+        bridge.dispatch(message)
+        val afterRevision = bridge.currentState().snapshotRevision
+        if (afterRevision != beforeRevision) {
+            requestBrowserSync()
         }
     }
 

@@ -79,6 +79,28 @@ class GraphBrowserBridgeRegistrarTest {
         assertTrue(source.contains("dispatchBridgeAsync(parsed.actionLabel)"))
     }
 
+    @Test
+    fun synchronousBridgeDispatchRequestsBrowserSyncWhenStateChanges() {
+        val source = readRegistrar()
+
+        assertTrue(
+            source.contains("requestBrowserSync"),
+            "synchronous bridge state mutations must request browser sync through a generic callback",
+        )
+        assertTrue(
+            source.contains("dispatchBridgeSynchronously(message)"),
+            "synchronous bridge commands must flow through the revision-aware dispatch helper",
+        )
+        assertTrue(
+            source.contains("beforeRevision") && source.contains("afterRevision"),
+            "the helper must compare snapshot revisions instead of hard-coding command names",
+        )
+        assertTrue(
+            source.contains("if (afterRevision != beforeRevision)"),
+            "browser sync should only be requested when dispatch actually changed editor state",
+        )
+    }
+
     private fun readRegistrar(): String =
         Files.readString(projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/ui/GraphBrowserBridgeRegistrar.kt"))
 }

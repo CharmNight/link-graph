@@ -61,6 +61,7 @@ export interface WorkbenchCanvasState {
   anchorNodeId: string | null;
   currentSceneId: LinkGraphSceneId;
   sceneStates: Record<LinkGraphSceneId, LinkGraphSceneState>;
+  serverSceneStates: Record<LinkGraphSceneId, LinkGraphSceneState>;
   workspaceGraph: LinkGraphDocument;
   workspaceBaseGraph: LinkGraphDocument | null;
   semanticFactGraph: LinkGraphDocument | null;
@@ -445,6 +446,7 @@ function buildInitialCanvasState({
     anchorNodeId: initialAnchorNodeId ?? sceneState.anchorNodeId ?? initialGraph.nodes[0]?.id ?? null,
     currentSceneId: initialState.currentSceneId,
     sceneStates: initialState.sceneStates,
+    serverSceneStates: initialState.sceneStates,
     workspaceGraph: resolveWorkingGraph(initialState) ?? initialGraph,
     workspaceBaseGraph: resolveWorkspaceBaseGraph(initialState),
     semanticFactGraph: resolveSemanticFactGraph(initialState),
