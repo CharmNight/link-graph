@@ -30,6 +30,9 @@ const TRACE_HISTORY_LIMIT = 24;
 const TRACE_BRIDGE_PAYLOAD_MAX_CHARS = 60 * 1024;
 /** 噪声较大的前端埋点事件名集合。这些事件触发频率高、信息密度低，记录后会污染历史，故直接忽略。 */
 const NOISY_FRONTEND_TRACE_EVENTS = new Set([
+  "flowchartView.runtimeHandles",
+  "flowchartView.renderState",
+  "graphFlowSurface.viewport.graphEffect",
   "routedEdge.render",
 ]);
 

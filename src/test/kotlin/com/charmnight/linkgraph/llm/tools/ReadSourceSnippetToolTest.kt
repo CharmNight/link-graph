@@ -13,6 +13,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.testFramework.PsiTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.jar.JarEntry
@@ -57,6 +58,114 @@ class ReadSourceSnippetToolTest : BasePlatformTestCase() {
         assertTrue(snippet.contains("fallback(request)"))
         assertEquals(2, result.payload["startLine"])
         assertEquals(3, result.payload["endLine"])
+    }
+
+    fun testPreservesClassContextWhenReadingBoundedLineRange() {
+        val sourceFile = Path.of(requireNotNull(project.basePath))
+            .resolve("src/main/java/com/example/ContextualOrderService.java")
+        Files.createDirectories(sourceFile.parent)
+        Files.writeString(
+            sourceFile,
+            """
+            class ContextualOrderService {
+                private String repository;
+                private String mapper;
+                private String validator;
+                private String publisher;
+                private String clock;
+
+                String submit(String request) {
+                    return fallback(request);
+                }
+            }
+            """.trimIndent(),
+        )
+        val tool = ReadSourceSnippetTool(CodeReadToolFacade())
+
+        val result = tool.invoke(
+            input = mapOf(
+                "filePath" to sourceFile.toString(),
+                "startLine" to 8,
+                "endLine" to 10,
+            ),
+            context = ToolExecutionContext(
+                project = project,
+                snapshot = testSnapshot().toToolGraphSnapshot(),
+                artifactStore = InMemoryArtifactStore(),
+                runBudget = RunBudget(),
+            ),
+        )
+
+        val snippet = result.payload["snippet"]?.toString().orEmpty()
+        assertTrue(result.success, result.errorMessage ?: "expected source read to succeed")
+        assertTrue(snippet.contains("class context:"))
+        assertTrue(snippet.contains("class ContextualOrderService"))
+        assertTrue(snippet.contains("return fallback(request);"))
+    }
+
+    fun testCapsWholeFileSnippetWhenNoLineRangeIsProvided() {
+        val sourceFile = Path.of(requireNotNull(project.basePath))
+            .resolve("src/main/java/com/example/LargeGeneratedSource.java")
+        Files.createDirectories(sourceFile.parent)
+        Files.writeString(
+            sourceFile,
+            (1..520).joinToString("\n") { lineNumber ->
+                "class LargeGeneratedSourceLine$lineNumber {}"
+            },
+        )
+        val tool = ReadSourceSnippetTool(CodeReadToolFacade())
+
+        val result = tool.invoke(
+            input = mapOf(
+                "filePath" to "src/main/java/com/example/LargeGeneratedSource.java",
+            ),
+            context = ToolExecutionContext(
+                project = project,
+                snapshot = testSnapshot().toToolGraphSnapshot(),
+                artifactStore = InMemoryArtifactStore(),
+                runBudget = RunBudget(),
+            ),
+        )
+
+        val snippet = result.payload["snippet"]?.toString().orEmpty()
+        assertTrue(result.success, result.errorMessage ?: "expected capped source read to succeed")
+        assertTrue(snippet.contains("LargeGeneratedSourceLine1"))
+        assertTrue(snippet.contains("LargeGeneratedSourceLine400"))
+        assertFalse(snippet.contains("LargeGeneratedSourceLine401"))
+        assertTrue(snippet.contains("片段已截断"))
+    }
+
+    fun testCapsWholeFileSnippetByBytesWhenLinesAreVeryLarge() {
+        val sourceFile = Path.of(requireNotNull(project.basePath))
+            .resolve("src/main/java/com/example/HugeLineGeneratedSource.java")
+        Files.createDirectories(sourceFile.parent)
+        Files.writeString(
+            sourceFile,
+            (1..2).joinToString("\n") { lineNumber ->
+                "class HugeGeneratedSourceLine$lineNumber { val payload = \"${"a".repeat(70_000)}\" }"
+            },
+        )
+        val tool = ReadSourceSnippetTool(CodeReadToolFacade())
+
+        val result = tool.invoke(
+            input = mapOf(
+                "filePath" to "src/main/java/com/example/HugeLineGeneratedSource.java",
+            ),
+            context = ToolExecutionContext(
+                project = project,
+                snapshot = testSnapshot().toToolGraphSnapshot(),
+                artifactStore = InMemoryArtifactStore(),
+                runBudget = RunBudget(),
+            ),
+        )
+
+        val snippet = result.payload["snippet"]?.toString().orEmpty()
+        val snippetBytes = snippet.toByteArray(StandardCharsets.UTF_8).size
+        assertTrue(result.success, result.errorMessage ?: "expected capped source read to succeed")
+        assertTrue(snippet.contains("HugeGeneratedSourceLine1"))
+        assertFalse(snippet.contains("HugeGeneratedSourceLine2"))
+        assertTrue(snippetBytes <= 65_536, "expected snippet <= 65536 bytes, got $snippetBytes")
+        assertTrue(snippet.contains("片段已截断"))
     }
 
     fun testReadsProjectRelativePathAgainstProjectBasePath() {

@@ -1858,7 +1858,7 @@ describe("GraphFlowSurface", () => {
     expect(onCreateEdge).toHaveBeenCalledWith("method:anchor", "method:tail", "source-bottom", "target-top");
   });
 
-  it("summarizes graph shape traces without sending every node and edge id through the bridge", () => {
+  it("does not send high-frequency graph effect traces through the bridge", () => {
     installResizeObserverStub();
     const traceSink = vi.fn();
     window.linkGraphDebugTrace = traceSink;
@@ -1893,14 +1893,6 @@ describe("GraphFlowSurface", () => {
       .map(([payload]) => JSON.parse(String(payload)))
       .find((trace) => trace.event === "graphFlowSurface.viewport.graphEffect");
 
-    expect(graphEffectTrace?.payload.graphShapeSignature).toBeUndefined();
-    expect(graphEffectTrace?.payload.graphShape).toEqual({
-      length: expect.any(Number),
-      hash: expect.any(String),
-    });
-    expect(JSON.stringify(graphEffectTrace)).not.toContain(
-      "method:very-long-render-chain-node-0|method:very-long-render-chain-node-1",
-    );
-    expect(JSON.stringify(graphEffectTrace)).not.toContain("edge:very-long-render-chain-edge-2");
+    expect(graphEffectTrace).toBeUndefined();
   });
 });

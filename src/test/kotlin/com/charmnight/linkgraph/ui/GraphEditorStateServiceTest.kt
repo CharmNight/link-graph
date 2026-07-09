@@ -835,6 +835,120 @@ class GraphEditorStateServiceTest {
     }
 
     @Test
+    fun markGraphChanged在流程图模式下不会让子流程选中节点替代主流程锚点() {
+        val service = GraphEditorStateService()
+        val callerSignature = "com.example.OrderController.submit(java.lang.String):void"
+        val childSignature = "com.example.SystemService.createInfo():void"
+        val flowchartGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:submit-order",
+                    type = NodeType.METHOD,
+                    title = "OrderController.submit",
+                    signature = callerSignature,
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf(
+                        "flowchart.kind" to "ENTRY",
+                        "flow.ownerMethod" to callerSignature,
+                    ),
+                ),
+                GraphNode(
+                    id = "invoke:create-info",
+                    type = NodeType.FLOW_ACTION,
+                    title = "调用 SystemService.createInfo",
+                    signature = childSignature,
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf(
+                        "flow.kind" to "INVOCATION",
+                        "flowchart.kind" to "SUBROUTINE",
+                        "flow.ownerMethod" to callerSignature,
+                    ),
+                ),
+                GraphNode(
+                    id = "method:create-info",
+                    type = NodeType.METHOD,
+                    title = "SystemService.createInfo",
+                    signature = childSignature,
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf(
+                        "flowchart.kind" to "ENTRY",
+                        "flow.ownerMethod" to childSignature,
+                        "linkGraph.expansion.id" to "invocation:expansion-1",
+                        "linkGraph.expansion.sourceInvocationNodeId" to "invoke:create-info",
+                    ),
+                ),
+                GraphNode(
+                    id = "action:create-info-save",
+                    type = NodeType.FLOW_ACTION,
+                    title = "saveInfo()",
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf(
+                        "flow.kind" to "ACTION",
+                        "flowchart.kind" to "PROCESS",
+                        "flow.ownerMethod" to childSignature,
+                        "linkGraph.expansion.id" to "invocation:expansion-1",
+                        "linkGraph.expansion.sourceInvocationNodeId" to "invoke:create-info",
+                    ),
+                ),
+            ),
+            edges = listOf(
+                com.charmnight.linkgraph.model.GraphEdge(
+                    id = "control-submit-to-invoke",
+                    type = com.charmnight.linkgraph.model.EdgeType.CONTROL_FLOW,
+                    fromNodeId = "method:submit-order",
+                    toNodeId = "invoke:create-info",
+                    sourceTag = GraphSourceTag.FACT,
+                ),
+                com.charmnight.linkgraph.model.GraphEdge(
+                    id = "control-create-to-save",
+                    type = com.charmnight.linkgraph.model.EdgeType.CONTROL_FLOW,
+                    fromNodeId = "method:create-info",
+                    toNodeId = "action:create-info-save",
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf(
+                        "linkGraph.expansion.id" to "invocation:expansion-1",
+                        "linkGraph.expansion.sourceInvocationNodeId" to "invoke:create-info",
+                    ),
+                ),
+            ),
+        )
+
+        service.loadAnalysisOutcome(
+            outcome = AnalysisOutcome(
+                displayMode = AnalysisDisplayMode.FLOWCHART,
+                visibleGraph = flowchartGraph,
+                fullGraph = flowchartGraph,
+                anchorNodeId = "method:submit-order",
+                selectedMethodSignature = callerSignature,
+                displayName = "OrderController.submit",
+                feedbackLevel = ApplicationFeedbackLevel.SUCCESS,
+                statusMessage = "已加载流程图",
+                projectionStats = AnalysisProjectionStats(),
+                factGraphView = FactGraphViewDocument(
+                    visibleGraph = flowchartGraph,
+                    fullGraph = flowchartGraph,
+                    anchorNodeId = "method:submit-order",
+                ),
+                flowchartView = FlowchartViewDocument(
+                    visibleGraph = flowchartGraph,
+                    fullGraph = flowchartGraph,
+                    anchorNodeId = "method:submit-order",
+                ),
+                resourceRelationView = ResourceRelationViewDocument(),
+            ),
+            source = "currentSubject",
+        )
+        service.selectNode("action:create-info-save")
+
+        service.markGraphChanged(flowchartGraph)
+
+        val snapshot = service.snapshot()
+        assertEquals("action:create-info-save", snapshot.selectedNodeId)
+        assertEquals("method:submit-order", snapshot.flowchartView.anchorNodeId)
+        assertEquals("method:submit-order", snapshot.currentSceneState().anchorNodeId)
+    }
+
+    @Test
     fun switchAnalysisDisplayMode在全局图变更后保留各视图独立文档() {
         val service = GraphEditorStateService()
         val factGraph = GraphDocument(

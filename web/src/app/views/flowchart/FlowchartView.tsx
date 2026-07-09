@@ -12,6 +12,7 @@ import { canNavigateToSource } from "../../sourceNavigation";
 import type { FlowchartViewDocument, LinkGraphDocument, LinkGraphEdge } from "../../types";
 import { DraftCompareSummary } from "../../components/DraftCompareSummary";
 import type { EditableStageProps } from "../viewStageProps";
+import { FlowchartInvocationExpansionFrames } from "./FlowchartInvocationExpansionFrames";
 import { layoutFlowchartView } from "./flowchartLayout";
 import {
   buildFlowchartInvocationExpansionRegistry,
@@ -644,6 +645,13 @@ export function FlowchartView({
     () => new Map(view.fullGraph.nodes.map((node) => [node.id, node])),
     [view.fullGraph.nodes],
   );
+  const expandedInvocationSourceNodeIds = useMemo(
+    () => invocationExpansionRegistry.entries
+      .filter((entry) => entry.state === "expanded")
+      .map((entry) => entry.sourceInvocationNodeId)
+      .filter((nodeId): nodeId is string => Boolean(nodeId)),
+    [invocationExpansionRegistry.entries],
+  );
   const anchorNode = useMemo(
     () => visibleNodes.find((node) => node.id === view.anchorNodeId) ?? null,
     [view.anchorNodeId, visibleNodes],
@@ -668,6 +676,7 @@ export function FlowchartView({
       explanationFocusNodeId,
       draftChangedNodeIds,
       activeExpansionIds: invocationExpansionRegistry.sceneState.activeExpansionPath,
+      expandedInvocationSourceNodeIds,
       draftCompareNodeStatuses: draftCompareProjection?.nodeStatuses,
       projectionIndex: view.projectionIndex ?? null,
       nodeSizeRegistry,
@@ -678,6 +687,7 @@ export function FlowchartView({
       selectedNodeId,
       explanationFocusNodeId,
       draftChangedNodeIds,
+      expandedInvocationSourceNodeIds,
       invocationExpansionRegistry.sceneState.activeExpansionPath,
       draftCompareProjection?.nodeStatuses,
       view.projectionIndex,
@@ -880,6 +890,13 @@ export function FlowchartView({
             ];
           }
         }
+        viewportOverlay={({ nodes }) => (
+          <FlowchartInvocationExpansionFrames
+            nodes={nodes}
+            registry={invocationExpansionRegistry}
+            nodeSizes={layoutState.sizeSnapshot}
+          />
+        )}
         onSelectNode={onSelectNode}
         onSelectionGroupChange={onSelectionGroupChange}
         onInspectNode={onInspectNode}

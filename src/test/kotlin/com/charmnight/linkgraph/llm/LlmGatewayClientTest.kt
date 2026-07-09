@@ -5,6 +5,7 @@ import com.charmnight.linkgraph.settings.*
 
 import java.io.ByteArrayInputStream
 import java.io.InputStream
+import java.io.IOException
 import java.net.Authenticator
 import java.net.CookieHandler
 import java.net.ProxySelector
@@ -362,6 +363,34 @@ class LlmGatewayClientTest {
     }
 
     @Test
+    fun streamSseStopsReadingImmediatelyAfterDoneMarker() {
+        val body = """
+            data: {"delta":"hi"}
+            data: [DONE]
+        """.trimIndent() + "\n"
+        val client = RecordingHttpClient(
+            response = SimpleHttpResponse(
+                statusCode = 200,
+                body = FailsIfReadAfterPayloadInputStream(body.toByteArray(StandardCharsets.UTF_8)),
+            ),
+        )
+        val events = mutableListOf<LlmStreamEvent>()
+
+        val response = LlmGatewayClient.streamSse(
+            client = client,
+            request = testLlmRequest(),
+            url = "https://api.example.com/v1/responses",
+            headers = emptyList(),
+            payload = """{"stream":true}""",
+            listener = events::add,
+            extractTextDelta = { data -> LlmJsonCodec.parseObject(data)["delta"] as? String },
+        )
+
+        assertEquals("hi", response.content)
+        assertEquals(LlmStreamEvent.Completed(response), events.last())
+    }
+
+    @Test
     fun generateJsonRetriesOn429AndSucceeds() {
         // 队列：第 1 次 429（带 Retry-After: 0，避免测试 sleep），第 2 次 200。
         val client = QueueHttpClient(
@@ -691,6 +720,28 @@ class LlmGatewayClientTest {
             pushPromiseHandler: HttpResponse.PushPromiseHandler<T>,
         ): CompletableFuture<HttpResponse<T>> {
             error("sendAsync is not used by gateway support tests.")
+        }
+    }
+
+    private class FailsIfReadAfterPayloadInputStream(
+        private val bytes: ByteArray,
+    ) : InputStream() {
+        private var index = 0
+
+        override fun read(): Int {
+            if (index >= bytes.size) {
+                throw IOException("stream read continued after DONE marker")
+            }
+            return bytes[index++].toInt() and 0xff
+        }
+
+        override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+            if (length == 0) {
+                return 0
+            }
+            val next = read()
+            buffer[offset] = next.toByte()
+            return 1
         }
     }
 

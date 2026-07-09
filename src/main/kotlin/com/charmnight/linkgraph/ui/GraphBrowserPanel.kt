@@ -417,6 +417,9 @@ class GraphBrowserPanel private constructor(
         private val FRONTEND_TRACE_EVENT_REGEX: Regex = Regex(""""event":"([^"]+)"""")
         // 高频且对排查价值不大的前端事件，命中后不再写日志
         private val NOISY_FRONTEND_TRACE_EVENTS: Set<String> = setOf(
+            "flowchartView.runtimeHandles",
+            "flowchartView.renderState",
+            "graphFlowSurface.viewport.graphEffect",
             "routedEdge.render",
             "jcef.runtimeProbe",
         )

@@ -44,6 +44,28 @@ export const FlowchartNodeCard = memo(function FlowchartNodeCard({
   draftCompareStatus,
   onMeasure,
 }: FlowchartNodeCardProps) {
+  const kind = flowchartKind(node);
+  if (kind === "MERGE") {
+    return (
+      <NodeCardBase
+        node={node}
+        selected={selected}
+        explanationFocused={explanationFocused}
+        draftChanged={draftChanged}
+        onMeasure={onMeasure}
+        measureDeps={[node, onMeasure]}
+        variantClassName={["flowchart-node-card", "kind-merge", "is-compact-merge"]}
+      >
+        <span
+          className="flowchart-merge-marker"
+          role="img"
+          aria-label="分支在此合流"
+          title={nodeTooltip(node)}
+        />
+        <IssueBadge draftCompareStatus={draftCompareStatus} />
+      </NodeCardBase>
+    );
+  }
   const signatureText = signaturePreview(node);
   return (
     <NodeCardBase
@@ -53,7 +75,7 @@ export const FlowchartNodeCard = memo(function FlowchartNodeCard({
       draftChanged={draftChanged}
       onMeasure={onMeasure}
       measureDeps={[node, onMeasure]}
-      variantClassName={["flowchart-node-card", `kind-${flowchartKind(node).toLowerCase()}`]}
+      variantClassName={["flowchart-node-card", `kind-${kind.toLowerCase()}`]}
     >
       <div className="flow-node-head">
         <span className="flowchart-node-kind">{flowchartKindLabel(node)}</span>

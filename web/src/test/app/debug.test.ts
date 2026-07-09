@@ -66,6 +66,18 @@ describe("traceLinkGraph", () => {
     expect(window.__linkGraphTraceHistory ?? []).toHaveLength(0);
   });
 
+  it("drops high-frequency flowchart viewport traces before they cross the debug bridge", () => {
+    const traceSink = vi.fn();
+    window.linkGraphDebugTrace = traceSink;
+
+    traceLinkGraph("flowchartView.runtimeHandles", { nodes: [], edges: [] });
+    traceLinkGraph("flowchartView.renderState", { nodeCount: 12, edgeCount: 24 });
+    traceLinkGraph("graphFlowSurface.viewport.graphEffect", { graphSignature: "layout:1" });
+
+    expect(traceSink).not.toHaveBeenCalled();
+    expect(window.__linkGraphTraceHistory ?? []).toHaveLength(0);
+  });
+
   it("mirrors startup traces to console warning before the bridge is ready", () => {
     const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     window.__linkGraphDebugEnabled = true;

@@ -117,4 +117,23 @@ class LinkGraphLoggingTest {
             "Browser panel should pass null trace sinks to transport helpers when trace is disabled.",
         )
     }
+
+    @Test
+    fun frontendTraceNoiseFilterCoversHighFrequencyFlowchartViewportEvents() {
+        val projectRoot = Path.of(System.getProperty("user.dir"))
+        val graphBrowserPanel = Files.readString(
+            projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/ui/GraphBrowserPanel.kt"),
+        )
+
+        listOf(
+            "flowchartView.runtimeHandles",
+            "flowchartView.renderState",
+            "graphFlowSurface.viewport.graphEffect",
+        ).forEach { eventName ->
+            assertTrue(
+                graphBrowserPanel.contains("\"$eventName\""),
+                "GraphBrowserPanel should filter high-frequency frontend trace event: $eventName",
+            )
+        }
+    }
 }

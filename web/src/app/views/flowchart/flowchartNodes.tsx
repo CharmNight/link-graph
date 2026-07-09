@@ -67,6 +67,7 @@ interface BuildFlowchartNodesOptions {
   explanationFocusNodeId?: string | null;
   draftChangedNodeIds?: string[];
   activeExpansionIds?: string[];
+  expandedInvocationSourceNodeIds?: string[];
   draftCompareNodeStatuses?: Record<string, DraftCompareStatus>;
   projectionIndex?: GraphProjectionIndex | null;
   nodeSizeRegistry: NodeSizeRegistry;
@@ -548,6 +549,7 @@ export function buildFlowchartNodes({
   explanationFocusNodeId = null,
   draftChangedNodeIds = [],
   activeExpansionIds = [],
+  expandedInvocationSourceNodeIds = [],
   draftCompareNodeStatuses = {},
   projectionIndex = null,
   nodeSizeRegistry,
@@ -590,6 +592,8 @@ export function buildFlowchartNodes({
     const mergeTargetPortCounts = mergeTargetPortLayout.countsByNodeId.get(node.id);
     const projectedDraftChanged = Array.from(draftChangedNodeIdSet)
       .some((draftChangedNodeId) => nodeMatchesProjectedId(node, draftChangedNodeId));
+    const projectedInvocationExpansionSource = expandedInvocationSourceNodeIds
+      .some((sourceNodeId) => nodeMatchesProjectedId(node, sourceNodeId));
     const projectedDraftCompareStatus = resolveProjectedDraftCompareStatus(node, draftCompareNodeStatuses);
     return {
       id: node.id,
@@ -602,6 +606,7 @@ export function buildFlowchartNodes({
           draftChangedNodeIdSet: projectedDraftChanged ? new Set([node.id]) : new Set(),
           draftCompareStatus: projectedDraftCompareStatus,
         }),
+        projectedInvocationExpansionSource ? "is-invocation-expansion-source" : "",
         activeInvocationExpansion ? "is-active-invocation-expansion" : "",
       ].join(" ").trim(),
       selected: selectedNodeId === node.id,

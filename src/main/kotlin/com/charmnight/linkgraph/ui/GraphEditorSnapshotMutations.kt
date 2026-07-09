@@ -308,9 +308,16 @@ internal fun GraphEditorStateSnapshot.withWorkspaceGraphChanged(
     graphEditTransaction: GraphEditTransaction? = null,
 ): GraphEditorStateSnapshot {
     val effectiveSignature = selectedMethodSignatureOverride ?: selectedMethodSignature
+    val sceneState = currentSceneState()
+    val viewAnchorNodeId = workspaceGraphChangeViewAnchorNodeId(
+        graph = graph,
+        sceneState = sceneState,
+        selectedMethodSignatureOverride = selectedMethodSignatureOverride,
+        effectiveSignature = effectiveSignature,
+    )
     val nextViewDocuments = buildViewDocuments(
         workspaceGraph = graph,
-        selectedNodeId = currentSceneState().selectedNodeId,
+        selectedNodeId = viewAnchorNodeId,
         selectedMethodSignature = effectiveSignature,
     )
     val nextVisibleGraph = when (analysisDisplayMode) {
@@ -321,7 +328,6 @@ internal fun GraphEditorStateSnapshot.withWorkspaceGraphChanged(
         AnalysisDisplayMode.CLASS_DIAGRAM -> classDiagramView.visibleGraph
         AnalysisDisplayMode.REVIEW_GRAPH -> reviewGraphView.visibleGraph
     }
-    val sceneState = currentSceneState()
     val nextSelectedNodeId = resolveSelectedNodeId(
         graph = nextVisibleGraph,
         selectedNodeId = sceneState.selectedNodeId,
@@ -332,9 +338,15 @@ internal fun GraphEditorStateSnapshot.withWorkspaceGraphChanged(
         preferred = sceneState.layoutState,
         fallback = extractLayoutState(nextVisibleGraph),
     )
+    val nextAnchorNodeId = when (analysisDisplayMode) {
+        AnalysisDisplayMode.FLOWCHART -> nextViewDocuments.flowchartView.anchorNodeId
+            ?: nextSelectedNodeId
+            ?: nextVisibleGraph.nodes.firstOrNull()?.id
+        else -> nextSelectedNodeId ?: nextVisibleGraph.nodes.firstOrNull()?.id
+    }
     val nextSceneState = sceneState.copy(
         selectedNodeId = nextSelectedNodeId,
-        anchorNodeId = nextSelectedNodeId ?: nextVisibleGraph.nodes.firstOrNull()?.id,
+        anchorNodeId = nextAnchorNodeId,
         layoutState = nextLayoutState,
     )
     return resetDerivedGraphState(
@@ -366,6 +378,24 @@ internal fun GraphEditorStateSnapshot.withWorkspaceGraphChanged(
         selectedMethodSignature = effectiveSignature,
         lastMessageType = "workspaceGraphChanged",
     )
+}
+
+private fun GraphEditorStateSnapshot.workspaceGraphChangeViewAnchorNodeId(
+    graph: GraphDocument,
+    sceneState: GraphSceneState,
+    selectedMethodSignatureOverride: String?,
+    effectiveSignature: String?,
+): String? {
+    if (analysisDisplayMode != AnalysisDisplayMode.FLOWCHART) {
+        return sceneState.selectedNodeId
+    }
+    if (!selectedMethodSignatureOverride.isNullOrBlank() && selectedMethodSignatureOverride != selectedMethodSignature) {
+        return findNodeIdBySignature(graph, selectedMethodSignatureOverride)
+    }
+    return flowchartView.anchorNodeId
+        ?: sceneState.anchorNodeId
+        ?: findNodeIdBySignature(graph, effectiveSignature)
+        ?: sceneState.selectedNodeId
 }
 
 /** 当一次图编辑请求被校验/拒绝时，把首条拒绝原因以错误级别反馈写入快照，并清空挂起事务。 */

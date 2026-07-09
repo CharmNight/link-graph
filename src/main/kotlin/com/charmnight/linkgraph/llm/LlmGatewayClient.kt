@@ -174,15 +174,15 @@ internal object LlmGatewayClient {
         val content = StringBuilder()
         listener(LlmStreamEvent.Started(model = request.model))
         response.body().buffered().use { input ->
-            BufferedReader(InputStreamReader(input, StandardCharsets.UTF_8)).useLines { lines ->
-                lines.forEach { line ->
+            BufferedReader(InputStreamReader(input, StandardCharsets.UTF_8)).use { reader ->
+                for (line in reader.lineSequence()) {
                     rawEvents.append(line).append('\n')
                     if (rawEvents.length > MAX_SSE_EVENT_CHARS) {
                         error("Remote LLM stream exceeded maximum supported size.")
                     }
                     extractSseDataPayload(line)?.let { data ->
                         if (data == DONE_MARKER) {
-                            return@forEach
+                            return@use
                         }
                         extractTextDelta(data)?.takeIf(String::isNotEmpty)?.let { delta ->
                             content.append(delta)
@@ -451,4 +451,3 @@ private val REDACT_KEY_PATTERN: Regex = Regex(
 private val REDACT_VALUE_PATTERN: Regex = Regex(
     """"[^"]*"|'[^']*'|`[^`]*`|[^\s,;}\])]+(?:\s+[^\s,;}\])]+)*""",
 )
-

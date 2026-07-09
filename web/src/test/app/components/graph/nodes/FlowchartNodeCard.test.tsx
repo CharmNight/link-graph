@@ -58,6 +58,25 @@ function expandedScopeNode(): LinkGraphNode {
   };
 }
 
+function expandedMergeNode(): LinkGraphNode {
+  return {
+    id: "merge:expanded-join",
+    type: "MERGE",
+    title: "汇合",
+    inputs: [],
+    outputs: [],
+    certainty: "PROVEN",
+    bindingStatus: "BOUND",
+    metadata: {
+      "flowchart.kind": "MERGE",
+      "flow.ownerMethod": "com.example.SourceToMapUtil.genderSourceMap(java.lang.Object):java.util.Map",
+      "linkGraph.expansion.id": "invocation:source-map",
+      "linkGraph.expansion.sourceInvocationNodeId": "invoke:gender-source-map",
+      "linkGraph.expansion.targetSignature": "com.example.SourceToMapUtil.genderSourceMap(java.lang.Object):java.util.Map",
+    },
+  };
+}
+
 const originalOffsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
 const originalOffsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
 
@@ -125,6 +144,23 @@ describe("FlowchartNodeCard", () => {
 
     expect(container.textContent).toContain("调用展开");
     expect(container.textContent).toContain("展开方法 · SystemService.createInfo");
+  });
+
+  it("renders merge nodes as compact join markers without repeated expansion method text", () => {
+    const { container } = render(
+      <FlowchartNodeCard
+        node={expandedMergeNode()}
+        selected={false}
+      />,
+    );
+
+    const mergeCard = container.querySelector(".flowchart-node-card.kind-merge");
+    expect(mergeCard).not.toBeNull();
+    expect(mergeCard).toHaveClass("is-compact-merge");
+    expect(container.textContent).not.toContain("汇合");
+    expect(container.querySelector(".flowchart-merge-marker")).toHaveAttribute("aria-label", "分支在此合流");
+    expect(container.textContent).not.toContain("展开方法");
+    expect(container.textContent).not.toContain("SourceToMapUtil.genderSourceMap");
   });
 
   it("constrains long code-like labels inside flowchart node bounds", () => {

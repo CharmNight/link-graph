@@ -72,6 +72,8 @@ export interface UseMeasuredLayoutResult {
   edges: LinkGraphEdge[];
   /** 是否正在布局中。 */
   layoutPending: boolean;
+  /** 当前节点尺寸快照，供视口覆盖层等非布局消费者复用实测尺寸。 */
+  sizeSnapshot?: ReadonlyMap<string, NodeMeasuredSize>;
   /** 手动触发重新布局。 */
   requestRelayout: () => void;
 }
@@ -734,6 +736,7 @@ export function useMeasuredLayout({
     nodes: layoutState.nodes,
     edges: layoutState.edges,
     layoutPending: layoutState.layoutPending,
+    sizeSnapshot: measuredSizes,
     // 手动触发：递增 nonce 让 effect 重新跑
     requestRelayout: () => {
       setManualNonce((current) => current + 1);

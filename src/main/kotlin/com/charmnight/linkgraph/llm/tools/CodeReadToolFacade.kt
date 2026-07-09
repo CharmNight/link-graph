@@ -18,7 +18,9 @@ import com.charmnight.linkgraph.foundation.LoggedFailures
 import com.charmnight.linkgraph.source.SourceContentResolver
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.nio.file.Path
 
 /**
  * 统一处理代码读取。
@@ -125,34 +127,165 @@ class CodeReadToolFacade(
                 sourceDiagnostic = content.diagnostic,
             )
         }
-        val lines = LoggedFailures.orNull(logger, "resolveSnippet Files.readAllLines") {
-            Files.readAllLines(path)
-        } ?: return null
-        if (startLine == null || endLine == null) {
-            return RichSourceSnippet(
-                filePath = filePath,
-                startLine = startLine,
-                endLine = endLine,
-                snippet = lines.joinToString("\n"),
-            )
+        return LoggedFailures.orNull(logger, "resolveSnippet read bounded file snippet") {
+            readBoundedFileSnippet(path, filePath, startLine, endLine)
         }
-        val fromIndex = (startLine - 1).coerceAtLeast(0)
-        val toIndex = endLine.coerceAtMost(lines.size)
-        if (fromIndex >= toIndex) {
+    }
+
+    private fun readBoundedFileSnippet(
+        path: Path,
+        filePath: String,
+        startLine: Int?,
+        endLine: Int?,
+    ): RichSourceSnippet? {
+        val firstLine = startLine?.coerceAtLeast(1) ?: 1
+        val requestedLastLine = endLine?.coerceAtLeast(firstLine)
+        val focusedLastLine = minOf(
+            requestedLastLine ?: (firstLine + MAX_SOURCE_SNIPPET_LINES - 1),
+            firstLine + MAX_SOURCE_SNIPPET_LINES - 1,
+        )
+        val includeContext = startLine != null && endLine != null
+        val stopAfterLine = if (includeContext) focusedLastLine + SOURCE_NEIGHBOR_CONTEXT_LINES else focusedLastLine
+        val imports = mutableListOf<String>()
+        val classContext = mutableListOf<String>()
+        val pendingAnnotations = mutableListOf<String>()
+        val beforeFocus = ArrayDeque<String>()
+        val focused = BoundedSnippetLines(maxBytes = MAX_SOURCE_SNIPPET_BYTES)
+        val afterFocus = mutableListOf<String>()
+        var lineNumber = 0
+        var truncated = requestedLastLine != null && requestedLastLine > focusedLastLine
+        var collectingClassContext = false
+
+        Files.newBufferedReader(path, StandardCharsets.UTF_8).use { reader ->
+            while (true) {
+                val line = reader.readLine() ?: break
+                lineNumber += 1
+                if (line.trim().startsWith("import ")) {
+                    imports += line
+                }
+                when {
+                    lineNumber < firstLine -> {
+                        updateClassContextBeforeFocus(
+                            line = line,
+                            classContext = classContext,
+                            pendingAnnotations = pendingAnnotations,
+                            isCollecting = collectingClassContext,
+                            onCollectingChanged = { collectingClassContext = it },
+                        )
+                        if (includeContext) {
+                            beforeFocus.addLast(line)
+                            while (beforeFocus.size > SOURCE_NEIGHBOR_CONTEXT_LINES) {
+                                beforeFocus.removeFirst()
+                            }
+                        }
+                    }
+                    lineNumber in firstLine..focusedLastLine -> {
+                        if (!focused.add(line)) {
+                            truncated = true
+                            break
+                        }
+                    }
+                    includeContext && lineNumber in (focusedLastLine + 1)..stopAfterLine -> afterFocus += line
+                }
+                if (lineNumber >= stopAfterLine) {
+                    if (reader.readLine() != null && requestedLastLine == null) {
+                        truncated = true
+                    }
+                    break
+                }
+            }
+        }
+        if (focused.isEmpty()) {
             return null
         }
-        val focusedSnippet = lines.subList(fromIndex, toIndex).joinToString("\n")
+
+        val focusedSnippet = focused.joinToString()
+        val snippet = if (includeContext) {
+            buildContextualSnippet(
+                imports = imports,
+                classContext = classContext,
+                beforeFocus = beforeFocus.toList(),
+                afterFocus = afterFocus,
+                focusedSnippet = focusedSnippet,
+                truncated = truncated,
+            )
+        } else {
+            buildPlainSnippet(focusedSnippet, truncated)
+        }
         return RichSourceSnippet(
             filePath = filePath,
             startLine = startLine,
             endLine = endLine,
-            snippet = sourceContextCollector.collect(
-                lines = lines,
-                startLine = startLine,
-                endLine = endLine,
-                focusedSnippet = focusedSnippet,
-            ),
+            snippet = snippet,
         )
+    }
+
+    private fun buildContextualSnippet(
+        imports: List<String>,
+        classContext: List<String>,
+        beforeFocus: List<String>,
+        afterFocus: List<String>,
+        focusedSnippet: String,
+        truncated: Boolean,
+    ): String {
+        val neighborContext = (beforeFocus + afterFocus)
+            .joinToString("\n")
+            .trim()
+            .takeIf(String::isNotBlank)
+        val body = listOfNotNull(
+            imports.distinct().joinToString("\n").takeIf(String::isNotBlank)?.let { "imports:\n$it" },
+            classContext.joinToString("\n").trim().takeIf(String::isNotBlank)?.let { "class context:\n$it" },
+            neighborContext?.let { "neighbor context:\n$it" },
+            "current method:\n$focusedSnippet",
+        ).joinToString("\n\n")
+        return buildPlainSnippet(body, truncated)
+    }
+
+    private fun updateClassContextBeforeFocus(
+        line: String,
+        classContext: MutableList<String>,
+        pendingAnnotations: MutableList<String>,
+        isCollecting: Boolean,
+        onCollectingChanged: (Boolean) -> Unit,
+    ) {
+        if (isCollecting) {
+            classContext += line
+            if (line.contains("{")) {
+                onCollectingChanged(false)
+            }
+            return
+        }
+        val trimmed = line.trim()
+        if (trimmed.startsWith("@")) {
+            pendingAnnotations += line
+            return
+        }
+        if (CLASS_DECLARATION_REGEX.containsMatchIn(line)) {
+            classContext.clear()
+            classContext += pendingAnnotations
+            classContext += line
+            pendingAnnotations.clear()
+            onCollectingChanged(!line.contains("{"))
+            return
+        }
+        pendingAnnotations.clear()
+    }
+
+    private fun buildPlainSnippet(
+        snippet: String,
+        truncated: Boolean,
+    ): String {
+        val exceedsByteLimit = utf8ByteCount(snippet) > MAX_SOURCE_SNIPPET_BYTES
+        if (!truncated && !exceedsByteLimit) {
+            return snippet
+        }
+        val suffix = "\n\n$SOURCE_SNIPPET_TRUNCATED_NOTICE"
+        val bodyBudget = (MAX_SOURCE_SNIPPET_BYTES - utf8ByteCount(suffix)).coerceAtLeast(0)
+        val boundedSnippet = truncateUtf8(snippet, bodyBudget).trimEnd()
+        if (boundedSnippet.isEmpty()) {
+            return SOURCE_SNIPPET_TRUNCATED_NOTICE
+        }
+        return "$boundedSnippet$suffix"
     }
 
     /** 读取源码片段失败时返回的原因字符串；可读到时返回 null，便于上层在 UI 中给出具体失败原因。 */
@@ -372,6 +505,70 @@ class CodeReadToolFacade(
             value.startsWith("jdk.") ||
             value.startsWith("sun.") ||
             value.startsWith("com.sun.")
+
+    private companion object {
+        private const val MAX_SOURCE_SNIPPET_LINES = 400
+        private const val MAX_SOURCE_SNIPPET_BYTES = 64 * 1024
+        private const val SOURCE_NEIGHBOR_CONTEXT_LINES = 3
+        private const val SOURCE_SNIPPET_TRUNCATED_NOTICE = "片段已截断：最多返回 400 行或 64 KiB。"
+        private val CLASS_DECLARATION_REGEX = Regex("\\b(class|interface|enum|record)\\b")
+
+        private fun utf8ByteCount(value: String): Int =
+            value.toByteArray(StandardCharsets.UTF_8).size
+
+        private fun truncateUtf8(value: String, maxBytes: Int): String {
+            if (maxBytes <= 0) {
+                return ""
+            }
+            if (utf8ByteCount(value) <= maxBytes) {
+                return value
+            }
+            val builder = StringBuilder()
+            var byteCount = 0
+            var index = 0
+            while (index < value.length) {
+                val codePoint = value.codePointAt(index)
+                val chars = Character.toChars(codePoint)
+                val codePointText = String(chars)
+                val codePointBytes = utf8ByteCount(codePointText)
+                if (byteCount + codePointBytes > maxBytes) {
+                    break
+                }
+                builder.appendCodePoint(codePoint)
+                byteCount += codePointBytes
+                index += chars.size
+            }
+            return builder.toString()
+        }
+
+        private class BoundedSnippetLines(
+            private val maxBytes: Int,
+        ) {
+            private val lines = mutableListOf<String>()
+            private var byteCount = 0
+
+            fun isEmpty(): Boolean = lines.isEmpty()
+
+            fun add(line: String): Boolean {
+                val separatorBytes = if (lines.isEmpty()) 0 else 1
+                val availableBytes = maxBytes - byteCount - separatorBytes
+                if (availableBytes <= 0) {
+                    return false
+                }
+                val lineBytes = utf8ByteCount(line)
+                if (lineBytes <= availableBytes) {
+                    lines += line
+                    byteCount += separatorBytes + lineBytes
+                    return true
+                }
+                lines += truncateUtf8(line, availableBytes)
+                byteCount = maxBytes
+                return false
+            }
+
+            fun joinToString(): String = lines.joinToString("\n")
+        }
+    }
 }
 
 /**

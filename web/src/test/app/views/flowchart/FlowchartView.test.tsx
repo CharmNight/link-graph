@@ -21,9 +21,14 @@ vi.mock("../../../../app/reactflow/GraphFlowSurface", () => ({
     viewportMode?: string;
     header?: ReactNode;
     emptyState?: ReactNode;
-    nodes: Array<{ position?: { x: number; y: number } }>;
+    nodes: Array<{ id?: string; className?: string; position?: { x: number; y: number } }>;
     edges: Array<{ id: string }>;
     flowEdges: Array<{ id: string }>;
+    flowNodes: Array<{ id?: string; className?: string }>;
+    viewportOverlay?: (context: {
+      nodes: Array<{ id?: string; className?: string; position?: { x: number; y: number } }>;
+      edges: Array<{ id: string }>;
+    }) => ReactNode;
     buildPaneActions: (context: {
       position?: { x: number; y: number };
       hasGroupedSelection: boolean;
@@ -72,12 +77,14 @@ vi.mock("../../../../app/reactflow/GraphFlowSurface", () => ({
         data-editable={String(props.editable)}
         data-viewport-mode={props.viewportMode ?? ""}
         data-node-position={props.nodes[0]?.position ? `${props.nodes[0].position.x}:${props.nodes[0].position.y}` : ""}
+        data-node-class-names={props.flowNodes.map((node) => `${node.id ?? ""}=${node.className ?? ""}`).join("|")}
         data-pane-action-ids={paneActions.map((action) => action.id).join("|")}
         data-node-action-ids={nodeActionEntries.join("|")}
         data-edge-ids={props.edges.map((edge) => edge.id).join("|")}
         data-flow-edge-ids={props.flowEdges.map((edge) => edge.id).join("|")}
       >
         {props.header}
+        {props.viewportOverlay?.({ nodes: props.nodes, edges: props.edges })}
         {props.nodes.length === 0 ? props.emptyState : null}
         {props.nodes.length}:{props.edges.length}
         {nodeActionButtons}
@@ -1038,6 +1045,177 @@ describe("FlowchartView", () => {
     expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute(
       "data-node-action-ids",
       expect.stringContaining("action:save-info:"),
+    );
+  });
+
+  it("renders opened invocation expansion batches inside a visible subflow frame", () => {
+    const expandedNodes: LinkGraphNode[] = [
+      {
+        ...view.visibleGraph.nodes[0]!,
+        signature: "com.example.OrderController.submit(java.lang.String):void",
+        metadata: {
+          "flowchart.kind": "ENTRY",
+          "flow.ownerMethod": "com.example.OrderController.submit(java.lang.String):void",
+        },
+      },
+      {
+        id: "action:create-info",
+        type: "FLOW_ACTION",
+        title: "调用 SystemService.createInfo",
+        signature: "com.example.SystemService.createInfo():void",
+        inputs: [],
+        outputs: [],
+        certainty: "PROVEN",
+        bindingStatus: "BOUND",
+        metadata: {
+          "flow.kind": "ACTION",
+          "flowchart.kind": "PROCESS",
+          "flow.ownerMethod": "com.example.OrderController.submit(java.lang.String):void",
+          "flowchart.projectedFromNodeIds": "invoke:create-info",
+        },
+      },
+      {
+        id: "method:create-info",
+        type: "METHOD",
+        title: "SystemService.createInfo",
+        signature: "com.example.SystemService.createInfo():void",
+        inputs: [],
+        outputs: [],
+        certainty: "PROVEN",
+        bindingStatus: "BOUND",
+        metadata: {
+          "flowchart.kind": "ENTRY",
+          "flow.ownerMethod": "com.example.SystemService.createInfo():void",
+          "linkGraph.expansion.id": "invocation:expansion-1",
+          "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+          "linkGraph.expansion.rootNodeId": "method:create-info",
+          "linkGraph.expansion.targetSignature": "com.example.SystemService.createInfo():void",
+        },
+      },
+      {
+        id: "action:save-info",
+        type: "FLOW_ACTION",
+        title: "saveInfo()",
+        inputs: [],
+        outputs: [],
+        certainty: "PROVEN",
+        bindingStatus: "BOUND",
+        metadata: {
+          "flow.kind": "ACTION",
+          "flowchart.kind": "PROCESS",
+          "flow.ownerMethod": "com.example.SystemService.createInfo():void",
+          "linkGraph.expansion.id": "invocation:expansion-1",
+          "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+          "linkGraph.expansion.rootNodeId": "method:create-info",
+          "linkGraph.expansion.targetSignature": "com.example.SystemService.createInfo():void",
+        },
+      },
+    ];
+    const expandedEdges: LinkGraphEdge[] = [
+      {
+        id: "control-current",
+        type: "CONTROL_FLOW",
+        source: "method:submit-order",
+        target: "action:create-info",
+      },
+      {
+        id: "call-expanded",
+        type: "CALL",
+        source: "action:create-info",
+        target: "method:create-info",
+        metadata: {
+          "linkGraph.expansion.id": "invocation:expansion-1",
+          "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+        },
+      },
+      {
+        id: "control-expanded",
+        type: "CONTROL_FLOW",
+        source: "method:create-info",
+        target: "action:save-info",
+        metadata: {
+          "linkGraph.expansion.id": "invocation:expansion-1",
+          "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+        },
+      },
+    ];
+    const expandedView: FlowchartViewDocument = {
+      ...view,
+      visibleGraph: {
+        nodes: expandedNodes,
+        edges: expandedEdges,
+      },
+      fullGraph: {
+        nodes: expandedNodes,
+        edges: expandedEdges,
+        invocationExpansionRegistry: {
+          entries: [
+            {
+              expansionId: "invocation:expansion-1",
+              sourceInvocationNodeId: "invoke:create-info",
+              rootNodeId: "method:create-info",
+              targetSignature: "com.example.SystemService.createInfo():void",
+              createdAt: "2026-07-01T00:00:00Z",
+              parentExpansionId: null,
+              depth: 1,
+              ownedNodeIds: ["method:create-info", "action:save-info"],
+              borrowedNodeIds: [],
+              callEdgeIds: ["call-expanded"],
+              internalEdgeIds: ["control-expanded"],
+              childExpansionIds: [],
+              warnings: [],
+            },
+          ],
+        },
+      },
+      anchorNodeId: "method:submit-order",
+    };
+    useMeasuredLayoutMock.mockImplementation(({ graph }: { graph: FlowchartViewDocument["visibleGraph"] }) => ({
+      nodes: graph.nodes.map((node, index) => ({
+        ...node,
+        position: node.id === "method:create-info"
+          ? { x: 760, y: 144 }
+          : node.id === "action:save-info"
+            ? { x: 760, y: 344 }
+            : { x: 240, y: 144 + index * 160 },
+      })),
+      edges: graph.edges,
+      layoutPending: false,
+      sizeSnapshot: new Map([
+        ["method:create-info", { width: 324, height: 260 }],
+        ["action:save-info", { width: 324, height: 220 }],
+      ]),
+      requestRelayout: vi.fn(),
+    }));
+
+    render(
+      <FlowchartView
+        view={expandedView}
+        selectedNodeId="action:create-info"
+        onAddNode={noop}
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onDeleteNode={noop}
+        onCreateEdge={noop}
+        onDeleteEdge={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        onImportMermaid={noop}
+      />,
+    );
+
+    const frame = screen.getByTestId("flowchart-invocation-expansion-frame-invocation:expansion-1");
+    expect(frame).toHaveTextContent("调用展开");
+    expect(frame).toHaveTextContent("调用 SystemService.createInfo");
+    expect(frame).toHaveTextContent("SystemService.createInfo");
+    expect(frame).toHaveAttribute(
+      "aria-label",
+      "调用展开 调用 SystemService.createInfo 到 SystemService.createInfo",
+    );
+    expect(frame).toHaveStyle({ height: "502px" });
+    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute(
+      "data-node-class-names",
+      expect.stringContaining("action:create-info=flowchart-rf-node kind-process is-invocation-expansion-source"),
     );
   });
 
