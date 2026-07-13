@@ -135,15 +135,11 @@ internal fun GraphEditorStateSnapshot.withCollapsedInvocationExpansion(
 /** 打开调用展开块，仅修改流程图 scene state，不创建或删除图谱内容。 */
 internal fun GraphEditorStateSnapshot.withOpenedInvocationExpansion(
     expansionId: String,
-): GraphEditorStateSnapshot = withActivatedInvocationExpansion(
-    expansionId = expansionId,
-    messageType = "openInvocationExpansion",
-)
+): GraphEditorStateSnapshot = withCurrentInvocationExpansion(expansionId)
 
-/** 激活调用展开阅读路径，仅修改流程图 scene state，不改普通节点选中。 */
-internal fun GraphEditorStateSnapshot.withActivatedInvocationExpansion(
+/** 打开调用展开并将其设为当前阅读路径；仅修改流程图 scene state，不改普通节点选中。 */
+private fun GraphEditorStateSnapshot.withCurrentInvocationExpansion(
     expansionId: String,
-    messageType: String = "activateInvocationExpansion",
 ): GraphEditorStateSnapshot {
     val trimmedExpansionId = expansionId.trim()
     if (trimmedExpansionId.isEmpty()) {
@@ -161,7 +157,7 @@ internal fun GraphEditorStateSnapshot.withActivatedInvocationExpansion(
             currentSceneId,
             sceneState.copy(invocationExpansionState = nextInvocationState),
         ),
-        lastMessageType = messageType,
+        lastMessageType = "openInvocationExpansion",
         snapshotRevision = snapshotRevision + 1,
     ).withAssistantContextFromCurrentState()
 }

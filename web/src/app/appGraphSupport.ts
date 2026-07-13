@@ -205,7 +205,7 @@ function mergeFlowchartPresentationNode(
 /**
  * 在草稿条目中查找与指定节点匹配的补丁节点，作为流程图展示版本的来源。
  * 先按节点 id 或投影别名在补丁操作中精确匹配；
- * 若未命中且节点属于回退目标范围，则用草稿的 afterState 文案构造一个标记为 DRAFT_AI 的兜底节点。
+ * 若未命中且节点属于回退目标范围，则用草稿的 afterState 文案构造一个标记为 AI_DRAFT 的兜底节点。
  */
 function resolveFlowchartPatchNode(
   entry: DraftWorkbenchEntry,
@@ -231,7 +231,7 @@ function resolveFlowchartPatchNode(
   return {
     ...node,
     title: afterStateTitle,
-    sourceTag: "DRAFT_AI",
+    provenance: "AI_DRAFT",
     metadata: {
       ...(node.metadata ?? {}),
       "draft.afterStateFallback": "true",
@@ -248,10 +248,10 @@ function flowchartPresentationNodeChanged(currentNode: LinkGraphNode, nextNode: 
   return currentNode.title !== nextNode.title
     || currentNode.doc !== nextNode.doc
     || currentNode.signature !== nextNode.signature
-    || currentNode.sourceTag !== nextNode.sourceTag
+    || currentNode.provenance !== nextNode.provenance
     || currentNode.type !== nextNode.type
-    || currentNode.certainty !== nextNode.certainty
-    || currentNode.bindingStatus !== nextNode.bindingStatus;
+    || currentNode.confidence !== nextNode.confidence
+    || currentNode.binding !== nextNode.binding;
 }
 
 /**

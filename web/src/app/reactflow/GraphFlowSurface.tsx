@@ -54,6 +54,7 @@ import {
   graphRenderCommitTraceSignature,
   graphViewportContentSignature,
   hashText,
+  type InvocationExpansionViewportFocus,
   locateAnchorButtonLabel,
   positionsMatch,
   reactFlowPaddingPixels,
@@ -62,6 +63,7 @@ import {
   rounded,
   summarizeGraphShapeSignature,
 } from "./graphFlowViewportModel";
+import { useInvocationExpansionViewportFocus } from "./useInvocationExpansionViewportFocus";
 import {
   resolveContextMenuPoint,
   resolvePanePositionFromRect,
@@ -120,6 +122,7 @@ interface GraphFlowSurfaceProps {
   viewportMode?: AnalysisDisplayMode;
   viewportPolicy?: "fit" | "readable-fit";
   viewportResetKey?: string | null;
+  invocationExpansionFocus?: InvocationExpansionViewportFocus | null;
   anchorNodeId?: string | null;
   selectedNodeId: string | null;
   focusNodeRequest?: GraphFocusRequest | null;
@@ -213,6 +216,7 @@ export function GraphFlowSurface({
   viewportMode,
   viewportPolicy = "fit",
   viewportResetKey = null,
+  invocationExpansionFocus = null,
   anchorNodeId = null,
   selectedNodeId,
   focusNodeRequest = null,
@@ -751,6 +755,10 @@ export function GraphFlowSurface({
     viewportPolicy,
   ]);
 
+  const fallbackInvocationExpansionViewport = useCallback(() => scheduleViewport("graph"), [scheduleViewport]);
+  const pendingInvocationExpansionFocus = useInvocationExpansionViewportFocus({
+    focus: invocationExpansionFocus, flowInstance, nodes: positionedNodes, nodeViewportSize, canvasShellRef, onUnavailable: fallbackInvocationExpansionViewport,
+  });
   useEffect(() => {
     if (!focusNodeRequest || handledFocusNonceRef.current === focusNodeRequest.nonce) {
       return;
@@ -788,11 +796,16 @@ export function GraphFlowSurface({
       resetKey: viewportResetKey,
       effectiveResetKey: effectiveViewportResetKey,
       preserveViewport,
+      pendingInvocationExpansionFocus,
+      invocationExpansionFocusId: invocationExpansionFocus?.expansionId ?? null,
       shouldFocusAnchorOnLoad,
       graphShape: summarizeGraphShapeSignature(graphShapeSignature),
       hasFlowInstance: true,
     });
     previousViewportGraphRef.current = nextViewportGraph;
+    if (pendingInvocationExpansionFocus) {
+      return clearScheduledFitView;
+    }
     if (preserveViewport) {
       return clearScheduledFitView;
     }
@@ -806,6 +819,8 @@ export function GraphFlowSurface({
     effectiveViewportResetKey,
     flowInstance,
     graphShapeSignature,
+    invocationExpansionFocus,
+    pendingInvocationExpansionFocus,
     positionedNodes,
     scheduleViewport,
     shouldFocusAnchorOnLoad,

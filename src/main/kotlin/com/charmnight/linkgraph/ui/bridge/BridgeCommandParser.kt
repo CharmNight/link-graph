@@ -22,6 +22,8 @@ internal data class BridgeCommandParseResult(
 
 internal object BridgeCommandParser {
     private const val SCHEMA_VERSION = 1
+    const val MAX_LAYOUT_POSITIONS: Int = 1024
+    const val MAX_STRING_LIST_ITEMS: Int = 256
 
     private val asyncCommandTypes = setOf(
         "requestAssistantTask",
@@ -132,9 +134,6 @@ internal object BridgeCommandParser {
             "openInvocationExpansion" -> GraphEditorMessage.OpenInvocationExpansion(
                 expansionId = payload.requiredString("expansionId", "expansionId"),
             )
-            "activateInvocationExpansion" -> GraphEditorMessage.ActivateInvocationExpansion(
-                expansionId = payload.requiredString("expansionId", "expansionId"),
-            )
             "applyGraphEditScript" -> GraphEditorMessage.ApplyGraphEditRequest(
                 GraphBrowserPayloadParser.parseGraphEditRequest(JsonCodec.toJson(payload)),
             )
@@ -188,8 +187,7 @@ internal object BridgeCommandParser {
     }
 
     private fun parseLayoutPositions(payload: Map<*, *>): Map<String, GraphLayoutPosition> =
-        (payload["positions"] as? List<*>)
-            .orEmpty()
+        payload.boundedList("positions", MAX_LAYOUT_POSITIONS)
             .mapNotNull { raw ->
                 val item = raw as? Map<*, *> ?: return@mapNotNull null
                 val nodeId = item.string("nodeId")?.takeIf(String::isNotBlank) ?: return@mapNotNull null
@@ -234,7 +232,6 @@ internal object BridgeCommandParser {
             "requestRemoveInvocationExpansion" -> "移除调用展开"
             "collapseInvocationExpansion" -> "折叠调用展开"
             "openInvocationExpansion" -> "打开调用展开"
-            "activateInvocationExpansion" -> "激活调用展开"
             "applyGraphEditScript" -> "链路图编辑请求同步"
             else -> type
         }
@@ -245,9 +242,17 @@ internal object BridgeCommandParser {
         string(key)?.takeIf(String::isNotBlank) ?: error("$description is required")
 
     private fun Map<*, *>.stringList(key: String): List<String> =
-        (this[key] as? List<*>).orEmpty().mapNotNull { value ->
+        boundedList(key, MAX_STRING_LIST_ITEMS).mapNotNull { value ->
             (value as? String)?.takeIf(String::isNotBlank)
         }
+
+    private fun Map<*, *>.boundedList(key: String, maxItems: Int): List<*> {
+        val values = (this[key] as? List<*>).orEmpty()
+        require(values.size <= maxItems) {
+            "$key contains too many items: ${values.size} > $maxItems"
+        }
+        return values
+    }
 
     private inline fun <reified T : Enum<T>> Map<*, *>.enum(key: String): T =
         enumOrNull<T>(key) ?: error("$key is required")

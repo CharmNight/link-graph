@@ -10,8 +10,8 @@ describe("nodeSizeRegistry", () => {
       title: "OrderController.submit",
       inputs: ["java.lang.String"],
       outputs: ["void"],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       metadata: {
         "ui.x": "120",
         "ui.y": "96",

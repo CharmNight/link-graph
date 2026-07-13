@@ -165,7 +165,7 @@ const edges: LinkGraphEdge[] = [
     target: "service:order",
     metadata: {
       "jvm.relation.kind": "CALLS",
-      "jvm.relation.confidence": "PROVEN",
+      "jvm.relation.confidence": "VERIFIED",
       "indexed.sourceCount": "3",
     },
   },
@@ -176,7 +176,7 @@ const edges: LinkGraphEdge[] = [
     target: "resource:application.yml",
     metadata: {
       "jvm.relation.kind": "RESOURCE_BINDS",
-      "jvm.relation.confidence": "RULE_INFERRED",
+      "jvm.relation.confidence": "INFERRED",
       "indexed.sourceCount": "1",
     },
   },
@@ -959,8 +959,8 @@ function architectureNode({
     title,
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
     metadata: {
       "architecture.node.kind": nodeKind,
       "indexed.layerKind": layerKind,

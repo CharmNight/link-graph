@@ -33,7 +33,7 @@ import com.charmnight.linkgraph.agent.capability.PlanCapability
 import com.charmnight.linkgraph.agent.runtime.AgentRunCoordinator
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.navigation.SourceNavigationService
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
@@ -93,7 +93,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         stateService.loadGraph(sampleGraph(), "currentMethod")
         stateService.asyncRequests.markGeneratedCodeDrafts(
             drafts = listOf(
-                GeneratedCodeDraft(
+                GeneratedCodeDraft.patchExistingFile(
                     id = "draft-1",
                     sourceNodeId = "scope:file-download-if",
                     title = "rewrite delete guard",
@@ -191,7 +191,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         stateService.loadGraph(sampleGraph(), "currentMethod")
         stateService.asyncRequests.markGeneratedCodeDrafts(
             drafts = listOf(
-                GeneratedCodeDraft(
+                GeneratedCodeDraft.createFile(
                     id = "draft-content-only",
                     sourceNodeId = "method:file-download",
                     title = "unsafe snippet",
@@ -262,7 +262,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         stateService.loadGraph(sampleGraph(), "currentMethod")
         stateService.asyncRequests.markGeneratedCodeDrafts(
             drafts = listOf(
-                GeneratedCodeDraft(
+                GeneratedCodeDraft.patchExistingFile(
                     id = "draft-outside-path",
                     sourceNodeId = "method:file-download",
                     title = "ExternalController.java",
@@ -343,7 +343,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         stateService.loadGraph(sampleGraph(), "currentMethod")
         stateService.asyncRequests.markGeneratedCodeDrafts(
             drafts = listOf(
-                GeneratedCodeDraft(
+                GeneratedCodeDraft.createFile(
                     id = "draft-1",
                     sourceNodeId = "method:file-download",
                     title = "RuntimeChain.java",
@@ -440,7 +440,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     codegenExecutor = { _, _, _ ->
                         CodeGenerationResult(
                             drafts = listOf(
-                                GeneratedCodeDraft(
+                                GeneratedCodeDraft.createFile(
                                     id = "draft-1",
                                     sourceNodeId = "method:upload-file",
                                     title = "upload draft",
@@ -525,7 +525,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                         capturedPlan = input.plan
                         CodeGenerationResult(
                             drafts = listOf(
-                                GeneratedCodeDraft(
+                                GeneratedCodeDraft.createFile(
                                     id = "draft-1",
                                     sourceNodeId = "method:upload-file",
                                     title = "upload draft",
@@ -604,7 +604,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     codegenExecutor = { _, _, _ ->
                         CodeGenerationResult(
                             drafts = listOf(
-                                GeneratedCodeDraft(
+                                GeneratedCodeDraft.patchExistingFile(
                                     id = "draft-1",
                                     sourceNodeId = "method:upload-file",
                                     title = "rewrite upload",
@@ -686,7 +686,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                         type = NodeType.METHOD,
                         title = "CommonController.fileDownload",
                         signature = "com.ruoyi.web.controller.common.CommonController.fileDownload(java.lang.String,java.lang.Boolean,javax.servlet.http.HttpServletResponse,javax.servlet.http.HttpServletRequest):void",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                         metadata = mapOf(
                             "source.filePath" to targetPath,
                             "source.startLine" to "6",
@@ -697,7 +697,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                         id = "scope:file-download-if",
                         type = NodeType.FLOW_SCOPE,
                         title = "if (delete)",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                         metadata = mapOf(
                             "flow.ownerMethod" to "com.ruoyi.web.controller.common.CommonController.fileDownload(java.lang.String,java.lang.Boolean,javax.servlet.http.HttpServletResponse,javax.servlet.http.HttpServletRequest):void",
                             "source.filePath" to targetPath,
@@ -748,7 +748,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     codegenExecutor = { _, _, _ ->
                         CodeGenerationResult(
                             drafts = listOf(
-                                GeneratedCodeDraft(
+                                GeneratedCodeDraft.patchExistingFile(
                                     id = "draft-1",
                                     sourceNodeId = "scope:file-download-if",
                                     title = "rewrite delete guard",
@@ -851,7 +851,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     codegenExecutor = { _, _, _ ->
                         CodeGenerationResult(
                             drafts = listOf(
-                                GeneratedCodeDraft(
+                                GeneratedCodeDraft.patchExistingFile(
                                     id = "draft-1",
                                     sourceNodeId = "method:upload-file",
                                     title = "rewrite upload",
@@ -940,7 +940,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                         executorInvoked = true
                         CodeGenerationResult(
                             drafts = listOf(
-                                GeneratedCodeDraft(
+                                GeneratedCodeDraft.patchExistingFile(
                                     id = "draft-1",
                                     sourceNodeId = "method:upload-file",
                                     title = "rewrite upload",
@@ -1057,7 +1057,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     codegenExecutor = { _, _, _ ->
                         CodeGenerationResult(
                             drafts = listOf(
-                                GeneratedCodeDraft(
+                                GeneratedCodeDraft.patchExistingFile(
                                     id = "draft-1",
                                     sourceNodeId = "method:upload-file",
                                     title = "rewrite upload",
@@ -1145,7 +1145,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     codegenExecutor = { _, _, _ ->
                         CodeGenerationResult(
                             drafts = listOf(
-                                GeneratedCodeDraft(
+                                GeneratedCodeDraft.createFile(
                                     id = "draft-1",
                                     sourceNodeId = "method:upload-file",
                                     title = "runtime chain draft",
@@ -1286,7 +1286,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                         capturedPlan = input.plan
                         CodeGenerationResult(
                             drafts = listOf(
-                                GeneratedCodeDraft(
+                                GeneratedCodeDraft.createFile(
                                     id = "draft-1",
                                     sourceNodeId = "method:upload-file",
                                     title = "upload draft",
@@ -1318,7 +1318,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     type = NodeType.METHOD,
                     title = "CommonController.uploadFile",
                     signature = "com.example.CommonController.uploadFile(java.lang.String):void",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )

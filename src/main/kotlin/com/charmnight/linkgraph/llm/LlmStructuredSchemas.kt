@@ -119,10 +119,7 @@ internal object LlmStructuredSchemas {
     "inputs": $STRING_ARRAY_SCHEMA,
     "outputs": $STRING_ARRAY_SCHEMA,
     "doc": $NULLABLE_STRING_SCHEMA,
-    "bindingStatus": { "type": "string" },
-    "certainty": { "type": "string" },
-    "metadata": $EMPTY_OBJECT_SCHEMA,
-    "sourceTag": { "type": "string" }
+    "metadata": $EMPTY_OBJECT_SCHEMA
   },
   "required": [
     "id",
@@ -133,10 +130,7 @@ internal object LlmStructuredSchemas {
     "inputs",
     "outputs",
     "doc",
-    "bindingStatus",
-    "certainty",
-    "metadata",
-    "sourceTag"
+    "metadata"
   ]
 }
 """
@@ -155,10 +149,7 @@ internal object LlmStructuredSchemas {
     "inputs": $STRING_ARRAY_SCHEMA,
     "outputs": $STRING_ARRAY_SCHEMA,
     "doc": $NULLABLE_STRING_SCHEMA,
-    "bindingStatus": { "type": "string" },
-    "certainty": { "type": "string" },
-    "metadata": $EMPTY_OBJECT_SCHEMA,
-    "sourceTag": { "type": "string" }
+    "metadata": $EMPTY_OBJECT_SCHEMA
   },
   "required": [
     "id",
@@ -169,10 +160,7 @@ internal object LlmStructuredSchemas {
     "inputs",
     "outputs",
     "doc",
-    "bindingStatus",
-    "certainty",
-    "metadata",
-    "sourceTag"
+    "metadata"
   ]
 }
 """
@@ -188,10 +176,7 @@ internal object LlmStructuredSchemas {
     "fromNodeId": { "type": "string" },
     "toNodeId": { "type": "string" },
     "label": $NULLABLE_STRING_SCHEMA,
-    "bindingStatus": { "type": "string" },
-    "certainty": { "type": "string" },
-    "metadata": $EMPTY_OBJECT_SCHEMA,
-    "sourceTag": { "type": "string" }
+    "metadata": $EMPTY_OBJECT_SCHEMA
   },
   "required": [
     "id",
@@ -199,10 +184,7 @@ internal object LlmStructuredSchemas {
     "fromNodeId",
     "toNodeId",
     "label",
-    "bindingStatus",
-    "certainty",
-    "metadata",
-    "sourceTag"
+    "metadata"
   ]
 }
 """
@@ -218,10 +200,7 @@ internal object LlmStructuredSchemas {
     "fromNodeId": { "type": "string" },
     "toNodeId": { "type": "string" },
     "label": $NULLABLE_STRING_SCHEMA,
-    "bindingStatus": { "type": "string" },
-    "certainty": { "type": "string" },
-    "metadata": $EMPTY_OBJECT_SCHEMA,
-    "sourceTag": { "type": "string" }
+    "metadata": $EMPTY_OBJECT_SCHEMA
   },
   "required": [
     "id",
@@ -229,10 +208,7 @@ internal object LlmStructuredSchemas {
     "fromNodeId",
     "toNodeId",
     "label",
-    "bindingStatus",
-    "certainty",
-    "metadata",
-    "sourceTag"
+    "metadata"
   ]
 }
 """
@@ -418,42 +394,6 @@ internal object LlmStructuredSchemas {
 }
 """
 
-    /** 单个 edit scope schema：表示一段被证据锚定的精确代码作用域。 */
-    private const val EDIT_SCOPE_SCHEMA = """
-{
-  "type": "object",
-  "additionalProperties": false,
-  "properties": {
-    "scopeId": { "type": "string" },
-    "targetNodeId": { "type": "string" },
-    "filePath": { "type": "string" },
-    "language": { "type": "string" },
-    "symbolKind": { "type": "string" },
-    "symbolSignature": $NULLABLE_STRING_SCHEMA,
-    "startOffset": $NULLABLE_INTEGER_SCHEMA,
-    "endOffset": $NULLABLE_INTEGER_SCHEMA,
-    "startLine": $NULLABLE_INTEGER_SCHEMA,
-    "endLine": $NULLABLE_INTEGER_SCHEMA,
-    "allowedChangeKinds": $STRING_ARRAY_SCHEMA,
-    "supportingFindingIds": $STRING_ARRAY_SCHEMA
-  },
-  "required": [
-    "scopeId",
-    "targetNodeId",
-    "filePath",
-    "language",
-    "symbolKind",
-    "symbolSignature",
-    "startOffset",
-    "endOffset",
-    "startLine",
-    "endLine",
-    "allowedChangeKinds",
-    "supportingFindingIds"
-  ]
-}
-"""
-
     /** 单个代码草稿 schema：包含目标文件、整文件内容或结构化编辑操作列表。 */
     private const val CODE_DRAFT_SCHEMA = """
 {
@@ -469,13 +409,9 @@ internal object LlmStructuredSchemas {
       "type": "array",
       "items": $CODE_EDIT_OPERATION_SCHEMA
     },
-    "editScopes": {
-      "type": "array",
-      "items": $EDIT_SCOPE_SCHEMA
-    },
     "warnings": $STRING_ARRAY_SCHEMA
   },
-  "required": ["id", "sourceNodeId", "title", "targetPath", "content", "editOperations", "editScopes", "warnings"]
+  "required": ["id", "sourceNodeId", "title", "targetPath", "content", "editOperations", "warnings"]
 }
 """
 

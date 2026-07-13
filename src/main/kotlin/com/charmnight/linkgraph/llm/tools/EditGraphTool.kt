@@ -3,7 +3,10 @@ package com.charmnight.linkgraph.llm.tools
 import com.charmnight.linkgraph.agent.tools.*
 
 import com.charmnight.linkgraph.application.edit.GraphEditRequestPayloadParser
+import com.charmnight.linkgraph.application.model.GraphEditIssue
+import com.charmnight.linkgraph.application.model.GraphEditIssueCode
 import com.charmnight.linkgraph.application.model.GraphEditResult
+import com.charmnight.linkgraph.json.JsonCodec
 
 /**
  * 图编辑工具：让模型按结构化形式提交图编辑请求。
@@ -42,6 +45,15 @@ class EditGraphTool : AgentTool {
             payload = mapOf("status" to "REJECTED"),
             errorMessage = "当前 runtime 未提供 graph edit 执行入口。",
         )
+        val payloadSize = runCatching { JsonCodec.toJson(input).length }.getOrElse {
+            return rejectInvalidRequest("graph edit tool input is not JSON serializable: ${it.message}")
+        }
+        if (payloadSize > GraphEditRequestPayloadParser.MAX_SERIALIZED_PAYLOAD_CHARS) {
+            return rejectInvalidRequest(
+                "graph edit tool input exceeds limit: " +
+                    "$payloadSize > ${GraphEditRequestPayloadParser.MAX_SERIALIZED_PAYLOAD_CHARS}",
+            )
+        }
         // 解析请求；解析器返回结构化结果，issues 非空代表畸形 payload
         val parseResult = GraphEditRequestPayloadParser.parse(input)
         if (parseResult.issues.isNotEmpty()) {
@@ -87,5 +99,24 @@ class EditGraphTool : AgentTool {
                 },
             )
         }
+    }
+
+    /** 构造与 parser 失败一致的结构化拒绝结果。 */
+    private fun rejectInvalidRequest(message: String): ToolResult {
+        val issue = GraphEditIssue(
+            code = GraphEditIssueCode.INVALID_PAYLOAD_FIELD,
+            message = message,
+            retryable = false,
+        )
+        return ToolResult(
+            toolName = name,
+            success = false,
+            payload = mapOf(
+                "status" to "REJECTED",
+                "reason" to "INVALID_REQUEST",
+                "issues" to listOf(issue),
+            ),
+            errorMessage = "${issue.code.name}: ${issue.message}",
+        )
     }
 }

@@ -117,8 +117,6 @@ function createEmptyInvocationExpansionSceneState(): InvocationExpansionSceneSta
     activeExpansionPath: [],
     collapsedExpansionIds: [],
     activeSiblingByParentContext: {},
-    blockPositions: {},
-    lastChildStateByExpansionId: {},
     contextMode: "ACTIVE_CHAIN",
   };
 }
@@ -226,14 +224,6 @@ function filterInvocationExpansionSceneState(
     activeSiblingByParentContext: Object.fromEntries(
       Object.entries(baseState.activeSiblingByParentContext ?? {})
         .filter(([, expansionId]) => expansionIds.has(expansionId)),
-    ),
-    blockPositions: Object.fromEntries(
-      Object.entries(baseState.blockPositions ?? {})
-        .filter(([expansionId]) => expansionIds.has(expansionId)),
-    ),
-    lastChildStateByExpansionId: Object.fromEntries(
-      Object.entries(baseState.lastChildStateByExpansionId ?? {})
-        .filter(([expansionId]) => expansionIds.has(expansionId)),
     ),
     contextMode: "ACTIVE_CHAIN",
   };

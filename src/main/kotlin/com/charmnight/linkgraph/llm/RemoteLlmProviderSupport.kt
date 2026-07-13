@@ -1,6 +1,5 @@
 package com.charmnight.linkgraph.llm
 
-import com.charmnight.linkgraph.agent.model.*
 import com.charmnight.linkgraph.settings.*
 
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
@@ -20,24 +19,6 @@ internal data class RemoteLlmConnection(
     /** 采样温度参数。 */
     val temperature: Double,
 ) {
-    /** 将连接配置和提示词拼装成统一的 LLM 请求对象。 */
-    fun toRequest(
-        systemPrompt: String,
-        userPrompt: String,
-    ): LlmRequest {
-        return LlmRequest(
-            protocol = preset.wireProtocol ?: LlmWireProtocol.OPENAI_CHAT_COMPLETIONS,
-            endpoint = endpoint,
-            apiKey = apiKey,
-            model = model,
-            timeoutSeconds = timeoutSeconds,
-            temperature = temperature,
-            systemPrompt = systemPrompt,
-            userPrompt = userPrompt,
-            maxOutputTokens = preset.maxOutputTokens,
-        )
-    }
-
     /** 解析当前配置实际要访问的完整请求地址。 */
     fun requestUrl(): String {
         return LlmProtocolUrlResolver.resolve(
@@ -47,9 +28,10 @@ internal data class RemoteLlmConnection(
     }
 }
 
-/** 判断当前设置是否选择了远程 LLM 供应商，仅用于决定是否走远程请求路径。 */
+/** 判断当前设置是否允许进入远程 LLM 请求路径。 */
 internal fun LinkGraphSettingsState.usesRemoteProvider(): Boolean {
-    return sanitized().providerPreset().isRemote
+    val sanitized = sanitized()
+    return sanitized.llmEnabled && sanitized.providerPreset().isRemote
 }
 
 /**

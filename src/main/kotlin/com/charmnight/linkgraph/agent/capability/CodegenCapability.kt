@@ -502,17 +502,19 @@ internal class CodegenCapability(
             id = "scope-probe-${scope.scopeId}",
             sourceNodeId = scope.targetNodeId,
             title = "scope probe",
-            targetPath = scope.filePath,
-            editOperations = listOf(
-                CodeEditOperation(
-                    operationId = "scope-probe-${scope.scopeId}",
-                    filePath = scope.filePath,
-                    scopeId = scope.scopeId,
-                    kind = probeKind,
-                    payload = "/* scope probe */",
+            command = com.charmnight.linkgraph.codegen.CodeDraftCommand.PatchExistingFile(
+                targetPath = scope.filePath,
+                operations = listOf(
+                    CodeEditOperation(
+                        operationId = "scope-probe-${scope.scopeId}",
+                        filePath = scope.filePath,
+                        scopeId = scope.scopeId,
+                        kind = probeKind,
+                        payload = "/* scope probe */",
+                    ),
                 ),
+                scopes = listOf(scope),
             ),
-            editScopes = listOf(scope),
         )
     }
 

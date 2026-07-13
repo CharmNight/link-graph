@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.mermaid
 
 import com.charmnight.linkgraph.diff.GraphNormalizationService
-import com.charmnight.linkgraph.model.BindingStatus
+import com.charmnight.linkgraph.model.GraphBinding
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 
@@ -58,10 +58,10 @@ class MermaidBindingService(
             }
 
             edge.copy(
-                bindingStatus = when {
-                    boundFromNodeId != edge.fromNodeId && boundToNodeId != edge.toNodeId -> BindingStatus.BOUND
-                    boundFromNodeId != edge.fromNodeId || boundToNodeId != edge.toNodeId -> BindingStatus.PARTIALLY_SYNCED
-                    else -> edge.bindingStatus
+                binding = when {
+                    boundFromNodeId != edge.fromNodeId && boundToNodeId != edge.toNodeId -> GraphBinding.CODE_BOUND
+                    boundFromNodeId != edge.fromNodeId || boundToNodeId != edge.toNodeId -> GraphBinding.PARTIAL
+                    else -> edge.binding
                 },
                 metadata = metadata,
             )
@@ -82,13 +82,13 @@ class MermaidBindingService(
         // 读取持久化在元数据里的绑定标记，优先用于恢复状态。
         val marker = node.metadata[BINDING_KEY]?.trim()?.uppercase()
         val nextStatus = when (marker) {
-            "MATCHED" -> BindingStatus.BOUND
-            "UNMATCHED" -> BindingStatus.DESIGN_ONLY
-            "MULTI_CANDIDATE", "CONFLICTED" -> BindingStatus.CONFLICTED
-            null -> if (node.metadata[BOUND_NODE_ID_KEY].isNullOrBlank()) node.bindingStatus else BindingStatus.BOUND
-            else -> node.bindingStatus
+            "MATCHED" -> GraphBinding.CODE_BOUND
+            "UNMATCHED" -> GraphBinding.DESIGN_ONLY
+            "MULTI_CANDIDATE", "CONFLICTED" -> GraphBinding.CONFLICTED
+            null -> if (node.metadata[BOUND_NODE_ID_KEY].isNullOrBlank()) node.binding else GraphBinding.CODE_BOUND
+            else -> node.binding
         }
-        return node.copy(bindingStatus = nextStatus)
+        return node.copy(binding = nextStatus)
     }
 
     /**
@@ -107,7 +107,7 @@ class MermaidBindingService(
             metadata[BINDING_CANDIDATES_KEY] = resolution.candidateIds.joinToString(",")
         }
         return node.copy(
-            bindingStatus = resolution.status,
+            binding = resolution.status,
             metadata = metadata,
         )
     }
@@ -127,7 +127,7 @@ class MermaidBindingService(
             ?.let { boundId ->
                 codeNodesById[boundId]?.let {
                     return BindingResolution(
-                        status = BindingStatus.BOUND,
+                        status = GraphBinding.CODE_BOUND,
                         marker = "MATCHED",
                         boundNodeId = it.id,
                     )
@@ -137,7 +137,7 @@ class MermaidBindingService(
         // 节点标识完全一致时也直接视为已绑定。
         codeNodesById[node.id.trim()]?.let {
             return BindingResolution(
-                status = BindingStatus.BOUND,
+                status = GraphBinding.CODE_BOUND,
                 marker = "MATCHED",
                 boundNodeId = it.id,
             )
@@ -158,19 +158,19 @@ class MermaidBindingService(
         // 单候选视为绑定成功，多候选视为冲突，无候选视为设计侧独有。
         return when {
             candidates.size == 1 -> BindingResolution(
-                status = BindingStatus.BOUND,
+                status = GraphBinding.CODE_BOUND,
                 marker = "MATCHED",
                 boundNodeId = candidates.single().id,
             )
 
             candidates.size > 1 -> BindingResolution(
-                status = BindingStatus.CONFLICTED,
+                status = GraphBinding.CONFLICTED,
                 marker = "MULTI_CANDIDATE",
                 candidateIds = candidates.map { it.id }.sorted(),
             )
 
             else -> BindingResolution(
-                status = BindingStatus.DESIGN_ONLY,
+                status = GraphBinding.DESIGN_ONLY,
                 marker = "UNMATCHED",
             )
         }
@@ -214,7 +214,7 @@ class MermaidBindingService(
      */
     private data class BindingResolution(
         /** 保存解析后的绑定状态。 */
-        val status: BindingStatus,
+        val status: GraphBinding,
         /** 保存持久化到元数据中的绑定标记。 */
         val marker: String,
         /** 保存绑定到的目标节点标识。 */

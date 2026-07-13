@@ -78,6 +78,8 @@ sealed interface GraphEditorApplicationEvent {
     ) : GraphEditorApplicationEvent
     /** 分析结果的展示模式（如普通视图/diff 视图）发生变化 */
     data class AnalysisDisplayModeChanged(val displayMode: AnalysisDisplayMode) : GraphEditorApplicationEvent
+    /** 已有调用展开被重新打开，仅改变当前场景的展开可见状态。 */
+    data class InvocationExpansionOpened(val expansionId: String) : GraphEditorApplicationEvent
     /** 当前选中的方法签名变化 */
     data class SelectedMethodChanged(val signature: String) : GraphEditorApplicationEvent
     /** 分析结果加载完成，携带分析产物与加载来源 */

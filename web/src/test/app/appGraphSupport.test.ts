@@ -42,8 +42,8 @@ describe("deriveFlowchartSummary", () => {
           title: "if (delete)",
           inputs: [],
           outputs: [],
-          certainty: "PROVEN",
-          bindingStatus: "BOUND",
+          confidence: "VERIFIED",
+          binding: "CODE_BOUND",
           metadata: {
             "flow.kind": "IF",
             "flowchart.kind": "PROCESS",
@@ -68,8 +68,8 @@ describe("scopeFlowchartGraphToAnchorMethod", () => {
           signature: "com.example.Caller.run():void",
           inputs: [],
           outputs: [],
-          certainty: "PROVEN",
-          bindingStatus: "BOUND",
+          confidence: "VERIFIED",
+          binding: "CODE_BOUND",
           metadata: { "flowchart.kind": "ENTRY" },
         },
         {
@@ -79,8 +79,8 @@ describe("scopeFlowchartGraphToAnchorMethod", () => {
           signature: "com.example.SystemService.createInfo():void",
           inputs: [],
           outputs: [],
-          certainty: "PROVEN",
-          bindingStatus: "BOUND",
+          confidence: "VERIFIED",
+          binding: "CODE_BOUND",
           metadata: {
             "flow.kind": "INVOCATION",
             "flow.ownerMethod": "com.example.Caller.run():void",
@@ -94,8 +94,8 @@ describe("scopeFlowchartGraphToAnchorMethod", () => {
           signature: "com.example.SystemService.createInfo():void",
           inputs: [],
           outputs: [],
-          certainty: "PROVEN",
-          bindingStatus: "BOUND",
+          confidence: "VERIFIED",
+          binding: "CODE_BOUND",
           metadata: {
             "flow.ownerMethod": "com.example.SystemService.createInfo():void",
             "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
@@ -108,8 +108,8 @@ describe("scopeFlowchartGraphToAnchorMethod", () => {
           title: "saveInfo()",
           inputs: [],
           outputs: [],
-          certainty: "PROVEN",
-          bindingStatus: "BOUND",
+          confidence: "VERIFIED",
+          binding: "CODE_BOUND",
           metadata: {
             "flow.kind": "ACTION",
             "flow.ownerMethod": "com.example.SystemService.createInfo():void",
@@ -124,8 +124,8 @@ describe("scopeFlowchartGraphToAnchorMethod", () => {
           signature: "com.example.Other.run():void",
           inputs: [],
           outputs: [],
-          certainty: "PROVEN",
-          bindingStatus: "BOUND",
+          confidence: "VERIFIED",
+          binding: "CODE_BOUND",
         },
       ],
       edges: [
@@ -282,8 +282,8 @@ function node(
     title: id,
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
     metadata,
   };
 }

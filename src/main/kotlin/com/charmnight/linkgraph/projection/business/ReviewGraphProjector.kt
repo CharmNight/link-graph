@@ -33,8 +33,8 @@ import com.charmnight.linkgraph.jvm.index.JvmSymbol
 import com.charmnight.linkgraph.jvm.relation.JvmRelation
 import com.charmnight.linkgraph.jvm.relation.JvmRelationConfidence
 import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
-import com.charmnight.linkgraph.model.BindingStatus
-import com.charmnight.linkgraph.model.Certainty
+import com.charmnight.linkgraph.model.GraphBinding
+import com.charmnight.linkgraph.model.GraphConfidence
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
@@ -453,8 +453,8 @@ class ReviewGraphProjector(
             title = displayTitle(),
             location = filePath?.let { path -> startLine?.let { line -> "$path:$line" } ?: path },
             signature = qualifiedName,
-            bindingStatus = BindingStatus.BOUND,
-            certainty = Certainty.PROVEN,
+            binding = GraphBinding.CODE_BOUND,
+            confidence = GraphConfidence.VERIFIED,
             metadata = buildMap {
                 put("review.role", "CHANGED")
                 put("review.changeKind", changeKind)
@@ -503,8 +503,8 @@ class ReviewGraphProjector(
             signature = qualifiedName,
             inputs = (this as? JvmMethodSymbol)?.parameterTypes.orEmpty(),
             outputs = (this as? JvmMethodSymbol)?.returnType?.let(::listOf).orEmpty(),
-            bindingStatus = BindingStatus.BOUND,
-            certainty = Certainty.PROVEN,
+            binding = GraphBinding.CODE_BOUND,
+            confidence = GraphConfidence.VERIFIED,
             metadata = buildMap {
                 put("review.role", changed?.let { "CHANGED" } ?: role)
                 put("review.qualifiedName", qualifiedName)
@@ -560,8 +560,8 @@ class ReviewGraphProjector(
             fromNodeId = fromSymbolId,
             toNodeId = toSymbolId,
             label = kind.name,
-            certainty = confidence.toCertainty(),
-            bindingStatus = BindingStatus.BOUND,
+            confidence = confidence.toCertainty(),
+            binding = GraphBinding.CODE_BOUND,
             metadata = metadata + mapOf(
                 "review.edgeRole" to "RELATION",
                 "jvm.relation.kind" to kind.name,
@@ -591,8 +591,8 @@ class ReviewGraphProjector(
             fromNodeId = from,
             toNodeId = to,
             label = label,
-            certainty = Certainty.RULE_INFERRED,
-            bindingStatus = BindingStatus.BOUND,
+            confidence = GraphConfidence.INFERRED,
+            binding = GraphBinding.CODE_BOUND,
             metadata = mapOf(
                 "review.edgeRole" to role,
                 "indexed.relationKind" to role,
@@ -718,13 +718,13 @@ class ReviewGraphProjector(
     /**
      * 把 JVM 关系置信度映射到通用确定性枚举。
      */
-    private fun JvmRelationConfidence.toCertainty(): Certainty =
+    private fun JvmRelationConfidence.toCertainty(): GraphConfidence =
         when (this) {
-            JvmRelationConfidence.PROVEN -> Certainty.PROVEN
+            JvmRelationConfidence.PROVEN -> GraphConfidence.VERIFIED
             JvmRelationConfidence.RULE_INFERRED,
             JvmRelationConfidence.AMBIGUOUS,
             JvmRelationConfidence.RUNTIME_REQUIRED,
-            -> Certainty.RULE_INFERRED
+            -> GraphConfidence.INFERRED
         }
 
     /**

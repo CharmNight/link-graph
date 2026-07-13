@@ -3,15 +3,17 @@ package com.charmnight.linkgraph.application.workflow.generation
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport
 import com.charmnight.linkgraph.codegen.ProjectScopedPathPolicy
 import com.charmnight.linkgraph.codegen.ProjectPathNormalizer
+import com.charmnight.linkgraph.codegen.CodeDraftCommand
 import com.charmnight.linkgraph.application.diagnostics.GenerationDiagnostics
 import com.charmnight.linkgraph.foundation.debugLazy
 import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.application.result.CodeDraftWriteResult
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
+import com.charmnight.linkgraph.source.SourceArchiveReadLimits
+import com.charmnight.linkgraph.source.readFileTextBounded
 import com.intellij.diff.DiffRequestFactory
 import com.intellij.diff.merge.MergeResult
 import com.intellij.openapi.vfs.LocalFileSystem
-import java.nio.file.Files
 
 /**
  * 代码草稿应用工作流：负责把生成出来的代码草稿批量/单个写入磁盘，
@@ -128,19 +130,23 @@ internal class CodeDraftApplyWorkflow(
         val target = scopedTarget.path
         val targetExists = scopedTarget.existed
         val beforeText = when {
-            targetExists -> Files.readString(target)
-            normalizedDraft.content != null -> ""
+            targetExists -> readFileTextBounded(target, SourceArchiveReadLimits.MAX_TEXT_ENTRY_BYTES)
+            normalizedDraft.command is CodeDraftCommand.CreateFile -> ""
             else -> null
         }
         if (beforeText == null) {
             dependencies.emitGenerationFeedback(
                 ApplicationFeedbackLevel.ERROR,
-                "目标文件 '${normalizedDraft.targetPath}' 不存在，无法打开代码草稿 diff。",
+                if (targetExists) {
+                    "目标文件 '${normalizedDraft.targetPath}' 过大或无法读取，无法打开代码草稿 diff。"
+                } else {
+                    "目标文件 '${normalizedDraft.targetPath}' 不存在，无法打开代码草稿 diff。"
+                },
             )
             return
         }
         val afterText = when {
-            normalizedDraft.editOperations.isNotEmpty() -> {
+            normalizedDraft.command is CodeDraftCommand.PatchExistingFile -> {
                 val prepared = dependencies.codeDraftWriterService.prepareExistingFileDraft(projectBasePath, normalizedDraft)
                 if (!prepared.canApply) {
                     dependencies.emitGenerationFeedback(
@@ -151,8 +157,8 @@ internal class CodeDraftApplyWorkflow(
                 }
                 prepared.previewText
             }
-            normalizedDraft.content != null && !targetExists -> normalizedDraft.content
-            normalizedDraft.content != null -> {
+            normalizedDraft.command is CodeDraftCommand.CreateFile && !targetExists -> normalizedDraft.command.content
+            normalizedDraft.command is CodeDraftCommand.CreateFile -> {
                 dependencies.emitGenerationFeedback(
                     ApplicationFeedbackLevel.ERROR,
                     "现有文件代码草稿必须使用结构化 editOperations；已拒绝用 content 打开可写 merge，避免删除未授权逻辑。",

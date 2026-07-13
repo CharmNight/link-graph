@@ -125,7 +125,15 @@ export function useGraphEditController(args: UseGraphEditControllerArgs) {
       if (JSON.stringify(previousNode ?? null) !== JSON.stringify(node)) {
         operations.push({
           type: "UPSERT_NODE",
-          node,
+          node: {
+            id: node.id,
+            type: node.type,
+            title: node.title,
+            inputs: node.inputs,
+            outputs: node.outputs,
+            doc: node.doc,
+            metadata: node.metadata,
+          },
         });
       }
     }
@@ -144,7 +152,14 @@ export function useGraphEditController(args: UseGraphEditControllerArgs) {
       if (JSON.stringify(previousEdge ?? null) !== JSON.stringify(edge)) {
         operations.push({
           type: "UPSERT_EDGE",
-          edge,
+          edge: {
+            id: edge.id,
+            type: edge.type,
+            source: edge.source,
+            target: edge.target,
+            label: edge.label,
+            metadata: edge.metadata,
+          },
         });
       }
     }

@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.agent.tools.*
 
 import com.charmnight.linkgraph.codegen.CodeEditOperation
 import com.charmnight.linkgraph.codegen.CodeEditScopeResolver
+import com.charmnight.linkgraph.codegen.CodeDraftCommand
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.agent.model.ResultEvidenceFinding
 import com.charmnight.linkgraph.agent.model.ResultEvidenceLevel
@@ -30,14 +31,12 @@ class ValidationToolFacade(
         draft: GeneratedCodeDraft,
         projectBasePath: String? = null,
     ): Boolean {
-        if (draft.editOperations.isEmpty()) {
-            return true
-        }
-        if (draft.editScopes.isEmpty()) {
+        val patch = draft.command as? CodeDraftCommand.PatchExistingFile ?: return true
+        if (patch.scopes.isEmpty()) {
             return false
         }
-        return draft.editOperations.all { operation ->
-            val scope = codeEditScopeResolver.resolveScope(operation, draft.editScopes, projectBasePath)
+        return patch.operations.all { operation ->
+            val scope = codeEditScopeResolver.resolveScope(operation, patch.scopes, projectBasePath)
             scope != null && codeEditScopeResolver.isOperationAllowed(operation, scope)
         }
     }
@@ -48,13 +47,11 @@ class ValidationToolFacade(
         evidenceArtifacts: List<CodeEvidenceArtifact>,
         projectBasePath: String? = null,
     ): Boolean {
-        if (draft.editOperations.isEmpty()) {
-            return true
-        }
+        val patch = draft.command as? CodeDraftCommand.PatchExistingFile ?: return true
         val candidatePaths = buildSet {
             add(draft.targetPath)
-            draft.editOperations.mapTo(this, CodeEditOperation::filePath)
-            draft.editScopes.mapTo(this, EditScope::filePath)
+            patch.operations.mapTo(this, CodeEditOperation::filePath)
+            patch.scopes.mapTo(this, EditScope::filePath)
         }
         return evidenceArtifacts.any { artifact ->
             candidatePaths.any { candidatePath ->
@@ -65,7 +62,10 @@ class ValidationToolFacade(
 
     /** 判断草稿是否满足最小写回条件。 */
     fun isWritableDraft(draft: GeneratedCodeDraft): Boolean {
-        return draft.content != null || (draft.editOperations.isNotEmpty() && draft.editScopes.isNotEmpty())
+        return when (val command = draft.command) {
+            is CodeDraftCommand.CreateFile -> true
+            is CodeDraftCommand.PatchExistingFile -> command.operations.isNotEmpty() && command.scopes.isNotEmpty()
+        }
     }
 
     /** 判断两个文件路径在项目根路径归一化后是否指向同一文件，用于跨来源路径对齐。 */

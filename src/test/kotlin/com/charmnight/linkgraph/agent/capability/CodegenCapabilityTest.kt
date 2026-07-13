@@ -70,7 +70,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             codegenExecutor = { _, _, _ ->
                 CodeGenerationResult(
                     drafts = listOf(
-                        GeneratedCodeDraft(
+                        GeneratedCodeDraft.patchExistingFile(
                             id = "draft-1",
                             sourceNodeId = "method:upload-file",
                             title = "rewrite upload",
@@ -157,7 +157,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
                 executorSourceContext = input.generationContext.sourceContext
                 CodeGenerationResult(
                     drafts = listOf(
-                        GeneratedCodeDraft(
+                        GeneratedCodeDraft.patchExistingFile(
                             id = "draft-1",
                             sourceNodeId = "method:upload-file",
                             title = "rewrite upload",
@@ -241,7 +241,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             codegenExecutor = { _, _, _ ->
                 CodeGenerationResult(
                     drafts = listOf(
-                        GeneratedCodeDraft(
+                        GeneratedCodeDraft.createFile(
                             id = "draft-1",
                             sourceNodeId = "method:upload-file",
                             title = "new file draft",
@@ -381,7 +381,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
                 capturedSourceContext = input.generationContext.sourceContext
                 CodeGenerationResult(
                     drafts = listOf(
-                        GeneratedCodeDraft(
+                        GeneratedCodeDraft.patchExistingFile(
                             id = "draft-1",
                             sourceNodeId = "method:upload-file",
                             title = "rewrite upload",
@@ -613,7 +613,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
                 executorInvoked = true
                 CodeGenerationResult(
                     drafts = listOf(
-                        GeneratedCodeDraft(
+                        GeneratedCodeDraft.createFile(
                             id = "draft-1",
                             sourceNodeId = "method:upload-file",
                             title = "new file draft",
@@ -735,7 +735,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
                 executorInvoked = true
                 CodeGenerationResult(
                     drafts = listOf(
-                        GeneratedCodeDraft(
+                        GeneratedCodeDraft.createFile(
                             id = "draft-1",
                             sourceNodeId = "method:upload-file",
                             title = "new file draft",

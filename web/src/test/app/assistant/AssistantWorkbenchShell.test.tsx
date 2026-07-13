@@ -192,6 +192,7 @@ function codeDraftTurn(): AssistantTurn {
         sourceNodeId: "method:submit-order",
         title: "补充订单提交失败测试",
         targetPath: "src/test/java/com/example/OrderControllerTest.java",
+        commandKind: "CREATE_FILE",
         content: "class OrderControllerTest {}",
         warnings: [],
       },

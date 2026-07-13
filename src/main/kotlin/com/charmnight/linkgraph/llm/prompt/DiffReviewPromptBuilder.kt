@@ -29,7 +29,7 @@ internal fun buildDiffReviewPromptPackage(
         .filter { entry -> entry.elementId in context.selectedDiffItemIds }
         .joinToString("\n") { entry -> diffSummary(entry) }
         .ifBlank { "- 无" }
-    val reviewEvidence = context.reviewEvidenceBundle.ifBlank { "- 无" }
+    val reviewEvidence = context.reviewEvidenceSummary.ifBlank { "- 无" }
     val systemPrompt = """
         你是 IDEA Link Graph 的设计差异审查助手。
         你的职责是解释 Mermaid 设计基线与代码事实图之间的差异，并输出只写入草稿层的修订 patch。
@@ -87,6 +87,12 @@ internal fun buildDiffReviewPromptPackage(
                 $diff
                 """.trimIndent(),
                 priority = EVIDENCE,
+            ),
+            budgetedPromptSection(
+                header = "Review Graph 源码片段：",
+                items = context.sourceContext,
+                priority = EVIDENCE,
+                renderItem = ::sourceSnippetSummary,
             ),
             PromptSection(
                 """

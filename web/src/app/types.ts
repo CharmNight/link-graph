@@ -31,13 +31,15 @@ import type {
  * 重新导出图谱核心模型中的类型，让 types.ts 成为外部使用图谱数据结构的统一入口。
  */
 export type {
-  BindingStatus,
-  Certainty,
+  GraphBinding,
+  GraphConfidence,
   DiffStatus,
   DraftCompareStatus,
   EdgeType,
   GraphDiffElementKind,
   GraphEditOperation,
+  GraphEdgeEditInput,
+  GraphNodeEditInput,
   GraphEditRequest,
   GraphEditRequestSource,
   GraphFocusRequest,
@@ -45,8 +47,7 @@ export type {
   GraphPatchAction,
   GraphPatchOperation,
   GraphPosition,
-  GraphSourceTag,
-  ChildInvocationExpansionState,
+  GraphProvenance,
   InvocationExpansionContextMode,
   InvocationExpansionRegistry,
   InvocationExpansionRegistryEntry,
@@ -2025,7 +2026,9 @@ export interface GeneratedCodeDraft {
   title: string;
   /** 目标文件路径 */
   targetPath: string;
-  /** 内容（完整文件或空，可选从产物加载） */
+  /** 互斥命令类型 */
+  commandKind: "CREATE_FILE" | "PATCH_EXISTING_FILE";
+  /** 新文件完整内容；局部 patch 命令必须为空 */
   content: string | null;
   /** 内容产物 ID（用于按需加载大文件） */
   contentArtifactId?: string | null;

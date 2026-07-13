@@ -84,6 +84,8 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
     private var timeoutSpinner: JSpinner? = null
     /** 温度参数输入控件。 */
     private var temperatureSpinner: JSpinner? = null
+    /** 是否允许远程 LLM 接收源码片段。 */
+    private var allowRemoteSourceContextCheckBox: JBCheckBox? = null
     /** 附加 JAR 列表输入框，每行一个 classJar|sourceJar。 */
     private var attachedJarsArea: JTextArea? = null
     /** 是否允许 class jar 反编译。 */
@@ -134,6 +136,9 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
         )
         /** 温度设置控件。 */
         temperatureSpinner = JSpinner(SpinnerNumberModel(LinkGraphSettingsState.DEFAULT_TEMPERATURE, 0.0, 1.0, 0.1))
+        allowRemoteSourceContextCheckBox = JBCheckBox(
+            LinkGraphBundle.message("settings.link-graph.allow-remote-source-context"),
+        )
         attachedJarsArea = JTextArea(5, 64).apply {
             lineWrap = false
         }
@@ -178,6 +183,9 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
         temperatureSpinner?.toolTipText = LinkGraphBundle.message(
             "settings.link-graph.temperature.hint",
             LinkGraphSettingsState.DEFAULT_TEMPERATURE,
+        )
+        allowRemoteSourceContextCheckBox?.toolTipText = LinkGraphBundle.message(
+            "settings.link-graph.allow-remote-source-context.hint",
         )
         attachedJarsArea?.toolTipText = LinkGraphBundle.message("settings.link-graph.attached-jars.hint")
         maxExternalClassNodesSpinner?.toolTipText = LinkGraphBundle.message("settings.link-graph.attached-jars.max-external.hint")
@@ -231,6 +239,8 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
                     ),
                 ),
             )
+            .addComponent(allowRemoteSourceContextCheckBox!!)
+            .addComponent(createHintLabel(LinkGraphBundle.message("settings.link-graph.allow-remote-source-context.hint")))
             .addSeparator()
             .addComponent(JBLabel(LinkGraphBundle.message("settings.link-graph.attached-jars.title")))
             .addLabeledComponent(LinkGraphBundle.message("settings.link-graph.attached-jars.entries"), attachedJarsArea!!)
@@ -303,6 +313,7 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
         modelField?.text = snapshot.model
         timeoutSpinner?.value = snapshot.effectiveTimeoutSeconds()
         temperatureSpinner?.value = snapshot.effectiveTemperature()
+        allowRemoteSourceContextCheckBox?.isSelected = snapshot.allowRemoteSourceContext
         attachedJarsArea?.text = snapshot.attachedJars.joinToString("\n") { entry ->
             listOf(entry.path, entry.sourceJarPath.orEmpty(), if (entry.enabled) "enabled" else "disabled")
                 .joinToString("|")
@@ -327,6 +338,7 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
         modelField = null
         timeoutSpinner = null
         temperatureSpinner = null
+        allowRemoteSourceContextCheckBox = null
         attachedJarsArea = null
         allowClassJarDecompileCheckBox = null
         allowExternalLibraryExpansionCheckBox = null
@@ -377,6 +389,8 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
             model = modelField?.text.orEmpty(),
             timeoutSeconds = (timeoutSpinner?.value as? Number)?.toInt() ?: LinkGraphSettingsState.DEFAULT_TIMEOUT_SECONDS,
             temperature = (temperatureSpinner?.value as? Number)?.toDouble() ?: LinkGraphSettingsState.DEFAULT_TEMPERATURE,
+            allowRemoteSourceContext = allowRemoteSourceContextCheckBox?.isSelected
+                ?: LinkGraphSettingsState.DEFAULT_ALLOW_REMOTE_SOURCE_CONTEXT,
             attachedJars = parseAttachedJarEntries(attachedJarsArea?.text.orEmpty()),
             allowClassJarDecompile = allowClassJarDecompileCheckBox?.isSelected ?: LinkGraphSettingsState.DEFAULT_ALLOW_CLASS_JAR_DECOMPILE,
             allowExternalLibraryExpansion = allowExternalLibraryExpansionCheckBox?.isSelected ?: LinkGraphSettingsState.DEFAULT_ALLOW_EXTERNAL_LIBRARY_EXPANSION,
@@ -400,6 +414,7 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
         endpointField?.isEnabled = remoteFieldsEnabled
         apiKeyField?.isEnabled = remoteFieldsEnabled
         modelField?.isEnabled = remoteFieldsEnabled
+        allowRemoteSourceContextCheckBox?.isEnabled = remoteFieldsEnabled
         timeoutSpinner?.isEnabled = llmEnabled
         temperatureSpinner?.isEnabled = llmEnabled
         validateButton?.isEnabled = llmEnabled

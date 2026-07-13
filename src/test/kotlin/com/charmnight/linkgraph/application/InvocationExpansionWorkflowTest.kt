@@ -68,6 +68,59 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
         })
     }
 
+    fun testRepeatedExpansionReopensExistingBatchWithoutSemanticAnalysisOrDuplicateCommit() {
+        val service = project.graphEditorApplicationServiceForTest()
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadGraph(callerGraph(), "test"))
+        val overrides = project.getService(LinkGraphProjectRuntimeHooks::class.java)
+        var analysisCount = 0
+        overrides.invocationExpansionTargetResolver = { _, signature ->
+            InvocationExpansionTarget(InvocationExpansionTargetKind.PROJECT_SOURCE, signature = signature)
+        }
+        overrides.invocationExpansionSubjectResolver = { signature -> testCodeSubject(signature) }
+        overrides.semanticAnalyzer = SemanticAnalyzer(
+            registry = SemanticProviderRegistry(
+                listOf(
+                    targetProvider { _, _ -> analysisCount += 1 },
+                ),
+            ),
+        )
+
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestExpandInvocation("invoke:create-info"))
+        val firstSnapshot = waitForSnapshot {
+            it.workspaceGraph.nodes.any { node -> node.id == "action:save-info" }
+        }
+        val expansionId = requireNotNull(
+            firstSnapshot.workspaceGraph.nodes
+                .first { node -> node.id == "action:save-info" }
+                .metadata["linkGraph.expansion.id"],
+        )
+        stateService.switchAnalysisDisplayMode(com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode.FLOWCHART)
+        stateService.collapseInvocationExpansion(expansionId)
+        assertTrue(stateService.snapshot().currentSceneState().invocationExpansionState.collapsedExpansionIds.contains(expansionId))
+
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestExpandInvocation("invoke:create-info"))
+        val reopenedSnapshot = waitForSnapshot { snapshot ->
+            analysisCount > 1 ||
+                snapshot.operationFeedback?.message?.contains("已重新打开已有调用展开") == true
+        }
+
+        assertEquals(1, analysisCount)
+        assertEquals(
+            setOf(expansionId),
+            (reopenedSnapshot.workspaceGraph.nodes.mapNotNull { node -> node.metadata["linkGraph.expansion.id"] } +
+                reopenedSnapshot.workspaceGraph.edges.mapNotNull { edge -> edge.metadata["linkGraph.expansion.id"] }).toSet(),
+        )
+        assertEquals(
+            1,
+            reopenedSnapshot.workspaceGraph.edges.count { edge ->
+                edge.type == EdgeType.CALL && edge.fromNodeId == "invoke:create-info"
+            },
+        )
+        assertFalse(reopenedSnapshot.currentSceneState().invocationExpansionState.collapsedExpansionIds.contains(expansionId))
+        assertEquals(expansionId, reopenedSnapshot.currentSceneState().invocationExpansionState.activeExpansionId)
+    }
+
     fun testRightClickExpansionUsesLocalFlowBudgetWithoutUpstreamOrResourceTraversal() {
         val service = project.graphEditorApplicationServiceForTest()
         service.commandDispatcher.dispatch(ApplicationCommand.LoadGraph(callerGraph(), "test"))

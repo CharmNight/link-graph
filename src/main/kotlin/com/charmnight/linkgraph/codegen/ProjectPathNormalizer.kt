@@ -55,11 +55,18 @@ object ProjectPathNormalizer {
         projectBasePath: String?,
     ): GeneratedCodeDraft {
         return draft.copy(
-            targetPath = normalizePath(draft.targetPath, projectBasePath),
-            editOperations = draft.editOperations.map { operation ->
-                operation.copy(filePath = normalizePath(operation.filePath, projectBasePath))
+            command = when (val command = draft.command) {
+                is CodeDraftCommand.CreateFile -> command.copy(
+                    targetPath = normalizePath(command.targetPath, projectBasePath),
+                )
+                is CodeDraftCommand.PatchExistingFile -> command.copy(
+                    targetPath = normalizePath(command.targetPath, projectBasePath),
+                    operations = command.operations.map { operation ->
+                        operation.copy(filePath = normalizePath(operation.filePath, projectBasePath))
+                    },
+                    scopes = command.scopes.map { scope -> normalizeEditScope(scope, projectBasePath) },
+                )
             },
-            editScopes = draft.editScopes.map { scope -> normalizeEditScope(scope, projectBasePath) },
         )
     }
 

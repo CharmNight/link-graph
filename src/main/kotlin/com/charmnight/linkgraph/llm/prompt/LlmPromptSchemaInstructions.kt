@@ -174,8 +174,7 @@ internal fun diffReviewSchemaInstruction(): String {
                   "id": "节点ID",
                   "type": "METHOD|CLASS|SQL|HTTP_ENDPOINT|FEIGN_CLIENT|DUBBO_SERVICE|MQ_TOPIC|MQ_CONSUMER|CONFIG_ITEM|XML_RESOURCE|DOC_PAGE|UNCERTAIN_LINK",
                   "title": "节点标题",
-                  "doc": "可选说明",
-                  "sourceTag": "DRAFT_AI"
+                  "doc": "可选说明"
                 }
               }
             ],
@@ -197,7 +196,7 @@ internal fun codeGenerationBehaviorInstruction(): String {
     """.trimIndent()
 }
 
-/** 返回代码生成场景的 JSON schema 说明文本，覆盖 drafts、editOperations、editScopes 等结构。 */
+/** 返回代码生成场景的 JSON schema 说明文本，scope 授权只允许由本地确认链路回填。 */
 internal fun codeGenerationSchemaInstruction(): String {
     return """
         仅返回 JSON，结构如下：

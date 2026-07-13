@@ -15,8 +15,8 @@ function methodNode(id: string, title: string): LinkGraphNode {
     title,
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
   };
 }
 
@@ -124,7 +124,7 @@ describe("layoutFactGraphView", () => {
     expect(laidOut.edges[0]?.route?.sections[0]?.startPoint.x).toBeTypeOf("number");
   });
 
-  it("keeps low-cost FACT options scoped to model ordering while preserving partitioning and orthogonal routing", () => {
+  it("keeps low-cost CODE_ANALYSIS options scoped to model ordering while preserving partitioning and orthogonal routing", () => {
     expect(FACT_GRAPH_LAYOUT_OPTIONS).toMatchObject({
       "elk.algorithm": "layered",
       "org.eclipse.elk.direction": "RIGHT",
@@ -311,7 +311,7 @@ describe("layoutFactGraphView", () => {
     expect(experimentTraces[0]?.payload.durationMs).toBeTypeOf("number");
   });
 
-  it("does not run option experiments as part of the visible FACT layout", async () => {
+  it("does not run option experiments as part of the visible CODE_ANALYSIS layout", async () => {
     const traceSink = vi.fn();
     window.linkGraphDebugTrace = traceSink;
     const nodes: LinkGraphNode[] = [

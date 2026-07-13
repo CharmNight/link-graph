@@ -24,7 +24,7 @@ import com.charmnight.linkgraph.model.GraphDiffElementKind
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.model.GraphPatchAction
 import com.charmnight.linkgraph.model.GraphPatchOperation
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
@@ -53,7 +53,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     id = "flow-scope:delete-guard",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (delete)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("flowchart.kind" to "DECISION"),
                 ),
             ),
@@ -144,7 +144,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     id = "scope:file-download-if",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (delete)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("flowchart.kind" to "DECISION"),
                 ),
             ),
@@ -182,7 +182,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                                         type = NodeType.FLOW_SCOPE,
                                         title = "控制器使用 if (Boolean.TRUE.equals(delete))（或等价的 delete != null && delete）判断是否删除，避免 delete == null 时 NPE。",
                                         doc = "删除条件说明",
-                                        sourceTag = GraphSourceTag.DRAFT_AI,
+                                        provenance = GraphProvenance.AI_DRAFT,
                                         metadata = mapOf("flowchart.kind" to "DECISION"),
                                     ),
                                 ),
@@ -225,7 +225,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     type = NodeType.METHOD,
                     title = "CommonController.fileDownload",
                     signature = downloadSignature,
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "ENTRY",
                         "flow.ownerMethod" to downloadSignature,
@@ -235,7 +235,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     id = "action:delete-file",
                     type = NodeType.FLOW_ACTION,
                     title = "FileUtils.deleteFile(filePath)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "PROCESS",
                         "flow.ownerMethod" to downloadSignature,
@@ -245,7 +245,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     id = "terminal:return",
                     type = NodeType.TERMINAL,
                     title = "return",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "TERMINAL",
                         "flow.ownerMethod" to downloadSignature,
@@ -258,14 +258,14 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     type = EdgeType.CONTROL_FLOW,
                     fromNodeId = "method:file-download",
                     toNodeId = "action:delete-file",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 GraphEdge(
                     id = "edge:delete-return",
                     type = EdgeType.CONTROL_FLOW,
                     fromNodeId = "action:delete-file",
                     toNodeId = "terminal:return",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -325,7 +325,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     id = "flow-action:upload-condition",
                     type = NodeType.FLOW_ACTION,
                     title = "上传条件判断",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -340,7 +340,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
         )
         stateService.asyncRequests.markGeneratedCodeDrafts(
             drafts = listOf(
-                GeneratedCodeDraft(
+                GeneratedCodeDraft.createFile(
                     id = "draft-1",
                     sourceNodeId = "flow-action:upload-condition",
                     title = "CommonController.java",
@@ -400,7 +400,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     id = "flow-action:upload-condition",
                     type = NodeType.FLOW_ACTION,
                     title = "上传条件判断",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -458,7 +458,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     id = "flow-action:upload-condition",
                     type = NodeType.FLOW_ACTION,
                     title = "上传条件判断",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -493,7 +493,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                                         type = NodeType.DOC_PAGE,
                                         title = "上传路径改为 /data/upload",
                                         doc = "原路径已废弃，固定改为 /data/upload。",
-                                        sourceTag = GraphSourceTag.DRAFT_AI,
+                                        provenance = GraphProvenance.AI_DRAFT,
                                     ),
                                 ),
                                 GraphPatchOperation(
@@ -506,7 +506,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                                         type = EdgeType.LINKS_DOC,
                                         fromNodeId = "flow-action:upload-condition",
                                         toNodeId = "draft-note:change-upload-condition",
-                                        sourceTag = GraphSourceTag.DRAFT_AI,
+                                        provenance = GraphProvenance.AI_DRAFT,
                                     ),
                                 ),
                             ),
@@ -549,7 +549,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     id = "flow-action:upload-condition",
                     type = NodeType.FLOW_ACTION,
                     title = "上传条件判断",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -596,7 +596,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
         )
         stateService.asyncRequests.markGeneratedCodeDrafts(
             drafts = listOf(
-                GeneratedCodeDraft(
+                GeneratedCodeDraft.createFile(
                     id = "draft-1",
                     sourceNodeId = "flow-action:upload-condition",
                     title = "CommonController.java",
@@ -629,7 +629,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                         id = "flow-action:upload-condition",
                         type = NodeType.FLOW_ACTION,
                         title = "上传条件判断",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
             ),
@@ -689,7 +689,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     id = "method:upload-file",
                     type = NodeType.METHOD,
                     title = "上传方法",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -744,7 +744,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     id = "flow-scope:delete-guard",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (delete)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "DECISION",
                     ),
@@ -756,7 +756,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     type = EdgeType.CONTROL_FLOW,
                     fromNodeId = "flow-scope:delete-guard",
                     toNodeId = "flow-scope:delete-guard",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -819,7 +819,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     type = NodeType.METHOD,
                     title = "CommonController.fileDownload",
                     signature = selectedMethodSignature,
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "ENTRY",
                         "flow.ownerMethod" to selectedMethodSignature,
@@ -831,7 +831,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     id = "scope:allow-download",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (!FileUtils.checkAllowDownload(fileName))",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "DECISION",
                         "flow.ownerMethod" to selectedMethodSignature,
@@ -843,7 +843,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     id = "scope:delete-file",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (delete)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "DECISION",
                         "flow.ownerMethod" to selectedMethodSignature,
@@ -855,7 +855,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     id = "terminal:return",
                     type = NodeType.TERMINAL,
                     title = "return",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "TERMINAL",
                         "flow.ownerMethod" to selectedMethodSignature,
@@ -870,21 +870,21 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     type = EdgeType.CONTROL_FLOW,
                     fromNodeId = "method:file-download",
                     toNodeId = "scope:allow-download",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 GraphEdge(
                     id = "edge:allow-delete",
                     type = EdgeType.CONTROL_FLOW,
                     fromNodeId = "scope:allow-download",
                     toNodeId = "scope:delete-file",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 GraphEdge(
                     id = "edge:delete-return",
                     type = EdgeType.CONTROL_FLOW,
                     fromNodeId = "scope:delete-file",
                     toNodeId = "terminal:return",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -919,7 +919,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                                         id = "scope:delete-file",
                                         type = NodeType.FLOW_SCOPE,
                                         title = "if (Boolean.TRUE.equals(delete))",
-                                        sourceTag = GraphSourceTag.DRAFT_AI,
+                                        provenance = GraphProvenance.AI_DRAFT,
                                         metadata = mapOf(
                                             "flowchart.kind" to "DECISION",
                                             "flow.ownerMethod" to selectedMethodSignature,
@@ -959,7 +959,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                                         id = "draft:aaa-file-exists",
                                         type = NodeType.FLOW_ACTION,
                                         title = "Files.exists(Path.of(filePath))",
-                                        sourceTag = GraphSourceTag.DRAFT_AI,
+                                        provenance = GraphProvenance.AI_DRAFT,
                                         metadata = mapOf(
                                             "flowchart.kind" to "PROCESS",
                                             "flow.ownerMethod" to selectedMethodSignature,
@@ -982,7 +982,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                                         type = EdgeType.CONTROL_FLOW,
                                         fromNodeId = "scope:delete-file",
                                         toNodeId = "draft:aaa-file-exists",
-                                        sourceTag = GraphSourceTag.DRAFT_AI,
+                                        provenance = GraphProvenance.AI_DRAFT,
                                     ),
                                 ),
                                 GraphPatchOperation(
@@ -995,7 +995,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                                         type = EdgeType.CONTROL_FLOW,
                                         fromNodeId = "draft:aaa-file-exists",
                                         toNodeId = "terminal:return",
-                                        sourceTag = GraphSourceTag.DRAFT_AI,
+                                        provenance = GraphProvenance.AI_DRAFT,
                                     ),
                                 ),
                             ),
@@ -1051,7 +1051,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     type = NodeType.METHOD,
                     title = "CommonController.fileDownload",
                     signature = selectedMethodSignature,
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -1061,7 +1061,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     id = "scope:file-download-if",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (delete)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "DECISION",
                         "flow.ownerMethod" to selectedMethodSignature,
@@ -1074,7 +1074,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     type = EdgeType.CONTROL_FLOW,
                     fromNodeId = "method:file-download",
                     toNodeId = "scope:file-download-if",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -1085,14 +1085,14 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     type = NodeType.METHOD,
                     title = "CommonController.fileDownload",
                     signature = selectedMethodSignature,
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("flowchart.kind" to "ENTRY"),
                 ),
                 GraphNode(
                     id = "scope:file-download-if",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (delete)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "DECISION",
                         "flow.ownerMethod" to selectedMethodSignature,
@@ -1105,7 +1105,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     type = EdgeType.CONTROL_FLOW,
                     fromNodeId = "method:file-download",
                     toNodeId = "scope:file-download-if",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -1163,7 +1163,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                                         id = "scope:file-download-if",
                                         type = NodeType.FLOW_SCOPE,
                                         title = "if (Boolean.TRUE.equals(delete))",
-                                        sourceTag = GraphSourceTag.DRAFT_AI,
+                                        provenance = GraphProvenance.AI_DRAFT,
                                         metadata = mapOf("flowchart.kind" to "DECISION"),
                                     ),
                                 ),
@@ -1212,13 +1212,13 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     type = NodeType.METHOD,
                     title = "CommonController.fileDownload",
                     signature = "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 GraphNode(
                     id = "scope:file-download-try",
                     type = NodeType.FLOW_SCOPE,
                     title = "try",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "SCOPE",
                         "flow.ownerMethod" to "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
@@ -1228,7 +1228,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     id = "scope:file-download-if",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (delete)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "DECISION",
                         "flow.ownerMethod" to "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
@@ -1269,7 +1269,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                                         id = "scope:file-download-if",
                                         type = NodeType.FLOW_SCOPE,
                                         title = "if (Boolean.TRUE.equals(delete) && fileExists(filePath))",
-                                        sourceTag = GraphSourceTag.DRAFT_AI,
+                                        provenance = GraphProvenance.AI_DRAFT,
                                         metadata = mapOf("draft.claimType" to "STRUCTURAL_SUGGESTION"),
                                     ),
                                     metadata = mapOf("draft.claimType" to "STRUCTURAL_SUGGESTION"),
@@ -1309,13 +1309,13 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     type = NodeType.METHOD,
                     title = "CommonController.fileDownload",
                     signature = "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 GraphNode(
                     id = "scope:file-download-try",
                     type = NodeType.FLOW_SCOPE,
                     title = "try",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "SCOPE",
                         "flow.ownerMethod" to "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
@@ -1325,7 +1325,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     id = "scope:file-download-if",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (delete)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "DECISION",
                         "flow.ownerMethod" to "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
@@ -1366,7 +1366,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                                         id = "scope:file-download-try",
                                         type = NodeType.FLOW_SCOPE,
                                         title = "try",
-                                        sourceTag = GraphSourceTag.DRAFT_AI,
+                                        provenance = GraphProvenance.AI_DRAFT,
                                         metadata = mapOf("draft.claimType" to "STRUCTURAL_SUGGESTION"),
                                     ),
                                     metadata = mapOf("draft.claimType" to "STRUCTURAL_SUGGESTION"),
@@ -1411,20 +1411,20 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     type = NodeType.METHOD,
                     title = "CommonController.uploadFile",
                     signature = uploadSignature,
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 GraphNode(
                     id = "method:file-download",
                     type = NodeType.METHOD,
                     title = "CommonController.fileDownload",
                     signature = downloadSignature,
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 GraphNode(
                     id = "scope:file-download-if",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (delete)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "DECISION",
                         "flow.ownerMethod" to downloadSignature,

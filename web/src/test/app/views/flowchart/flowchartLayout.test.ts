@@ -15,8 +15,8 @@ function methodNode(id: string, title: string): LinkGraphNode {
     title,
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
   };
 }
 
@@ -748,7 +748,7 @@ describe("layoutFlowchartView", () => {
         ...methodNode("invoke:delete-file", "FileUtils.deleteFile(filePath)"),
         type: "FLOW_ACTION",
         metadata: { "flowchart.kind": "SUBROUTINE" },
-        sourceTag: "DRAFT_MANUAL",
+        provenance: "USER_DRAFT",
       },
       {
         ...methodNode("merge:after-delete", "汇合"),
@@ -770,7 +770,7 @@ describe("layoutFlowchartView", () => {
         type: "CONTROL_FLOW",
         source: "scope:delete-if",
         target: "invoke:delete-file",
-        sourceTag: "DRAFT_MANUAL",
+        provenance: "USER_DRAFT",
       },
       { id: "delete-merge", type: "CONTROL_FLOW", source: "action:delete", target: "merge:after-delete", label: "TRUE" },
       { id: "merge-return", type: "CONTROL_FLOW", source: "merge:after-delete", target: "terminal:return" },
@@ -814,7 +814,7 @@ describe("layoutFlowchartView", () => {
         target: "action:right-target",
         sourceHandle: "source-left",
         targetHandle: "target-top",
-        sourceTag: "DRAFT_MANUAL",
+        provenance: "USER_DRAFT",
       },
     ];
 
@@ -992,7 +992,7 @@ describe("layoutFlowchartView", () => {
         target: "action:catch",
         sourceHandle: "source-right",
         targetHandle: "target-top",
-        sourceTag: "DRAFT_MANUAL",
+        provenance: "USER_DRAFT",
       },
     ];
 
@@ -1286,7 +1286,7 @@ describe("layoutFlowchartView", () => {
     );
   });
 
-  it("places invocation expansion batches in a right-side lane and routes CALL edges away from the main flow", async () => {
+  it("places invocation expansion batches near their source call and routes CALL edges away from the main flow", async () => {
     const nodes: LinkGraphNode[] = [
       {
         ...methodNode("method:caller", "Caller.run"),
@@ -1390,14 +1390,12 @@ describe("layoutFlowchartView", () => {
     const expandedRoot = index.get("method:create-info")!;
     const expandedAction = index.get("action:save-info")!;
     const callEdge = laidOut.edges.find((edge) => edge.id === "invoke-expanded")!;
-    const mainFlowRight = Math.max(
-      nodeBounds(index.get("method:caller")!).right,
-      nodeBounds(invocation).right,
-      nodeBounds(afterCall).right,
-    );
+    const sourceRight = nodeBounds(invocation).right;
 
-    expect(expandedRoot.position?.x).toBeGreaterThan(mainFlowRight + 40);
-    expect(expandedAction.position?.x).toBeGreaterThan(mainFlowRight + 40);
+    expect(nodeBounds(expandedRoot).left).toBeGreaterThanOrEqual(sourceRight + 80);
+    expect(nodeBounds(expandedRoot).left).toBeLessThanOrEqual(sourceRight + 240);
+    expect(Math.abs((expandedRoot.position?.y ?? 0) - (invocation.position?.y ?? 0))).toBeLessThanOrEqual(120);
+    expect(expandedAction.position?.x).toBe(expandedRoot.position?.x);
     expect(expandedAction.position?.y).toBeGreaterThan(expandedRoot.position?.y ?? 0);
     expect(routeIntersectsAnyNode(callEdge, [index.get("method:caller")!, invocation, afterCall, expandedRoot, expandedAction])).toBe(false);
   });
@@ -1473,7 +1471,7 @@ describe("layoutFlowchartView", () => {
     expect(routeIntersectsAnyNode(callEdge, [peerBranch])).toBe(false);
   });
 
-  it("keeps expansion CALL edges out of the main control-flow corridor in a wide method graph", async () => {
+  it("keeps expansion CALL edges local to their source in a wide method graph", async () => {
     const expansionMetadata = {
       "linkGraph.expansion.id": "invocation:file-check",
       "linkGraph.expansion.sourceInvocationNodeId": "invoke:check-allow-download",
@@ -1544,12 +1542,13 @@ describe("layoutFlowchartView", () => {
 
     expect(intersectingNodeIds).toEqual([]);
     expect(intersectingEdgeIds).toEqual([]);
-    expect(index.get("method:check-allow-download")?.position?.x).toBeGreaterThan(
-      Math.max(...mainNodes.map((node) => nodeBounds(node).right)) + 40,
-    );
+    const source = index.get("invoke:check-allow-download")!;
+    const expandedRoot = index.get("method:check-allow-download")!;
+    expect(nodeBounds(expandedRoot).left).toBeGreaterThanOrEqual(nodeBounds(source).right + 80);
+    expect(nodeBounds(expandedRoot).left).toBeLessThanOrEqual(nodeBounds(source).right + 240);
   });
 
-  it("stacks multiple invocation expansion batches by their source call order without overlapping", async () => {
+  it("anchors multiple invocation expansion batches to their own source calls without overlapping", async () => {
     const expansionMetadata = (expansionId: string, sourceInvocationNodeId: string, rootNodeId: string) => ({
       "linkGraph.expansion.id": expansionId,
       "linkGraph.expansion.sourceInvocationNodeId": sourceInvocationNodeId,
@@ -1607,10 +1606,15 @@ describe("layoutFlowchartView", () => {
     const firstAction = index.get("action:first")!;
     const secondRoot = index.get("method:second")!;
     const secondAction = index.get("action:second")!;
+    const firstSource = index.get("invoke:first")!;
+    const secondSource = index.get("invoke:second")!;
     const firstBottom = Math.max(nodeBounds(firstRoot).bottom, nodeBounds(firstAction).bottom);
     const secondTop = Math.min(nodeBounds(secondRoot).top, nodeBounds(secondAction).top);
 
-    expect(firstRoot.position?.x).toBeCloseTo(secondRoot.position?.x ?? 0, -1);
+    expect(nodeBounds(firstRoot).left).toBeGreaterThanOrEqual(nodeBounds(firstSource).right + 80);
+    expect(nodeBounds(firstRoot).left).toBeLessThanOrEqual(nodeBounds(firstSource).right + 240);
+    expect(nodeBounds(secondRoot).left).toBeGreaterThanOrEqual(nodeBounds(secondSource).right + 80);
+    expect(nodeBounds(secondRoot).left).toBeLessThanOrEqual(nodeBounds(secondSource).right + 240);
     expect(secondTop).toBeGreaterThan(firstBottom + 40);
     expect(firstAction.position?.y).toBeGreaterThan(firstRoot.position?.y ?? 0);
     expect(secondAction.position?.y).toBeGreaterThan(secondRoot.position?.y ?? 0);
@@ -1690,6 +1694,7 @@ describe("layoutFlowchartView", () => {
     const action = index.get("action:child")!;
 
     expect(root.position?.x).toBeGreaterThan((source.position?.x ?? 0) + flowchartNodeCardWidth(source) + 100);
+    expect(root.position?.x).toBeLessThanOrEqual((source.position?.x ?? 0) + flowchartNodeCardWidth(source) + 240);
     expect(action.position?.x).toBe(root.position?.x);
     expect(action.position?.y).toBeGreaterThan(root.position?.y ?? 0);
   });

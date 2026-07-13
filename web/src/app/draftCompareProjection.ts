@@ -504,9 +504,9 @@ function nodesDiffer(referenceNode: LinkGraphNode, workingNode: LinkGraphNode): 
     || !sameStringArray(referenceNode.inputs, workingNode.inputs)
     || !sameStringArray(referenceNode.outputs, workingNode.outputs)
     || normalizedText(referenceNode.doc) !== normalizedText(workingNode.doc)
-    || referenceNode.certainty !== workingNode.certainty
-    || referenceNode.bindingStatus !== workingNode.bindingStatus
-    || referenceNode.sourceTag !== workingNode.sourceTag
+    || referenceNode.confidence !== workingNode.confidence
+    || referenceNode.binding !== workingNode.binding
+    || referenceNode.provenance !== workingNode.provenance
     || !sameMetadata(referenceNode.metadata, workingNode.metadata);
 }
 
@@ -516,7 +516,7 @@ function edgesDiffer(referenceEdge: LinkGraphEdge, workingEdge: LinkGraphEdge): 
     || referenceEdge.source !== workingEdge.source
     || referenceEdge.target !== workingEdge.target
     || normalizedText(referenceEdge.label) !== normalizedText(workingEdge.label)
-    || referenceEdge.sourceTag !== workingEdge.sourceTag
+    || referenceEdge.provenance !== workingEdge.provenance
     || !sameMetadata(referenceEdge.metadata, workingEdge.metadata);
 }
 

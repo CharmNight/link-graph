@@ -417,10 +417,20 @@ internal fun generatedCodeDraftToDto(
     sourceNodeId = draft.sourceNodeId,
     title = draft.title,
     targetPath = draft.targetPath,
+    commandKind = when (draft.command) {
+        is com.charmnight.linkgraph.codegen.CodeDraftCommand.CreateFile -> "CREATE_FILE"
+        is com.charmnight.linkgraph.codegen.CodeDraftCommand.PatchExistingFile -> "PATCH_EXISTING_FILE"
+    },
     contentArtifactId = contentArtifactId,
-    content = if (contentArtifactId == null) draft.content else null,
-    editOperations = draft.editOperations.map(::codeEditOperationToDto),
-    editScopes = draft.editScopes.map(::editScopeToDto),
+    content = if (contentArtifactId == null) {
+        (draft.command as? com.charmnight.linkgraph.codegen.CodeDraftCommand.CreateFile)?.content
+    } else {
+        null
+    },
+    editOperations = (draft.command as? com.charmnight.linkgraph.codegen.CodeDraftCommand.PatchExistingFile)
+        ?.operations.orEmpty().map(::codeEditOperationToDto),
+    editScopes = (draft.command as? com.charmnight.linkgraph.codegen.CodeDraftCommand.PatchExistingFile)
+        ?.scopes.orEmpty().map(::editScopeToDto),
     preparedEdits = draft.preparedEdits.map(::preparedCodeEditToDto),
     warnings = draft.warnings,
 )

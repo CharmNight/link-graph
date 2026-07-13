@@ -7,7 +7,7 @@ import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.projection.graphProjectionHiddenCounts
 import com.charmnight.linkgraph.semantic.model.FlowActionUnit
@@ -40,7 +40,7 @@ class FlowchartProjectorTest {
                     id = "scope:delete-if",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (delete)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flow.kind" to "IF",
                         "flowchart.kind" to "PROCESS",
@@ -61,21 +61,21 @@ class FlowchartProjectorTest {
                     id = "method:file-download",
                     type = NodeType.METHOD,
                     title = "CommonController.fileDownload",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("flowchart.kind" to "ENTRY"),
                 ),
                 GraphNode(
                     id = "scope:delete-if",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (delete)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("flowchart.kind" to "DECISION"),
                 ),
                 GraphNode(
                     id = "draft-note:change-delete",
                     type = NodeType.DOC_PAGE,
                     title = "确认删除前是否要 exists 校验",
-                    sourceTag = GraphSourceTag.DRAFT_AI,
+                    provenance = GraphProvenance.AI_DRAFT,
                     metadata = mapOf("draft.role" to "change-note"),
                 ),
             ),
@@ -85,14 +85,14 @@ class FlowchartProjectorTest {
                     type = EdgeType.CONTROL_FLOW,
                     fromNodeId = "method:file-download",
                     toNodeId = "scope:delete-if",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 GraphEdge(
                     id = "draft-edge:delete-if->change-note",
                     type = EdgeType.LINKS_DOC,
                     fromNodeId = "scope:delete-if",
                     toNodeId = "draft-note:change-delete",
-                    sourceTag = GraphSourceTag.DRAFT_AI,
+                    provenance = GraphProvenance.AI_DRAFT,
                 ),
             ),
         )

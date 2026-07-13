@@ -48,11 +48,13 @@ class GenerationPlanDiscussionService(
         val sanitized = settings.sanitized()
         /** 去除首尾空白后的用户问题。 */
         val normalizedQuestion = question.trim()
+        /** 远程请求前应用源码片段外发授权策略。 */
+        val sourceContextPolicy = context.withRemoteSourceContextPolicy(sanitized)
         /** 优先采用调用方传入的焦点条目，缺失时回退到会话中已有的焦点条目。 */
         val effectiveFocusItemId = focusItemId?.takeIf(String::isNotBlank) ?: session?.focusItemId
         /** 当前追问场景的提示词包，包含系统/用户提示词以及界面预览。 */
         val promptPackage = promptFactory.buildGenerationPlanDiscussionPromptPackage(
-            context = context,
+            context = sourceContextPolicy.context,
             plan = plan,
             question = normalizedQuestion,
             settings = sanitized,
@@ -89,14 +91,17 @@ class GenerationPlanDiscussionService(
                 prompt = promptPackage.preview,
                 session = session,
                 focusItemId = effectiveFocusItemId,
-                extraWarnings = listOf(sanitized.remoteLlmSetupHint("实现建议追问")),
+                extraWarnings = sourceContextPolicy.warnings() + sanitized.remoteLlmSetupHint("实现建议追问"),
             )
         }
         return runCatching {
             responseSupport.request(
-                remoteConnection.toRequest(
-                    systemPrompt = promptPackage.systemPrompt,
-                    userPrompt = promptPackage.userPrompt,
+                RemoteLlmRequestFactory.create(
+                    connection = remoteConnection,
+                    settings = sanitized,
+                    content = promptPackage.toRemotePromptContent(
+                        sourceContextClassifications(sourceContextPolicy.context.sourceContext),
+                    ),
                 ),
                 scene = "实现建议追问",
                 schema = LlmStructuredSchemas.DISCUSSION,
@@ -113,7 +118,7 @@ class GenerationPlanDiscussionService(
                 )
             }
         }.map { remote ->
-            remote.value.copy(warnings = remote.warnings + remote.value.warnings)
+            remote.value.copy(warnings = sourceContextPolicy.warnings() + remote.warnings + remote.value.warnings)
         }.getOrElse { error ->
             buildMockResult(
                 plan = plan,
@@ -121,9 +126,8 @@ class GenerationPlanDiscussionService(
                 prompt = promptPackage.preview,
                 session = session,
                 focusItemId = effectiveFocusItemId,
-                extraWarnings = listOf(
+                extraWarnings = sourceContextPolicy.warnings() +
                     "远程 LLM 实现建议追问失败，已回退为本地说明：${LlmUserMessageFormatter.describe(error)}",
-                ),
             )
         }
     }

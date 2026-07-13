@@ -8,7 +8,7 @@ import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.workbench.AssistantActionId
@@ -37,21 +37,21 @@ class GraphEditorApplicationPlanningTest : BasePlatformTestCase() {
             type = NodeType.METHOD,
             title = "ShiroUtils.setSysUser",
             signature = methodSignature,
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
         )
         val staleFactOnlyNode = GraphNode(
             id = "method:fallback-guard",
             type = NodeType.METHOD,
             title = "FallbackGuard.handle",
             signature = "com.example.FallbackGuard.handle():void",
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
         )
         val currentDraftNode = GraphNode(
             id = "doc:manual-note",
             type = NodeType.DOC_PAGE,
             title = "人工补充说明",
             doc = "当前画布里新增的说明节点。",
-            sourceTag = GraphSourceTag.DRAFT_MANUAL,
+            provenance = GraphProvenance.USER_DRAFT,
         )
         val designBaseline = GraphDocument(
             nodes = listOf(
@@ -59,7 +59,7 @@ class GraphEditorApplicationPlanningTest : BasePlatformTestCase() {
                     id = "design:manual-note",
                     type = NodeType.DOC_PAGE,
                     title = "人工补充说明",
-                    sourceTag = GraphSourceTag.DESIGN_BASELINE,
+                    provenance = GraphProvenance.DESIGN_IMPORT,
                 ),
             ),
         )
@@ -74,7 +74,7 @@ class GraphEditorApplicationPlanningTest : BasePlatformTestCase() {
                         type = EdgeType.CALL,
                         fromNodeId = visibleMethodNode.id,
                         toNodeId = staleFactOnlyNode.id,
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
             ),
@@ -263,7 +263,7 @@ class GraphEditorApplicationPlanningTest : BasePlatformTestCase() {
                     type = NodeType.METHOD,
                     title = "OrderController.submit",
                     signature = "com.example.OrderController.submit():void",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )

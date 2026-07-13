@@ -42,11 +42,10 @@ const FLOWCHART_LAYOUT_OPTIONS: LayoutOptions = {
 
 // 普通节点（业务动作、方法调用等）的默认高度，决定 ELK 布局前的预估包围盒。
 const DEFAULT_FLOWCHART_NODE_HEIGHT = 156;
-// 调用展开泳道与主控流之间的横向间距，把被展开的子图整体推到画布右侧。
-const EXPANSION_LANE_GAP = 160;
-const EXPANSION_DEPTH_LANE_WIDTH = 420;
-// 同一调用源下多个展开分组在纵向上的额外间隔，避免堆叠重叠。
-const EXPANSION_SOURCE_GAP = 96;
+// 调用展开根节点与调用源之间的局部横向间距，避免依赖整张图的最右边界。
+const EXPANSION_LOCAL_GAP = 128;
+// 展开分组与主流程、其他展开分组之间的安全留白。
+const EXPANSION_COLLISION_GAP = 64;
 // 调用边绕开障碍时与节点或既有折线之间保留的安全留白。
 const CALL_EDGE_OBSTACLE_GAP = 48;
 // 折线相交与障碍判断中允许的坐标容差，避免浮点抖动导致的误判。
@@ -394,29 +393,70 @@ function expansionNodeBounds(
   };
 }
 
-function invocationExpansionBlockNodeId(expansionId: string): string {
-  return `expansion-block:${expansionId}`;
+type ExpansionGroupBounds = NonNullable<ReturnType<typeof expansionNodeBounds>>;
+
+/** 按位移向量平移展开分组包围盒。 */
+function translateExpansionBounds(
+  bounds: ExpansionGroupBounds,
+  delta: GraphPosition,
+): ExpansionGroupBounds {
+  return {
+    left: bounds.left + delta.x,
+    right: bounds.right + delta.x,
+    top: bounds.top + delta.y,
+    bottom: bounds.bottom + delta.y,
+  };
+}
+
+/** 判断两个包围盒在包含安全留白时是否发生重叠。 */
+function expansionBoundsOverlap(
+  left: ExpansionGroupBounds,
+  right: ExpansionGroupBounds,
+  gap = EXPANSION_COLLISION_GAP,
+): boolean {
+  return left.left < right.right + gap
+    && left.right > right.left - gap
+    && left.top < right.bottom + gap
+    && left.bottom > right.top - gap;
+}
+
+/**
+ * 计算展开分组相对调用源的局部位移：横向始终锚定调用源右侧；若首选纵向位置
+ * 与已有内容冲突，则只向下移动到最近的无碰撞位置，避免退化成全局远端泳道。
+ */
+function localExpansionDelta(
+  sourceBounds: FlowchartNodeBounds,
+  rootBounds: FlowchartNodeBounds,
+  groupBounds: ExpansionGroupBounds,
+  occupiedBounds: ExpansionGroupBounds[],
+): GraphPosition {
+  const delta = {
+    x: Math.round(sourceBounds.right + EXPANSION_LOCAL_GAP - rootBounds.left),
+    y: Math.round(sourceBounds.top - rootBounds.top),
+  };
+  for (let attempt = 0; attempt <= occupiedBounds.length; attempt += 1) {
+    const candidate = translateExpansionBounds(groupBounds, delta);
+    const collisions = occupiedBounds.filter((occupied) => expansionBoundsOverlap(candidate, occupied));
+    if (collisions.length === 0) {
+      return delta;
+    }
+    const nextTop = Math.max(...collisions.map((collision) => collision.bottom)) + EXPANSION_COLLISION_GAP;
+    delta.y += Math.round(nextTop - candidate.top);
+  }
+  return delta;
 }
 
 function expansionLayoutNodeIds(
   entry: FlowchartInvocationExpansionEntry,
   nodeIndex: Map<string, LinkGraphNode>,
 ): string[] {
-  const syntheticNodeId = invocationExpansionBlockNodeId(entry.expansionId);
-  if (nodeIndex.has(syntheticNodeId)) {
-    return [syntheticNodeId];
-  }
   return entry.ownedNodeIds.filter((nodeId) => nodeIndex.has(nodeId));
 }
 
 function expansionRootLayoutNodeId(
   entry: FlowchartInvocationExpansionEntry,
   layoutNodeIds: string[],
-  nodeIndex: Map<string, LinkGraphNode>,
 ): string | null {
-  if (nodeIndex.has(invocationExpansionBlockNodeId(entry.expansionId))) {
-    return invocationExpansionBlockNodeId(entry.expansionId);
-  }
   if (entry.rootNodeId && layoutNodeIds.includes(entry.rootNodeId)) {
     return entry.rootNodeId;
   }
@@ -889,8 +929,8 @@ function routeCallEdge(
 }
 
 /**
- * 把方法调用展开得到的子图整体迁移到主控流右侧的泳道：按调用源堆叠分组、
- * 平移所有相关节点与内部边，并对调用边重新走避开主控流的折线路由。
+ * 把方法调用展开得到的子图整体迁移到调用源附近：优先对齐调用源右侧，发生碰撞时
+ * 在局部纵向避让；随后平移内部边，并对调用边重新走避开主控流的折线路由。
  */
 function applyInvocationExpansionLayout(
   nodes: LinkGraphNode[],
@@ -900,29 +940,21 @@ function applyInvocationExpansionLayout(
   if (registry.entries.length === 0) {
     return { nodes, edges };
   }
-  const nodeIndex = new Map(nodes.map((node) => [node.id, node]));
   const expansionOwnedNodeIds = new Set(registry.entries.flatMap((entry) => entry.ownedNodeIds));
   const mainNodes = nodes.filter((node) => !expansionOwnedNodeIds.has(node.id) && node.position);
   const positionedNodes = nodes.filter((node) => node.position);
   if (positionedNodes.length === 0) {
     return { nodes, edges };
   }
-  const baselineNodes = mainNodes.length > 0 ? mainNodes : positionedNodes;
-  const mainRight = Math.max(...baselineNodes.map((node) => nodeBounds(node).right));
-  const mainRouteRight = Math.max(
-    mainRight,
-    ...edges
-      .filter((edge) => edge.type === "CONTROL_FLOW")
-      .flatMap(routeSegmentsFromEdge)
-      .flatMap((segment) => [segment.startPoint.x, segment.endPoint.x]),
-  );
   const nodeDeltas = new Map<string, GraphPosition>();
-  const sourceStackCounts = new Map<string, number>();
-  const nextLaneTopByDepth = new Map<number, number>();
   const workingNodeIndex = new Map(nodes.map((node) => [node.id, node]));
+  const occupiedBounds: ExpansionGroupBounds[] = mainNodes.map((node) => {
+    const bounds = nodeBounds(node);
+    return { left: bounds.left, right: bounds.right, top: bounds.top, bottom: bounds.bottom };
+  });
 
   registry.entries
-    .filter((entry) => entry.state === "expanded" || nodeIndex.has(invocationExpansionBlockNodeId(entry.expansionId)))
+    .filter((entry) => entry.state === "expanded")
     .sort((left, right) => {
       if (left.depth !== right.depth) {
         return left.depth - right.depth;
@@ -931,7 +963,7 @@ function applyInvocationExpansionLayout(
     })
     .forEach((entry) => {
       const layoutNodeIds = expansionLayoutNodeIds(entry, workingNodeIndex);
-      const rootNodeId = expansionRootLayoutNodeId(entry, layoutNodeIds, workingNodeIndex);
+      const rootNodeId = expansionRootLayoutNodeId(entry, layoutNodeIds);
       const sourceNode = entry.sourceInvocationNodeId ? workingNodeIndex.get(entry.sourceInvocationNodeId) : null;
       const rootNode = rootNodeId ? workingNodeIndex.get(rootNodeId) : null;
       const bounds = expansionNodeBounds(layoutNodeIds, workingNodeIndex);
@@ -940,16 +972,7 @@ function applyInvocationExpansionLayout(
       }
       const sourceBounds = nodeBounds(sourceNode);
       const rootBounds = nodeBounds(rootNode);
-      const stackKey = `${entry.parentExpansionId ?? "root"}:${entry.sourceInvocationNodeId ?? entry.expansionId}`;
-      const stackIndex = sourceStackCounts.get(stackKey) ?? 0;
-      sourceStackCounts.set(stackKey, stackIndex + 1);
-      const targetLeft = mainRouteRight + EXPANSION_LANE_GAP + Math.max(0, entry.depth - 1) * (EXPANSION_DEPTH_LANE_WIDTH + EXPANSION_LANE_GAP);
-      const preferredRootTop = sourceBounds.top + stackIndex * (bounds.bottom - bounds.top + EXPANSION_SOURCE_GAP);
-      const targetRootTop = Math.max(preferredRootTop, nextLaneTopByDepth.get(entry.depth) ?? preferredRootTop);
-      const delta = {
-        x: Math.round(targetLeft - rootBounds.left),
-        y: Math.round(targetRootTop - rootBounds.top),
-      };
+      const delta = localExpansionDelta(sourceBounds, rootBounds, bounds, occupiedBounds);
       layoutNodeIds.forEach((nodeId) => {
         const node = workingNodeIndex.get(nodeId);
         nodeDeltas.set(nodeId, delta);
@@ -960,7 +983,7 @@ function applyInvocationExpansionLayout(
           });
         }
       });
-      nextLaneTopByDepth.set(entry.depth, bounds.bottom + delta.y + EXPANSION_SOURCE_GAP);
+      occupiedBounds.push(translateExpansionBounds(bounds, delta));
     });
 
   if (nodeDeltas.size === 0) {

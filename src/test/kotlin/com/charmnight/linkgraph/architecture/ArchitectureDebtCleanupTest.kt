@@ -35,6 +35,20 @@ class ArchitectureDebtCleanupTest {
     }
 
     @Test
+    fun remoteSettingsValidationDoesNotAccumulateStreamingProbeText() {
+        val source = read("src/main/kotlin/com/charmnight/linkgraph/settings/RemoteLlmSettingsValidator.kt")
+
+        assertFalse(
+            source.contains("responseBuilder"),
+            "Settings validation probe should not retain streamed remote content it never displays or parses.",
+        )
+        assertFalse(
+            source.contains("append(event.text)"),
+            "Settings validation probe should avoid growing an unused text buffer from remote stream deltas.",
+        )
+    }
+
+    @Test
     fun qaConversationNamingDoesNotKeepUnusedWrapperLayer() {
         val qaConversationServicePath = root.resolve("src/main/kotlin/com/charmnight/linkgraph/workbench/QaConversationService.kt")
         assertTrue(
@@ -335,6 +349,20 @@ class ArchitectureDebtCleanupTest {
                 "GraphEditorCommandRouter should route messages in dispatch instead of exposing pure forwarding helper $method",
             )
         }
+    }
+
+    @Test
+    fun classUsageTargetResolverUsesBoundedFallbackSourceReads() {
+        val resolver = read("src/main/kotlin/com/charmnight/linkgraph/usage/ClassUsageTargetResolver.kt")
+
+        assertTrue(
+            resolver.contains("readVirtualFileTextBounded("),
+            "ClassUsageTargetResolver fallback PSI creation should use bounded source reads.",
+        )
+        assertFalse(
+            resolver.contains("contentsToByteArray()"),
+            "ClassUsageTargetResolver should not read whole candidate source files without a size guard.",
+        )
     }
 
     @Test

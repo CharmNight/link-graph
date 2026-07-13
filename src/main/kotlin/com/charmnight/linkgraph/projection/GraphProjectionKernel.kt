@@ -1,12 +1,12 @@
 package com.charmnight.linkgraph.projection
 
-import com.charmnight.linkgraph.model.BindingStatus
-import com.charmnight.linkgraph.model.Certainty
+import com.charmnight.linkgraph.model.GraphBinding
+import com.charmnight.linkgraph.model.GraphConfidence
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import java.util.PriorityQueue
 
@@ -29,8 +29,8 @@ class GraphProjectionKernel(
 ) {
     // P2-1 真正的架构分解：交互式投影委托给独立的 InteractiveProjectionEngine
     private val interactiveEngine = InteractiveProjectionEngine(
-        maxVisibleNodes = maxVisibleNodes,
-        maxVisibleEdges = maxVisibleEdges,
+        maxVisibleNodes = maxVisibleNodes.coerceIn(1, GraphProjectionLimits.MAX_VISIBLE_NODES),
+        maxVisibleEdges = maxVisibleEdges.coerceIn(0, GraphProjectionLimits.MAX_VISIBLE_EDGES),
         upstreamDepth = upstreamDepth,
         downstreamDepth = downstreamDepth,
         maxNeighborsPerDirection = maxNeighborsPerDirection,
@@ -48,8 +48,8 @@ class GraphProjectionKernel(
             )
         }
 
-        val maxWindowNodes = policy.maxVisibleNodes.coerceAtLeast(1)
-        val maxWindowEdges = policy.maxVisibleEdges.coerceAtLeast(0)
+        val maxWindowNodes = policy.maxVisibleNodes.coerceIn(1, GraphProjectionLimits.MAX_VISIBLE_NODES)
+        val maxWindowEdges = policy.maxVisibleEdges.coerceIn(0, GraphProjectionLimits.MAX_VISIBLE_EDGES)
         if (graph.nodes.size <= maxWindowNodes && graph.edges.size <= maxWindowEdges) {
             return GraphProjectionResult(
                 visibleGraph = graph,
@@ -145,9 +145,9 @@ class GraphProjectionKernel(
                     fromNodeId = overflowAnchorId,
                     toNodeId = overflowNode.id,
                     label = "还有 ${hiddenNodeIds.size} 个节点未显示",
-                    certainty = Certainty.RULE_INFERRED,
-                    bindingStatus = BindingStatus.PARTIALLY_SYNCED,
-                    sourceTag = GraphSourceTag.UNCERTAIN_FACT,
+                    confidence = GraphConfidence.INFERRED,
+                    binding = GraphBinding.PARTIAL,
+                    provenance = GraphProvenance.DERIVED,
                 )
             }
         }
@@ -220,9 +220,9 @@ class GraphProjectionKernel(
             title = "已折叠 $hiddenNodeCount 个节点",
             signature = "另有 $hiddenEdgeCount 条链路未在当前窗口展开",
             doc = "完整图仍保留在后台，可继续展开或调整范围。",
-            certainty = Certainty.RULE_INFERRED,
-            bindingStatus = BindingStatus.PARTIALLY_SYNCED,
-            sourceTag = GraphSourceTag.UNCERTAIN_FACT,
+            confidence = GraphConfidence.INFERRED,
+            binding = GraphBinding.PARTIAL,
+            provenance = GraphProvenance.DERIVED,
             metadata = mapOf(
                 GraphProjectionMetadata.Overflow.DIRECTION to "DOWNSTREAM",
                 GraphProjectionMetadata.Hidden.NODE_COUNT to hiddenNodeCount.toString(),

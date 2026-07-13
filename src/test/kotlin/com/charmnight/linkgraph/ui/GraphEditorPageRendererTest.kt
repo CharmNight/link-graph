@@ -45,7 +45,7 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.model.GraphPatchAction
 import com.charmnight.linkgraph.model.GraphPatchOperation
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
@@ -90,6 +90,14 @@ import org.junit.Test
 import kotlin.test.assertNotNull
 
 class GraphEditorPageRendererTest {
+    @Test
+    fun bootstrapJsonOmitsRemovedInvocationExpansionBlockStateFields() {
+        val json = GraphEditorPageRenderer().bootstrapJson(GraphEditorStateSnapshot())
+
+        assertFalse(json.contains("\"blockPositions\""))
+        assertFalse(json.contains("\"lastChildStateByExpansionId\""))
+    }
+
     @Test
     fun bootstrapJsonIncludesAssistantSessionState() {
         val renderer = GraphEditorPageRenderer()
@@ -182,7 +190,7 @@ class GraphEditorPageRendererTest {
                     id = "method:submit-order",
                     type = NodeType.METHOD,
                     title = "OrderController.submit",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -259,7 +267,7 @@ class GraphEditorPageRendererTest {
                         id = "method:control-char",
                         type = NodeType.METHOD,
                         title = "Order\u0001Controller\u0008submit",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
             ),
@@ -282,7 +290,7 @@ class GraphEditorPageRendererTest {
                         id = "method:script-safe",
                         type = NodeType.METHOD,
                         title = "</script>&next",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
             ),
@@ -305,7 +313,7 @@ class GraphEditorPageRendererTest {
                         id = "method:submit-order",
                         type = NodeType.METHOD,
                         title = "OrderController.submit",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
             ),
@@ -370,7 +378,7 @@ class GraphEditorPageRendererTest {
                         id = "method:submit-order",
                         type = NodeType.METHOD,
                         title = "OrderController.submit",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
             ),
@@ -399,7 +407,7 @@ class GraphEditorPageRendererTest {
                         id = "method:reference-working",
                         type = NodeType.METHOD,
                         title = "ReferenceWorkingGraph.submit",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
             ),
@@ -420,13 +428,13 @@ class GraphEditorPageRendererTest {
                     id = "method:submit-order",
                     type = NodeType.METHOD,
                     title = "OrderController.submit",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 GraphNode(
                     id = "draft-entry:change-submit-order",
                     type = NodeType.DOC_PAGE,
                     title = "draft projection",
-                    sourceTag = GraphSourceTag.DRAFT_MANUAL,
+                    provenance = GraphProvenance.USER_DRAFT,
                     metadata = mapOf("draft.entryId" to "change-submit-order"),
                 ),
             ),
@@ -436,7 +444,7 @@ class GraphEditorPageRendererTest {
                     type = com.charmnight.linkgraph.model.EdgeType.LINKS_DOC,
                     fromNodeId = "method:submit-order",
                     toNodeId = "draft-entry:change-submit-order",
-                    sourceTag = GraphSourceTag.DRAFT_MANUAL,
+                    provenance = GraphProvenance.USER_DRAFT,
                     metadata = mapOf("draft.entryId" to "change-submit-order"),
                 ),
             ),
@@ -492,7 +500,7 @@ class GraphEditorPageRendererTest {
                         id = "method:submit-order",
                         type = NodeType.METHOD,
                         title = "OrderController.submit",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
             ),
@@ -513,7 +521,7 @@ class GraphEditorPageRendererTest {
                         id = "method:submit-order",
                         type = NodeType.METHOD,
                         title = "OrderController.submit",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
             ),
@@ -597,7 +605,7 @@ class GraphEditorPageRendererTest {
                         id = "method:submit-order",
                         type = NodeType.METHOD,
                         title = "OrderController.submit",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
             ),
@@ -643,7 +651,7 @@ class GraphEditorPageRendererTest {
                         id = "draft-note:change-upload-condition",
                         type = NodeType.DOC_PAGE,
                         title = "上传路径改为 /data/upload",
-                        sourceTag = GraphSourceTag.DRAFT_AI,
+                        provenance = GraphProvenance.AI_DRAFT,
                     ),
                 ),
             ),
@@ -720,7 +728,7 @@ class GraphEditorPageRendererTest {
                         id = "method:submit-order",
                         type = NodeType.METHOD,
                         title = "OrderController.submit",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
             ),
@@ -753,7 +761,7 @@ class GraphEditorPageRendererTest {
                         id = "method:submit-order",
                         type = NodeType.METHOD,
                         title = "OrderController.submit",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
             ),
@@ -792,7 +800,7 @@ class GraphEditorPageRendererTest {
                     id = "action:guard-condition",
                     type = NodeType.FLOW_ACTION,
                     title = "!checkAllowDownload(fileName)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "PROCESS",
                         "flow.kind" to "CONDITION",
@@ -802,7 +810,7 @@ class GraphEditorPageRendererTest {
                     id = "method:flow-entry",
                     type = NodeType.METHOD,
                     title = "FlowEntry",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("flowchart.kind" to "ENTRY"),
                 ),
             ),
@@ -818,7 +826,7 @@ class GraphEditorPageRendererTest {
                             id = "method:fact-anchor",
                             type = NodeType.METHOD,
                             title = "FactAnchor",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -837,7 +845,7 @@ class GraphEditorPageRendererTest {
                             id = "method:flow-entry",
                             type = NodeType.METHOD,
                             title = "FlowEntry",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                             metadata = mapOf("flowchart.kind" to "ENTRY"),
                         ),
                     ),
@@ -867,7 +875,7 @@ class GraphEditorPageRendererTest {
                             id = "resource:sql",
                             type = NodeType.SQL,
                             title = "order_mapper.xml#insertOrder",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                             metadata = mapOf("resource.lane" to "DATA"),
                         ),
                     ),
@@ -1010,7 +1018,7 @@ class GraphEditorPageRendererTest {
                             GraphMetadataKeys.Ui.Y to "96",
                             "linkGraph.manual" to "true",
                         ),
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
                 edges = listOf(
@@ -1020,7 +1028,7 @@ class GraphEditorPageRendererTest {
                         fromNodeId = "method:submit-order",
                         toNodeId = "class:order-draft-dto",
                         metadata = mapOf("callOrder" to "0"),
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
             ),
@@ -1031,7 +1039,7 @@ class GraphEditorPageRendererTest {
                         type = NodeType.CLASS,
                         title = "DefaultFallback",
                         doc = "AI 建议补充默认兜底节点。",
-                        sourceTag = GraphSourceTag.DRAFT_AI,
+                        provenance = GraphProvenance.AI_DRAFT,
                     ),
                 ),
             ),
@@ -1041,7 +1049,7 @@ class GraphEditorPageRendererTest {
                         id = "method:submit-order",
                         type = NodeType.METHOD,
                         title = "OrderController.submit",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
             ),
@@ -1051,7 +1059,7 @@ class GraphEditorPageRendererTest {
                         id = "design:default-fallback",
                         type = NodeType.CLASS,
                         title = "DefaultFallback",
-                        sourceTag = GraphSourceTag.DESIGN_BASELINE,
+                        provenance = GraphProvenance.DESIGN_IMPORT,
                     ),
                 ),
             ),
@@ -1069,7 +1077,7 @@ class GraphEditorPageRendererTest {
                             id = "note:default-fallback",
                             type = NodeType.CLASS,
                             title = "DefaultFallback",
-                            sourceTag = GraphSourceTag.DRAFT_AI,
+                            provenance = GraphProvenance.AI_DRAFT,
                         ),
                     ),
                 ),
@@ -1121,14 +1129,14 @@ class GraphEditorPageRendererTest {
             ),
             generationPlanDraftVersion = 3,
             generatedCodeDrafts = listOf(
-                GeneratedCodeDraft(
+                GeneratedCodeDraft.createFile(
                     id = "draft-1",
                     sourceNodeId = "class:order-draft-dto",
                     title = "OrderDraftDto.java",
                     targetPath = "src/main/java/com/example/OrderDraftDto.java",
                     content = "package com.example;\nclass OrderDraftDto {}",
                 ),
-                GeneratedCodeDraft(
+                GeneratedCodeDraft.patchExistingFile(
                     id = "draft-2",
                     sourceNodeId = "method:submit-order",
                     title = "OrderController.java",
@@ -1242,9 +1250,9 @@ class GraphEditorPageRendererTest {
         assertTrue(rendered.contains("\"sceneStates\""))
         assertTrue(rendered.contains("\"designBaselineGraph\""))
         assertTrue(rendered.contains("\"draftPatchPreview\""))
-        assertTrue(rendered.contains("\"sourceTag\":\"FACT\""))
-        assertTrue(rendered.contains("\"sourceTag\":\"DRAFT_AI\""))
-        assertTrue(rendered.contains("\"sourceTag\":\"DESIGN_BASELINE\""))
+        assertTrue(rendered.contains("\"provenance\":\"CODE_ANALYSIS\""))
+        assertTrue(rendered.contains("\"provenance\":\"AI_DRAFT\""))
+        assertTrue(rendered.contains("\"provenance\":\"DESIGN_IMPORT\""))
         assertTrue(rendered.contains("Add fallback path"))
         assertTrue(rendered.contains("ONLY_IN_MERMAID"))
         assertTrue(rendered.contains("method:submit-order"))
@@ -1256,6 +1264,8 @@ class GraphEditorPageRendererTest {
         assertTrue(rendered.contains("src/main/java/com/example/OrderDraftDto.java"))
         assertFalse(rendered.contains("package com.example;"))
         assertTrue(rendered.contains("\"contentArtifactId\""))
+        assertTrue(rendered.contains("\"commandKind\":\"CREATE_FILE\""))
+        assertTrue(rendered.contains("\"commandKind\":\"PATCH_EXISTING_FILE\""))
         assertTrue(rendered.contains("\"editScopes\""))
         assertTrue(rendered.contains("scope-submit-order"))
         assertTrue(rendered.contains("\"allowedChangeKinds\":[\"REPLACE_METHOD_BLOCK\"]"))
@@ -1356,7 +1366,7 @@ class GraphEditorPageRendererTest {
                         id = "method:submit-order",
                         type = NodeType.METHOD,
                         title = "OrderController.submit",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
             ),
@@ -1366,7 +1376,7 @@ class GraphEditorPageRendererTest {
                         id = "method:submit-order",
                         type = NodeType.METHOD,
                         title = "OrderController.submit",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
             ),
@@ -1393,21 +1403,21 @@ class GraphEditorPageRendererTest {
                     id = "method:file-download",
                     type = NodeType.METHOD,
                     title = "CommonController.fileDownload",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("flowchart.kind" to "ENTRY"),
                 ),
                 GraphNode(
                     id = "scope:delete-file",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (Boolean.TRUE.equals(delete))",
-                    sourceTag = GraphSourceTag.DRAFT_AI,
+                    provenance = GraphProvenance.AI_DRAFT,
                     metadata = mapOf("flowchart.kind" to "DECISION"),
                 ),
                 GraphNode(
                     id = "draft:file-exists-check",
                     type = NodeType.FLOW_ACTION,
                     title = "Files.exists(Path.of(filePath))",
-                    sourceTag = GraphSourceTag.DRAFT_AI,
+                    provenance = GraphProvenance.AI_DRAFT,
                     metadata = mapOf("flowchart.kind" to "PROCESS"),
                 ),
             ),
@@ -1417,14 +1427,14 @@ class GraphEditorPageRendererTest {
                     type = com.charmnight.linkgraph.model.EdgeType.CONTROL_FLOW,
                     fromNodeId = "method:file-download",
                     toNodeId = "scope:delete-file",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 GraphEdge(
                     id = "edge:delete-exists",
                     type = com.charmnight.linkgraph.model.EdgeType.CONTROL_FLOW,
                     fromNodeId = "scope:delete-file",
                     toNodeId = "draft:file-exists-check",
-                    sourceTag = GraphSourceTag.DRAFT_AI,
+                    provenance = GraphProvenance.AI_DRAFT,
                 ),
             ),
         )
@@ -1476,7 +1486,7 @@ class GraphEditorPageRendererTest {
                     id = "method:visible-submit",
                     type = NodeType.METHOD,
                     title = "VisibleController.submit",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -1486,7 +1496,7 @@ class GraphEditorPageRendererTest {
                     id = "method:working-submit",
                     type = NodeType.METHOD,
                     title = "WorkingController.submit",
-                    sourceTag = GraphSourceTag.DRAFT_AI,
+                    provenance = GraphProvenance.AI_DRAFT,
                 ),
             ),
         )
@@ -1499,7 +1509,7 @@ class GraphEditorPageRendererTest {
                         id = "class:fact-node",
                         type = NodeType.CLASS,
                         title = "FactNode",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
             ),
@@ -1509,7 +1519,7 @@ class GraphEditorPageRendererTest {
                         id = "class:baseline-node",
                         type = NodeType.CLASS,
                         title = "BaselineNode",
-                        sourceTag = GraphSourceTag.DESIGN_BASELINE,
+                        provenance = GraphProvenance.DESIGN_IMPORT,
                     ),
                 ),
             ),

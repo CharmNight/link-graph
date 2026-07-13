@@ -9,6 +9,7 @@ import com.charmnight.linkgraph.llm.context.PromptSection
 import com.charmnight.linkgraph.llm.context.PromptSectionPriority
 import com.charmnight.linkgraph.llm.llmClassDiagramRelationDisplayLabel
 import com.charmnight.linkgraph.llm.llmRelationKindDisplayLabel
+import com.charmnight.linkgraph.llm.redactForTrace
 import com.charmnight.linkgraph.model.GraphDiffEntry
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
@@ -35,7 +36,10 @@ import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
  */
 internal fun sanitizeContent(raw: String): String = sanitizeUserField(raw)
 
-/** 把节点转换为提示词里的单行摘要（id / type / title / signature / inputs / outputs / doc / metadata / sourceTag）。 */
+private fun sanitizeSourceSnippetForPrompt(raw: String): String =
+    sanitizeContent(redactForTrace(raw))
+
+/** 把节点转换为提示词里的单行摘要（id / type / title / signature / inputs / outputs / doc / metadata / provenance）。 */
 internal fun nodeSummary(node: GraphNode): String {
     val id = "id=${node.id} | "
     val location = node.location?.let { " @ $it" }.orEmpty()
@@ -47,8 +51,8 @@ internal fun nodeSummary(node: GraphNode): String {
     val doc = node.doc?.takeIf { it.isNotBlank() }?.let { " | doc=${sanitizeContent(it)}" }.orEmpty()
     val flowchartKind = node.metadata["flowchart.kind"]?.let { " | flowchart.kind=$it" }.orEmpty()
     val ownerMethod = node.metadata["flow.ownerMethod"]?.let { " | flow.ownerMethod=$it" }.orEmpty()
-    val sourceTag = " | source=${node.sourceTag.name}"
-    return "- $id[${node.type.name}] $title$location$signature$inputs$outputs$doc$flowchartKind$ownerMethod$sourceTag"
+    val provenance = " | source=${node.provenance.name}"
+    return "- $id[${node.type.name}] $title$location$signature$inputs$outputs$doc$flowchartKind$ownerMethod$provenance"
 }
 
 /** 把源码片段上下文转换成提示词里的单行摘要。 */
@@ -64,7 +68,7 @@ internal fun sourceSnippetSummary(snippet: SourceSnippetContext): String {
         snippet.endOffset?.let { append(" | endOffset=").append(it) }
         // 源码片段是源码原文，可能来自第三方库，按不可信内容清洗
         snippet.snippet?.takeIf { it.isNotBlank() }?.let {
-            append(" | snippet=").append(sanitizeContent(it))
+            append(" | snippet=").append(sanitizeSourceSnippetForPrompt(it))
         }
     }
 }

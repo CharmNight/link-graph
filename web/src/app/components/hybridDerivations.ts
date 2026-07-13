@@ -32,7 +32,7 @@ export interface LinkGraphOutlineMetrics {
   fullNodeCount: number;
   /** 入口节点数。 */
   sourceAnchorCount: number;
-  /** 推断证据节点数（非 PROVEN）。 */
+  /** 推断证据节点数（非 VERIFIED）。 */
   inferredEvidenceCount: number;
   /** 被草稿影响的节点数。 */
   draftImpactCount: number;
@@ -283,12 +283,12 @@ export function deriveLinkGraphOutline(args: {
   // 关键路径组：所有核心类型节点
   visibleNodes
     .filter((node) => CORE_PATH_NODE_TYPES.has(node.type))
-    .forEach((node) => addNode(node, "criticalPath", undefined, node.certainty === "LLM_SUGGESTED" ? "warning" : "normal"));
+    .forEach((node) => addNode(node, "criticalPath", undefined, node.confidence === "SUGGESTED" ? "warning" : "normal"));
 
   // 资源证据组：资源类型或不确定事实
   visibleNodes
-    .filter((node) => RESOURCE_NODE_TYPES.has(node.type) || node.sourceTag === "UNCERTAIN_FACT")
-    .forEach((node) => addNode(node, "evidence", node.sourceTag, node.certainty === "PROVEN" ? "success" : "info"));
+    .filter((node) => RESOURCE_NODE_TYPES.has(node.type) || node.provenance === "DERIVED")
+    .forEach((node) => addNode(node, "evidence", node.provenance, node.confidence === "VERIFIED" ? "success" : "info"));
 
   // 风险组：所有阻塞线程
   blockingThreads.forEach((thread) => {
@@ -322,7 +322,7 @@ export function deriveLinkGraphOutline(args: {
       fullNodeCount,
       sourceAnchorCount: anchorNode ? 1 : 0,
       // 非确证的节点视为"推断证据"
-      inferredEvidenceCount: visibleNodes.filter((node) => node.certainty !== "PROVEN").length,
+      inferredEvidenceCount: visibleNodes.filter((node) => node.confidence !== "VERIFIED").length,
       draftImpactCount: visibleNodes.filter((node) => draftChangedSet.has(node.id) || visibleNodeIds.has(node.id) && draftChangedSet.has(node.id)).length,
       blockingRiskCount: blockingThreads.length,
     },

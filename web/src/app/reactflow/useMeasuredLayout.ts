@@ -125,10 +125,10 @@ function nodeSignature(node: LinkGraphNode): string {
     node.inputs.join(","),
     node.outputs.join(","),
     node.doc ?? "",
-    node.certainty,
-    node.bindingStatus,
+    node.confidence,
+    node.binding,
     node.diffStatus ?? "",
-    node.sourceTag ?? "",
+    node.provenance ?? "",
     JSON.stringify(normalizeLayoutMetadata(node.metadata) ?? {}),
   ].join("|");
 }
@@ -144,7 +144,7 @@ function edgeSignature(edge: LinkGraphEdge): string {
     edge.targetHandle ?? "",
     edge.label ?? "",
     JSON.stringify(edge.metadata ?? {}),
-    edge.sourceTag ?? "",
+    edge.provenance ?? "",
   ].join("|");
 }
 

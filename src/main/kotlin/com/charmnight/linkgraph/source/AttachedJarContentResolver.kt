@@ -2,7 +2,7 @@ package com.charmnight.linkgraph.source
 
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.ConcurrentHashMap
+import java.security.MessageDigest
 import java.util.concurrent.Semaphore
 import java.util.jar.JarFile
 
@@ -33,7 +33,7 @@ class AttachedJarContentResolver(
      * 按虚拟文件 URL（形如 jar://path!/entry）读取源码内容。
      * 非附加 jar 路径或路径格式异常时返回 null。
      */
-    override fun readByVirtualFileUrl(url: String): SourceContent? {
+    override fun readByVirtualFileUrl(url: String): BoundedSourceContent? {
         lastUnavailableReason = null
         if (!url.startsWith("jar://")) {
             return null
@@ -51,7 +51,7 @@ class AttachedJarContentResolver(
     /**
      * 按路径读取内容，支持 jar entry（包含 !/）或全限定类名两种形式。
      */
-    override fun readByPath(path: String): SourceContent? {
+    override fun readByPath(path: String): BoundedSourceContent? {
         lastUnavailableReason = null
         val normalized = path.trim()
         if (normalized.contains("!/")) {
@@ -71,7 +71,7 @@ class AttachedJarContentResolver(
     /**
      * 按路径读取指定行范围的内容（用于代码片段展示）。
      */
-    override fun readSnippetByPath(path: String, startLine: Int?, endLine: Int?): SourceContent? {
+    override fun readSnippetByPath(path: String, startLine: Int?, endLine: Int?): BoundedSourceContent? {
         lastUnavailableReason = null
         val full = readByPath(path) ?: return null
         return full.toLineRange(startLine, endLine)
@@ -81,12 +81,14 @@ class AttachedJarContentResolver(
      * 按全限定类名查找源码：优先返回附加源码 jar 中的源文件，
      * 否则尝试反编译附加 class jar（需 allowDecompile）。
      */
-    override fun readClassByQualifiedName(qualifiedName: String): SourceContent? {
+    override fun readClassByQualifiedName(qualifiedName: String): BoundedSourceContent? {
         lastUnavailableReason = null
-        val entry = index.findClass(qualifiedName) ?: return null
+        val candidates = index.findClassCandidates(qualifiedName)
+        val entry = candidates.firstOrNull() ?: return null
         if (entry.sourceEntryName != null && entry.sourceJarPath != null) {
             return readJarEntry(entry.sourceJarPath, entry.sourceEntryName)
                 ?.copy(origin = SourceOrigin.USER_ATTACHED_SOURCE_JAR, decompiled = false)
+                ?.also { reportClassAmbiguity(candidates.size) }
         }
         if (!allowDecompile || entry.classEntryName == null) {
             if (!allowDecompile && entry.classEntryName != null) {
@@ -96,7 +98,7 @@ class AttachedJarContentResolver(
         }
         decompileClassEntry(entry.classJarPath, entry.classEntryName, entry.qualifiedName)?.let { result ->
             val text = result.text ?: return null
-            return SourceContent(
+            return BoundedSourceContent.create(
                 text = text,
                 displayPath = entry.displayPath,
                 virtualFileUrl = "jar://${entry.classJarPath}!/${entry.classEntryName}",
@@ -106,15 +108,21 @@ class AttachedJarContentResolver(
                 endLine = text.lineSequence().count().coerceAtLeast(1),
                 decompiled = true,
                 diagnostic = result.diagnostic,
-            )
+            ).also { reportClassAmbiguity(candidates.size) }
         }
         return null
+    }
+
+    private fun reportClassAmbiguity(candidateCount: Int) {
+        if (candidateCount > 1) {
+            lastUnavailableReason = "CLASS_JAR_AMBIGUOUS:$candidateCount"
+        }
     }
 
     /**
      * 按资源路径（如 META-INF/services 接口文件）匹配并返回源码内容。
      */
-    override fun readResourceByPath(resourcePath: String): SourceContent? {
+    override fun readResourceByPath(resourcePath: String): BoundedSourceContent? {
         lastUnavailableReason = null
         val normalized = resourcePath.trim().removePrefix("/")
         index.serviceFilesByInterfaceName.values.flatten()
@@ -133,7 +141,7 @@ class AttachedJarContentResolver(
     /**
      * 从指定 jar 中读取指定 entry 名的内容；class 文件按需反编译。
      */
-    private fun readJarEntry(jarPath: String, entryName: String): SourceContent? {
+    private fun readJarEntry(jarPath: String, entryName: String): BoundedSourceContent? {
         val path = runCatching { Path.of(jarPath).normalize() }.getOrNull()
             ?.takeIf { candidate -> Files.isRegularFile(candidate) }
             ?: return null
@@ -146,19 +154,25 @@ class AttachedJarContentResolver(
                 if (entry.isDirectory) {
                     return null
                 }
-                val bytes = jar.getInputStream(entry).readBytes()
-                val text = if (entry.name.endsWith(".class")) {
+                val decompiled = entry.name.endsWith(".class")
+                val text = if (decompiled) {
                     if (!allowDecompile) {
                         lastUnavailableReason = "CLASS_JAR_DECOMPILE_DISABLED"
+                        return null
+                    }
+                    if (!jar.isEntryWithinLimit(entry, SourceArchiveReadLimits.MAX_CLASS_ENTRY_BYTES)) {
+                        lastUnavailableReason = "JAR_ENTRY_TOO_LARGE"
                         return null
                     }
                     decompileClassEntry(path.toString(), entry.name, entry.name.removeSuffix(".class").replace('/', '.'))?.text
                         ?: return null
                 } else {
-                    bytes.toString(Charsets.UTF_8)
+                    jar.readEntryTextBounded(entry, textEntryLimit(entry.name)) ?: run {
+                        lastUnavailableReason = "JAR_ENTRY_TOO_LARGE"
+                        return null
+                    }
                 }
-                val decompiled = entry.name.endsWith(".class")
-                SourceContent(
+                BoundedSourceContent.create(
                     text = text,
                     displayPath = "$path!/${entry.name}",
                     virtualFileUrl = "jar://$path!/${entry.name}",
@@ -175,7 +189,7 @@ class AttachedJarContentResolver(
     /**
      * 按起止行号裁剪源码内容，越界或范围非法返回 null。
      */
-    private fun SourceContent.toLineRange(startLine: Int?, endLine: Int?): SourceContent? {
+    private fun BoundedSourceContent.toLineRange(startLine: Int?, endLine: Int?): BoundedSourceContent? {
         if (startLine == null || endLine == null) {
             return this
         }
@@ -185,7 +199,7 @@ class AttachedJarContentResolver(
         if (fromIndex >= toIndex) {
             return null
         }
-        return copy(
+        return withText(
             text = lines.subList(fromIndex, toIndex).joinToString("\n"),
             startLine = startLine,
             endLine = endLine,
@@ -204,6 +218,14 @@ class AttachedJarContentResolver(
             else -> null
         }
 
+    /** 按条目类型选择读取上限，服务描述文件通常很小，单独收紧。 */
+    private fun textEntryLimit(entryName: String): Int =
+        if (entryName.startsWith("META-INF/services/")) {
+            SourceArchiveReadLimits.MAX_SERVICE_ENTRY_BYTES
+        } else {
+            SourceArchiveReadLimits.MAX_TEXT_ENTRY_BYTES
+        }
+
     /**
      * 反编译 class 条目并校验：命中缓存则直接复用；并发时通过信号量限流，
      * 并检查反编译产物类名是否匹配（避免误命中同 jar 内同名外部类）。
@@ -218,8 +240,12 @@ class AttachedJarContentResolver(
             return null
         }
         val inputJar = runCatching { Path.of(jarPath).normalize().takeIf(Files::isRegularFile) }.getOrNull() ?: return null
+        classEntryLimitFailure(inputJar, entryName)?.let { diagnostic ->
+            lastUnavailableReason = diagnostic
+            return null
+        }
         val cacheKey = decompileCacheKey(inputJar, entryName)
-        decompiledClassCache[cacheKey]?.let { cached ->
+        decompiledClassCache.get(cacheKey)?.let { cached ->
             if (cached.text == null) {
                 lastUnavailableReason = cached.diagnostic
                 return null
@@ -233,8 +259,8 @@ class AttachedJarContentResolver(
             return null
         }
         val result = try {
-            decompiledClassCache.computeIfAbsent(cacheKey) {
-                decompileClassEntryUncached(inputJar, entryName)
+            decompiledClassCache.get(cacheKey) ?: decompileClassEntryUncached(inputJar, entryName).also { value ->
+                decompiledClassCache.put(cacheKey, value)
             }
         } finally {
             decompileSemaphore.release()
@@ -264,25 +290,66 @@ class AttachedJarContentResolver(
         }
     }
 
+    /** 校验反编译目标 class 条目存在且不超过大小上限。 */
+    private fun classEntryLimitFailure(inputJar: Path, entryName: String): String? =
+        runCatching {
+            JarFile(inputJar.toFile()).use { jar ->
+                val entry = jar.getJarEntry(entryName) ?: return@use "CLASS_JAR_ENTRY_NOT_FOUND"
+                if (entry.isDirectory) {
+                    return@use "CLASS_JAR_ENTRY_NOT_FOUND"
+                }
+                if (jar.isEntryWithinLimit(entry, SourceArchiveReadLimits.MAX_CLASS_ENTRY_BYTES)) {
+                    null
+                } else {
+                    "JAR_ENTRY_TOO_LARGE"
+                }
+            }
+        }.getOrElse { error -> error.message ?: error.javaClass.simpleName }
+
     /** 反编译并发限流与结果缓存（避免重复反编译耗时）。 */
     private companion object {
         // 限制反编译同时只有一个进行，避免阻塞 EDT。
         private val decompileSemaphore = Semaphore(1)
-        // 反编译结果缓存，键为 jar 路径 + 修改时间 + 大小 + entry 名。
-        private val decompiledClassCache = ConcurrentHashMap<String, DecompiledSource>()
+        // 反编译结果缓存，受条目数、总字节和 TTL 三重限制。
+        private val decompiledClassCache = ManagedDecompiledSourceCache<String, DecompiledSource>(
+            maxEntries = 128,
+            maxWeightBytes = 32L * 1024 * 1024,
+            ttlMillis = 30L * 60 * 1000,
+            weightBytes = { value ->
+                value.text?.toByteArray(Charsets.UTF_8)?.size
+                    ?: value.diagnostic?.toByteArray(Charsets.UTF_8)?.size
+                    ?: 0
+            },
+        )
 
         /**
          * 生成反编译缓存键，结合 jar 路径、最后修改时间、文件大小与 entry 名，
          * 确保 jar 内容变化后缓存能自然失效。
          */
-        private fun decompileCacheKey(
-            jarPath: Path,
-            entryName: String,
-        ): String {
-            val lastModified = runCatching { Files.getLastModifiedTime(jarPath).toMillis() }.getOrDefault(0L)
-            val size = runCatching { Files.size(jarPath) }.getOrDefault(0L)
-            return "${jarPath.normalize()}|$lastModified|$size|$entryName"
+    }
+
+    private fun decompileCacheKey(jarPath: Path, entryName: String): String {
+        val normalizedPath = jarPath.normalize().toString()
+        val fingerprint = index.fingerprints
+            .firstOrNull { candidate ->
+                runCatching { Path.of(candidate.path).normalize().toString() }.getOrNull() == normalizedPath
+            }
+            ?.classJarSha256
+            ?: sha256(jarPath)
+        return "$normalizedPath|$fingerprint|$entryName"
+    }
+
+    private fun sha256(path: Path): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        Files.newInputStream(path).use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                if (read > 0) digest.update(buffer, 0, read)
+            }
         }
+        return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
     }
 }
 
@@ -298,7 +365,7 @@ private data class DecompiledSource(
 private fun AttachedJarIndex.allowsEntry(jarPath: String, entryName: String): Boolean {
     val normalizedJar = runCatching { Path.of(jarPath).normalize().toString() }.getOrDefault(jarPath)
     val normalizedEntry = entryName.trim().removePrefix("/")
-    return classesByQualifiedName.values.any { entry ->
+    return classEntries.any { entry ->
         (entry.classJarPath == normalizedJar && entry.classEntryName == normalizedEntry) ||
             (entry.sourceJarPath == normalizedJar && entry.sourceEntryName == normalizedEntry)
     } || serviceFilesByInterfaceName.values.flatten().any { serviceFile ->

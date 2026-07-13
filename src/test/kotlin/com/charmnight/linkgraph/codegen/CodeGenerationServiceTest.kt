@@ -30,6 +30,7 @@ import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -110,18 +111,18 @@ class CodeGenerationServiceTest {
 
         assertEquals(2, result.drafts.size)
         val javaDraft = result.drafts.single { it.targetPath.endsWith("OrderDraftDto.java") }
+        val javaContent = assertIs<CodeDraftCommand.CreateFile>(javaDraft.command).content
         assertEquals("class:order-draft-dto", javaDraft.sourceNodeId)
-        assertNotNull(javaDraft.content)
-        assertTrue(javaDraft.content!!.contains("package com.example;"))
-        assertTrue(javaDraft.content!!.contains("class OrderDraftDto"))
-        assertTrue(javaDraft.content!!.contains("订单草稿 DTO"))
+        assertTrue(javaContent.contains("package com.example;"))
+        assertTrue(javaContent.contains("class OrderDraftDto"))
+        assertTrue(javaContent.contains("订单草稿 DTO"))
 
         val sqlDraft = result.drafts.single { it.targetPath.endsWith("order-draft.sql") }
+        val sqlContent = assertIs<CodeDraftCommand.CreateFile>(sqlDraft.command).content
         assertEquals("sql:insert-order-draft", sqlDraft.sourceNodeId)
-        assertNotNull(sqlDraft.content)
-        assertFalse(sqlDraft.content!!.contains("TODO"))
-        assertTrue(sqlDraft.content!!.contains("INSERT INTO order_draft"))
-        assertTrue(sqlDraft.content!!.contains("VALUES"))
+        assertFalse(sqlContent.contains("TODO"))
+        assertTrue(sqlContent.contains("INSERT INTO order_draft"))
+        assertTrue(sqlContent.contains("VALUES"))
     }
 
     @Test
@@ -181,19 +182,22 @@ class CodeGenerationServiceTest {
         )
 
         val draftByNodeId = result.drafts.associateBy(GeneratedCodeDraft::sourceNodeId)
+        fun content(nodeId: String): String =
+            assertIs<CodeDraftCommand.CreateFile>(draftByNodeId.getValue(nodeId).command).content
         assertEquals(5, draftByNodeId.size)
-        assertTrue(draftByNodeId.getValue("sql:insert-order-draft").content!!.contains("INSERT INTO order_draft (order_id, draft_status)"))
-        assertTrue(draftByNodeId.getValue("sql:insert-order-draft").content!!.contains("VALUES (:order_id, :draft_status);"))
-        assertTrue(draftByNodeId.getValue("sql:select-active-orders").content!!.contains("SELECT *"))
-        assertTrue(draftByNodeId.getValue("sql:select-active-orders").content!!.contains("FROM active_orders"))
-        assertTrue(draftByNodeId.getValue("sql:select-active-orders").content!!.contains("WHERE status = :status;"))
-        assertTrue(draftByNodeId.getValue("sql:update-order-status").content!!.contains("UPDATE order_status"))
-        assertTrue(draftByNodeId.getValue("sql:update-order-status").content!!.contains("SET status = :status"))
-        assertTrue(draftByNodeId.getValue("sql:delete-expired-session").content!!.contains("DELETE FROM expired_session"))
-        assertTrue(draftByNodeId.getValue("sql:create-order-audit").content!!.contains("CREATE TABLE order_audit"))
+        assertTrue(content("sql:insert-order-draft").contains("INSERT INTO order_draft (order_id, draft_status)"))
+        assertTrue(content("sql:insert-order-draft").contains("VALUES (:order_id, :draft_status);"))
+        assertTrue(content("sql:select-active-orders").contains("SELECT *"))
+        assertTrue(content("sql:select-active-orders").contains("FROM active_orders"))
+        assertTrue(content("sql:select-active-orders").contains("WHERE status = :status;"))
+        assertTrue(content("sql:update-order-status").contains("UPDATE order_status"))
+        assertTrue(content("sql:update-order-status").contains("SET status = :status"))
+        assertTrue(content("sql:delete-expired-session").contains("DELETE FROM expired_session"))
+        assertTrue(content("sql:create-order-audit").contains("CREATE TABLE order_audit"))
         result.drafts.forEach { draft ->
-            assertFalse(draft.content!!.contains("TODO"))
-            assertFalse(draft.content!!.contains("补充"))
+            val draftContent = assertIs<CodeDraftCommand.CreateFile>(draft.command).content
+            assertFalse(draftContent.contains("TODO"))
+            assertFalse(draftContent.contains("补充"))
         }
     }
 
@@ -310,6 +314,7 @@ class CodeGenerationServiceTest {
                 endpoint = "https://api.example.com/v1",
                 apiKey = "secret-key",
                 model = "gpt-5.4",
+                allowRemoteSourceContext = true,
             ),
         )
 
@@ -320,11 +325,100 @@ class CodeGenerationServiceTest {
         assertTrue(requests.single().userPrompt.contains("相关源码片段"))
         assertTrue(requests.single().userPrompt.contains("public class OrderDraftDto"))
         assertEquals(1, result.drafts.size)
-        assertEquals("src/main/java/com/example/OrderDraftDto.java", result.drafts.single().targetPath)
-        assertNotNull(result.drafts.single().content)
-        assertTrue(result.drafts.single().content!!.contains("class OrderDraftDto"))
+        val remoteDraft = result.drafts.single()
+        assertEquals("src/main/java/com/example/OrderDraftDto.java", remoteDraft.targetPath)
+        assertTrue(assertIs<CodeDraftCommand.CreateFile>(remoteDraft.command).content.contains("class OrderDraftDto"))
         assertNotNull(result.promptPreview)
         assertTrue(result.warnings.any { it.contains("复核 import") })
+    }
+
+    @Test
+    fun remoteCodeGenerationStripsSourceSnippetsByDefaultAndWarns() {
+        val requests = mutableListOf<LlmRequest>()
+        val result = CodeGenerationService(
+            promptFactory = LlmPromptFactory(),
+            gateway = object : LlmGateway {
+                override fun generate(request: LlmRequest): LlmResponse {
+                    requests += request
+                    return LlmResponse(
+                        content = """
+                            {
+                              "summary": "远程代码草稿",
+                              "warnings": [],
+                              "drafts": [
+                                {
+                                  "id": "draft-remote-order-draft",
+                                  "sourceNodeId": "class:order-draft-dto",
+                                  "title": "OrderDraftDto.java",
+                                  "targetPath": "src/main/java/com/example/OrderDraftDto.java",
+                                  "content": "package com.example;\n\npublic class OrderDraftDto {\n}\n",
+                                  "warnings": []
+                                }
+                              ]
+                            }
+                        """.trimIndent(),
+                        model = request.model,
+                    )
+                }
+            },
+        ).generateDrafts(
+            context = GenerationContext(
+                graph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "class:order-draft-dto",
+                            type = NodeType.CLASS,
+                            title = "OrderDraftDto",
+                            doc = "订单草稿 DTO。",
+                        ),
+                    ),
+                ),
+                diff = GraphDiff(
+                    entries = listOf(
+                        GraphDiffEntry(
+                            elementKind = GraphDiffElementKind.NODE,
+                            elementId = "class:order-draft-dto",
+                            status = DiffStatus.ONLY_IN_MERMAID,
+                        ),
+                    ),
+                ),
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "class:order-draft-dto",
+                        filePath = "src/main/java/com/example/OrderDraftDto.java",
+                        startLine = 1,
+                        endLine = 3,
+                        snippet = "String codegenRemoteSecret = \"codegen-secret\";",
+                    ),
+                ),
+            ),
+            plan = GenerationPlan(
+                source = GenerationPlanSource.REMOTE,
+                summary = "Generate DTO remotely.",
+                items = listOf(
+                    GenerationPlanItem(
+                        id = "gen-class",
+                        title = "Create OrderDraftDto",
+                        description = "Generate DTO class skeleton.",
+                        risk = SyncPreviewRisk.LOW,
+                        targetPath = "src/main/java/com/example/OrderDraftDto.java",
+                    ),
+                ),
+            ),
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://api.example.com/v1",
+                apiKey = "secret-key",
+                model = "gpt-5.4",
+            ),
+        )
+
+        assertEquals(LlmResultSource.REMOTE, result.source)
+        assertEquals(1, requests.size)
+        assertFalse(requests.single().userPrompt.contains("codegenRemoteSecret"))
+        assertFalse(requests.single().userPrompt.contains("codegen-secret"))
+        assertTrue(result.warnings.any { it.contains("源码片段外发未授权") })
     }
 
     @Test
@@ -899,13 +993,13 @@ class CodeGenerationServiceTest {
 
         assertEquals(LlmResultSource.REMOTE, result.source)
         val draft = result.drafts.single()
+        val patch = assertIs<CodeDraftCommand.PatchExistingFile>(draft.command)
         assertEquals("src/main/java/com/example/CommonController.java", draft.targetPath)
-        assertNull(draft.content)
-        assertEquals(1, draft.editOperations.size)
-        assertEquals("REPLACE_METHOD_BLOCK", draft.editOperations.single().kind.name)
-        assertEquals("scope-file-download", draft.editOperations.single().scopeId)
-        assertEquals(1, draft.editScopes.size)
-        assertEquals("scope-file-download", draft.editScopes.single().scopeId)
+        assertEquals(1, patch.operations.size)
+        assertEquals("REPLACE_METHOD_BLOCK", patch.operations.single().kind.name)
+        assertEquals("scope-file-download", patch.operations.single().scopeId)
+        assertEquals(1, patch.scopes.size)
+        assertEquals("scope-file-download", patch.scopes.single().scopeId)
         assertTrue(draft.warnings.any { it.contains("Windows 路径分支") })
     }
 }

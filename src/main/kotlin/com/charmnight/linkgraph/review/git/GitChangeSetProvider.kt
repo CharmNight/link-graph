@@ -1,7 +1,15 @@
 package com.charmnight.linkgraph.review.git
 
+import java.io.Reader
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
+
+private const val DEFAULT_GIT_TIMEOUT_MILLIS: Long = 10_000
+private const val DEFAULT_MAX_GIT_OUTPUT_CHARS: Int = 2 * 1024 * 1024
+private const val DEFAULT_MAX_UNTRACKED_FILE_CHARS: Int = 512 * 1024
 
 /**
  * 描述 Git 文件级变更类型。
@@ -61,6 +69,14 @@ data class GitChangedFile(
 open class GitChangeSetProvider(
     /** 保存项目根路径，用于定位 Git 仓库。 */
     private val projectBasePath: String?,
+    /** Git 可执行文件路径；测试可替换为 fake git 脚本。 */
+    private val gitExecutable: String = "git",
+    /** 单个 git 子进程允许执行的最长时间。 */
+    private val gitTimeoutMillis: Long = DEFAULT_GIT_TIMEOUT_MILLIS,
+    /** 单个 git 子进程允许返回的最大字符数。 */
+    private val maxGitOutputChars: Int = DEFAULT_MAX_GIT_OUTPUT_CHARS,
+    /** 未跟踪文件被整文件构造成 hunk 时允许读取的最大字符数。 */
+    private val maxUntrackedFileChars: Int = DEFAULT_MAX_UNTRACKED_FILE_CHARS,
 ) {
     /**
      * 返回工作区完整变更集，包含 staged、unstaged 与未跟踪文件。
@@ -114,7 +130,7 @@ open class GitChangeSetProvider(
     private fun untrackedChangeSet(selectedPaths: List<String>): List<GitChangedFile> {
         val basePath = projectBasePath?.takeIf(String::isNotBlank) ?: return emptyList()
         val command = buildList {
-            add("git")
+            add(gitExecutable)
             add("ls-files")
             add("--others")
             add("--exclude-standard")
@@ -131,8 +147,11 @@ open class GitChangeSetProvider(
             .filter(String::isNotBlank)
             .mapNotNull { relativePath ->
                 val file = base.resolve(relativePath).normalize()
-                // 跳过越界或非普通文件，避免误读目录或越界文件。
-                if (!file.startsWith(base) || !Files.isRegularFile(file)) {
+                // 跳过越界、目录、symlink 或其他非普通文件，避免误读仓库外内容。
+                if (!file.startsWith(base) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+                    return@mapNotNull null
+                }
+                if (Files.size(file) > maxUntrackedFileChars) {
                     return@mapNotNull null
                 }
                 val text = runCatching { Files.readString(file) }.getOrNull().orEmpty()
@@ -168,7 +187,7 @@ open class GitChangeSetProvider(
     ): String? {
         val basePath = projectBasePath?.takeIf(String::isNotBlank) ?: return null
         val command = buildList {
-            add("git")
+            add(gitExecutable)
             add("diff")
             if (staged) {
                 add("--cached")
@@ -190,7 +209,7 @@ open class GitChangeSetProvider(
      */
     open fun readHeadFile(path: String): String? {
         val basePath = projectBasePath?.takeIf(String::isNotBlank) ?: return null
-        return runGit(basePath, listOf("git", "show", "HEAD:$path"))
+        return runGit(basePath, listOf(gitExecutable, "show", "HEAD:$path"))
             ?.takeIf(String::isNotBlank)
     }
 
@@ -204,10 +223,24 @@ open class GitChangeSetProvider(
         runCatching {
             val process = ProcessBuilder(command)
                 .directory(Path.of(basePath).toFile())
-                .redirectErrorStream(false)
+                .redirectErrorStream(true)
                 .start()
-            val text = process.inputStream.bufferedReader().use { reader -> reader.readText() }
-            val exitCode = process.waitFor()
+
+            val outputFuture = CompletableFuture.supplyAsync<String?> {
+                process.inputStream.bufferedReader().use { reader ->
+                    reader.readTextBounded(maxGitOutputChars)
+                }
+            }
+            val finished = process.waitFor(gitTimeoutMillis, TimeUnit.MILLISECONDS)
+            if (!finished) {
+                process.destroyForcibly()
+                process.inputStream.close()
+                outputFuture.cancel(true)
+                return@runCatching null
+            }
+
+            val text = outputFuture.get(1, TimeUnit.SECONDS) ?: return@runCatching null
+            val exitCode = process.exitValue()
             text.takeIf { exitCode == 0 }
         }.getOrNull()
 
@@ -309,6 +342,21 @@ open class GitChangeSetProvider(
 
         /** 匹配 unified diff 中的 `@@ -start,count +start,count @@` 行。 */
         private val HUNK_PATTERN = Regex("""@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@""")
+    }
+}
+
+private fun Reader.readTextBounded(maxChars: Int): String? {
+    val buffer = CharArray(8192)
+    val output = StringBuilder()
+    while (true) {
+        val read = read(buffer)
+        if (read <= 0) {
+            return output.toString()
+        }
+        output.append(buffer, 0, read)
+        if (output.length > maxChars) {
+            return null
+        }
     }
 }
 

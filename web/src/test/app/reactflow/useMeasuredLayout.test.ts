@@ -12,8 +12,8 @@ function methodNode(id: string, title: string): LinkGraphNode {
     title,
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
   };
 }
 
@@ -24,9 +24,9 @@ function manualNode(id: string, title: string, x: number, y: number): LinkGraphN
     title,
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "DESIGN_ONLY",
-    sourceTag: "DRAFT_MANUAL",
+    confidence: "VERIFIED",
+    binding: "DESIGN_ONLY",
+    provenance: "USER_DRAFT",
     position: { x, y },
     metadata: {
       "linkGraph.manual": "true",

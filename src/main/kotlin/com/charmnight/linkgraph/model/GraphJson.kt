@@ -51,13 +51,13 @@ object GraphJson {
         doc = node.doc,
         sourceKind = node.sourceKind,
         status = node.status,
-        bindingStatus = node.bindingStatus.name,
-        certainty = node.certainty.name,
+        binding = node.binding.name,
+        confidence = node.confidence.name,
         diff = diffToDto(node.diff),
         evidence = node.evidence.map { evidenceToDto(it) },
         uncertainty = node.uncertainty?.let { uncertaintyToDto(it) },
         metadata = node.metadata.toSortedMap(),
-        sourceTag = node.sourceTag.name,
+        provenance = node.provenance.name,
     )
 
     /** 把边对象转换为 JSON DTO。 */
@@ -67,14 +67,14 @@ object GraphJson {
         fromNodeId = edge.fromNodeId,
         toNodeId = edge.toNodeId,
         label = edge.label,
-        certainty = edge.certainty.name,
-        bindingStatus = edge.bindingStatus.name,
+        confidence = edge.confidence.name,
+        binding = edge.binding.name,
         status = edge.status,
         diff = diffToDto(edge.diff),
         evidence = edge.evidence.map { evidenceToDto(it) },
         uncertainty = edge.uncertainty?.let { uncertaintyToDto(it) },
         metadata = edge.metadata.toSortedMap(),
-        sourceTag = edge.sourceTag.name,
+        provenance = edge.provenance.name,
     )
 
     /** 把图补丁转换为 JSON DTO。 */
@@ -136,6 +136,8 @@ object GraphJson {
      * 从原始映射解析节点对象。
      */
     private fun parseNode(raw: Map<*, *>): GraphNode {
+        raw.requireNoLegacyTrustFields()
+        val provenance = raw.enumOrDefault("provenance", GraphProvenance.CODE_ANALYSIS)
         return GraphNode(
             id = raw.requiredString("id"),
             type = NodeType.valueOf(raw.requiredString("type")),
@@ -147,13 +149,13 @@ object GraphJson {
             doc = raw.optionalString("doc"),
             sourceKind = raw.optionalString("sourceKind"),
             status = raw.optionalString("status"),
-            bindingStatus = raw.enumOrDefault("bindingStatus", BindingStatus.BOUND),
-            certainty = raw.enumOrDefault("certainty", Certainty.PROVEN),
+            provenance = provenance,
+            binding = raw.enumOrDefault("binding", provenance.defaultBinding()),
+            confidence = raw.enumOrDefault("confidence", provenance.defaultConfidence()),
             diff = parseDiff(raw["diff"] as? Map<*, *>),
             evidence = parseEvidenceList(raw["evidence"] as? List<*>),
             uncertainty = parseUncertainty(raw["uncertainty"] as? Map<*, *>),
             metadata = parseStringMap(raw["metadata"] as? Map<*, *>),
-            sourceTag = raw.enumOrDefault("sourceTag", GraphSourceTag.FACT),
         )
     }
 
@@ -161,20 +163,22 @@ object GraphJson {
      * 从原始映射解析边对象。
      */
     private fun parseEdge(raw: Map<*, *>): GraphEdge {
+        raw.requireNoLegacyTrustFields()
+        val provenance = raw.enumOrDefault("provenance", GraphProvenance.CODE_ANALYSIS)
         return GraphEdge(
             id = raw.requiredString("id"),
             type = EdgeType.valueOf(raw.requiredString("type")),
             fromNodeId = raw.requiredString("fromNodeId"),
             toNodeId = raw.requiredString("toNodeId"),
             label = raw.optionalString("label"),
-            certainty = raw.enumOrDefault("certainty", Certainty.PROVEN),
-            bindingStatus = raw.enumOrDefault("bindingStatus", BindingStatus.BOUND),
+            provenance = provenance,
+            confidence = raw.enumOrDefault("confidence", provenance.defaultConfidence()),
+            binding = raw.enumOrDefault("binding", provenance.defaultBinding()),
             status = raw.optionalString("status"),
             diff = parseDiff(raw["diff"] as? Map<*, *>),
             evidence = parseEvidenceList(raw["evidence"] as? List<*>),
             uncertainty = parseUncertainty(raw["uncertainty"] as? Map<*, *>),
             metadata = parseStringMap(raw["metadata"] as? Map<*, *>),
-            sourceTag = raw.enumOrDefault("sourceTag", GraphSourceTag.FACT),
         )
     }
 
@@ -315,6 +319,14 @@ object GraphJson {
     private inline fun <reified T : Enum<T>> Map<*, *>.enumOrDefault(key: String, defaultValue: T): T {
         val raw = this[key] as? String ?: return defaultValue
         return enumValues<T>().firstOrNull { it.name == raw } ?: defaultValue
+    }
+
+    /** 拒绝新旧信任字段混用，避免在迁移期间用默认值掩盖语义冲突。 */
+    private fun Map<*, *>.requireNoLegacyTrustFields() {
+        val legacyFields = listOf("sourceTag", "certainty", "bindingStatus").filter(::containsKey)
+        check(legacyFields.isEmpty()) {
+            "Legacy graph trust fields are unsupported: ${legacyFields.joinToString()}"
+        }
     }
 
 }

@@ -1,11 +1,11 @@
 package com.charmnight.linkgraph.projection
 
-import com.charmnight.linkgraph.model.BindingStatus
-import com.charmnight.linkgraph.model.Certainty
+import com.charmnight.linkgraph.model.GraphBinding
+import com.charmnight.linkgraph.model.GraphConfidence
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 
 /**
@@ -301,9 +301,9 @@ internal fun overflowNode(
     title = "${direction.label}已折叠 $hiddenNodeCount 个节点",
     signature = "另有 $hiddenEdgeCount 条链路未在当前交互窗口展开",
     doc = "完整事实图仍保留在后台，可继续问答、导出 Mermaid，或切换到其他方法重新聚焦。",
-    certainty = Certainty.RULE_INFERRED,
-    bindingStatus = BindingStatus.PARTIALLY_SYNCED,
-    sourceTag = GraphSourceTag.UNCERTAIN_FACT,
+    confidence = GraphConfidence.INFERRED,
+    binding = GraphBinding.PARTIAL,
+    provenance = GraphProvenance.DERIVED,
     metadata = mapOf(
         GraphProjectionMetadata.Overflow.DIRECTION to direction.name,
         GraphProjectionMetadata.Hidden.NODE_COUNT to hiddenNodeCount.toString(),

@@ -2,6 +2,7 @@ package com.charmnight.linkgraph.llm.tools
 
 import com.charmnight.linkgraph.agent.tools.*
 
+import com.charmnight.linkgraph.application.edit.GraphEditRequestPayloadParser
 import com.charmnight.linkgraph.application.model.GraphEditIssueCode
 import com.charmnight.linkgraph.application.model.GraphEditRejected
 import com.charmnight.linkgraph.application.model.GraphEditResult
@@ -24,6 +25,7 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.sync.SyncPreviewPlanner
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -109,6 +111,38 @@ class EditGraphToolTest : BasePlatformTestCase() {
         assertEquals("REJECTED", result.payload["status"])
         assertEquals("INVALID_REQUEST", result.payload["reason"])
         assertTrue(result.errorMessage?.contains("baseWorkspaceRevision") == true)
+    }
+
+    fun testRejectsOversizedInputBeforeExecutor() {
+        val executorCalled = AtomicBoolean(false)
+        val baseContext = context(snapshot = WorkflowEditorSnapshot(workspaceRevision = 4))
+        val result = EditGraphTool().invoke(
+            input = requestPayload(
+                baseWorkspaceRevision = 4,
+                operations = listOf(
+                    mapOf(
+                        "type" to "UPSERT_NODE",
+                        "node" to mapOf(
+                            "id" to "node-big",
+                            "type" to "METHOD",
+                            "title" to "x".repeat(GraphEditRequestPayloadParser.MAX_SERIALIZED_PAYLOAD_CHARS),
+                        ),
+                    ),
+                ),
+            ),
+            context = baseContext.copy(
+                graphEditRequestExecutor = GraphEditRequestExecutor {
+                    executorCalled.set(true)
+                    error("oversized input must not reach executor")
+                },
+            ),
+        )
+
+        assertFalse(result.success)
+        assertEquals("REJECTED", result.payload["status"])
+        assertEquals("INVALID_REQUEST", result.payload["reason"])
+        assertTrue(result.errorMessage?.contains("exceeds limit") == true)
+        assertFalse(executorCalled.get())
     }
 
     private fun requestPayload(

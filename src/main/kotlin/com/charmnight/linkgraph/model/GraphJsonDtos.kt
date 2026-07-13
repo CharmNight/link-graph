@@ -47,13 +47,13 @@ internal data class GraphNodeJsonDto(
     val doc: String?,
     val sourceKind: String?,
     val status: String?,
-    val bindingStatus: String,
-    val certainty: String,
+    val binding: String,
+    val confidence: String,
     val diff: GraphDiffJsonDto,
     val evidence: List<GraphEvidenceJsonDto>,
     val uncertainty: GraphUncertaintyJsonDto?,
     val metadata: Map<String, String>,
-    val sourceTag: String,
+    val provenance: String,
 )
 
 internal data class GraphEdgeJsonDto(
@@ -62,14 +62,14 @@ internal data class GraphEdgeJsonDto(
     val fromNodeId: String,
     val toNodeId: String,
     val label: String?,
-    val certainty: String,
-    val bindingStatus: String,
+    val confidence: String,
+    val binding: String,
     val status: String?,
     val diff: GraphDiffJsonDto,
     val evidence: List<GraphEvidenceJsonDto>,
     val uncertainty: GraphUncertaintyJsonDto?,
     val metadata: Map<String, String>,
-    val sourceTag: String,
+    val provenance: String,
 )
 
 internal data class GraphPatchOperationJsonDto(

@@ -206,8 +206,6 @@ function createEmptyInvocationExpansionSceneState(): InvocationExpansionSceneSta
     activeExpansionPath: [],
     collapsedExpansionIds: [],
     activeSiblingByParentContext: {},
-    blockPositions: {},
-    lastChildStateByExpansionId: {},
     contextMode: "ACTIVE_CHAIN",
   };
 }

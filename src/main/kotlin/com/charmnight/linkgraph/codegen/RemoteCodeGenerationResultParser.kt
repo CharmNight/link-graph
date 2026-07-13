@@ -1,6 +1,5 @@
 package com.charmnight.linkgraph.codegen
 
-import com.charmnight.linkgraph.agent.model.EditScope
 import com.charmnight.linkgraph.llm.LlmJsonCodec
 import com.charmnight.linkgraph.agent.model.LlmResultSource
 import com.charmnight.linkgraph.llm.RemoteStructuredJsonExtractor
@@ -21,6 +20,11 @@ internal object RemoteCodeGenerationResultParser {
         val warnings = (root["warnings"] as? List<*>).orEmpty().mapNotNull { it as? String }
         /** 远程返回的代码草稿列表。 */
         val rawDrafts = root["drafts"] as? List<*> ?: error("LLM response field 'drafts' must be an array.")
+        requireListWithinLimit(
+            rawDrafts,
+            "LLM response drafts",
+            CodeDraftContentLimits.MAX_DRAFTS_PER_RESPONSE,
+        )
         val drafts = rawDrafts.mapIndexed { index, rawDraft ->
             parseDraft(rawDraft as? Map<*, *>, index)
         }
@@ -45,11 +49,19 @@ internal object RemoteCodeGenerationResultParser {
         val sourceNodeId = raw["sourceNodeId"] as? String ?: draftId
         /** 草稿完整内容。 */
         val content = raw["content"] as? String
+        requireDraftTextWithinLimit(content, "LLM response draft[$index].content")
         /** 草稿结构化编辑操作。 */
         val editOperations = when (val operations = raw["editOperations"]) {
             null -> emptyList()
-            is List<*> -> operations.mapIndexed { operationIndex, operation ->
-                parseEditOperation(operation as? Map<*, *>, index, operationIndex)
+            is List<*> -> {
+                requireListWithinLimit(
+                    operations,
+                    "LLM response draft[$index].editOperations",
+                    CodeDraftContentLimits.MAX_EDIT_OPERATIONS_PER_DRAFT,
+                )
+                operations.mapIndexed { operationIndex, operation ->
+                    parseEditOperation(operation as? Map<*, *>, index, operationIndex)
+                }
             }
             else -> error("LLM response draft[$index].editOperations must be an array when present.")
         }
@@ -58,19 +70,76 @@ internal object RemoteCodeGenerationResultParser {
         }
         /** 草稿局部警告列表。 */
         val warnings = (raw["warnings"] as? List<*>).orEmpty().mapNotNull { it as? String }
-        /** 草稿级授权 scope，优先解析，主链仍会再用本地 plan 回填。 */
-        val editScopes = (raw["editScopes"] as? List<*>).orEmpty().mapNotNull { parseEditScope(it as? Map<*, *>) }
+        if ("editScopes" in raw) {
+            error("LLM response draft[$index].editScopes is unsupported; edit authorization is assigned locally.")
+        }
+        val command = normalizeCommand(
+            targetPath = targetPath,
+            content = content,
+            editOperations = editOperations,
+            draftIndex = index,
+        )
         return GeneratedCodeDraft(
             id = draftId,
             sourceNodeId = sourceNodeId,
             title = title,
-            targetPath = targetPath,
-            content = content,
-            editOperations = editOperations,
-            editScopes = editScopes,
+            command = command,
             warnings = warnings,
         )
     }
+
+    private fun normalizeCommand(
+        targetPath: String,
+        content: String?,
+        editOperations: List<CodeEditOperation>,
+        draftIndex: Int,
+    ): CodeDraftCommand {
+        if (content != null && editOperations.isNotEmpty()) {
+            error("LLM response draft[$draftIndex] cannot provide both content and editOperations.")
+        }
+        if (content != null) {
+            if (content.isBlank()) {
+                error("LLM response draft[$draftIndex].content must not be blank.")
+            }
+            return CodeDraftCommand.CreateFile(targetPath = targetPath, content = content)
+        }
+        if (editOperations.isEmpty()) {
+            error("LLM response draft[$draftIndex] must provide content or editOperations.")
+        }
+        editOperations.forEachIndexed { operationIndex, operation ->
+            if (!sameDraftPath(operation.filePath, targetPath)) {
+                error(
+                    "LLM response draft[$draftIndex].editOperations[$operationIndex].filePath " +
+                        "must match draft targetPath.",
+                )
+            }
+        }
+        val createOperations = editOperations.filter { operation -> operation.kind == CodeEditOperationKind.CREATE_FILE }
+        if (createOperations.isNotEmpty()) {
+            if (editOperations.size != 1) {
+                error("LLM response draft[$draftIndex] cannot mix CREATE_FILE with patch operations.")
+            }
+            val createOperation = createOperations.single()
+            if (createOperation.payload.isBlank()) {
+                error("LLM response draft[$draftIndex] CREATE_FILE payload must not be blank.")
+            }
+            if (createOperation.scopeId != null) {
+                error("LLM response draft[$draftIndex] CREATE_FILE must not declare scopeId.")
+            }
+            return CodeDraftCommand.CreateFile(
+                targetPath = targetPath,
+                content = createOperation.payload,
+            )
+        }
+        return CodeDraftCommand.PatchExistingFile(
+            targetPath = targetPath,
+            operations = editOperations,
+            scopes = emptyList(),
+        )
+    }
+
+    private fun sameDraftPath(left: String, right: String): Boolean =
+        left.trim().replace('\\', '/') == right.trim().replace('\\', '/')
 
     /** 解析单个结构化编辑操作对象，校验必要字段并构造可执行的编辑动作。 */
     private fun parseEditOperation(
@@ -87,6 +156,12 @@ internal object RemoteCodeGenerationResultParser {
             ?: error("LLM response draft[$draftIndex].editOperations[$operationIndex].kind is required.")
         val payload = raw["payload"] as? String
             ?: error("LLM response draft[$draftIndex].editOperations[$operationIndex].payload is required.")
+        requireDraftTextWithinLimit(payload, "LLM response draft[$draftIndex].editOperations[$operationIndex].payload")
+        val normalizedPayload = CodeEditPayloadNormalizer.normalize(payload)
+        requireDraftTextWithinLimit(
+            normalizedPayload,
+            "LLM response draft[$draftIndex].editOperations[$operationIndex].payload",
+        )
         val warnings = (raw["warnings"] as? List<*>).orEmpty().mapNotNull { it as? String }
         return CodeEditOperation(
             operationId = operationId,
@@ -94,32 +169,25 @@ internal object RemoteCodeGenerationResultParser {
             scopeId = raw["scopeId"] as? String,
             kind = CodeEditOperationKind.entries.firstOrNull { it.name == kindName }
                 ?: error("LLM response draft[$draftIndex].editOperations[$operationIndex].kind '$kindName' is unsupported."),
-            payload = CodeEditPayloadNormalizer.normalize(payload),
+            payload = normalizedPayload,
             warnings = warnings,
-        )
-    }
-
-    /** 解析草稿附带的授权范围信息；关键字段缺失时返回 null 表示忽略该项。 */
-    private fun parseEditScope(raw: Map<*, *>?): EditScope? {
-        raw ?: return null
-        return EditScope(
-            scopeId = raw["scopeId"] as? String ?: return null,
-            targetNodeId = raw["targetNodeId"] as? String ?: return null,
-            filePath = raw["filePath"] as? String ?: return null,
-            language = raw["language"] as? String ?: "TEXT",
-            symbolKind = raw["symbolKind"] as? String ?: "UNKNOWN",
-            symbolSignature = raw["symbolSignature"] as? String,
-            startOffset = (raw["startOffset"] as? Number)?.toInt(),
-            endOffset = (raw["endOffset"] as? Number)?.toInt(),
-            startLine = (raw["startLine"] as? Number)?.toInt(),
-            endLine = (raw["endLine"] as? Number)?.toInt(),
-            allowedChangeKinds = (raw["allowedChangeKinds"] as? List<*>).orEmpty().mapNotNull { it as? String },
-            supportingFindingIds = (raw["supportingFindingIds"] as? List<*>).orEmpty().mapNotNull { it as? String },
         )
     }
 
     /** 提取可能被代码块包裹的纯 JSON 文本。 */
     private fun unwrapJson(content: String): String {
         return RemoteStructuredJsonExtractor.extract(content)
+    }
+
+    private fun requireDraftTextWithinLimit(value: String?, fieldName: String) {
+        if (!CodeDraftContentLimits.isWithinTextLimit(value)) {
+            error("$fieldName is too large; maximum ${CodeDraftContentLimits.MAX_DRAFT_CONTENT_BYTES} UTF-8 bytes.")
+        }
+    }
+
+    private fun requireListWithinLimit(values: List<*>, fieldName: String, maxItems: Int) {
+        if (values.size > maxItems) {
+            error("$fieldName exceeds limit: ${values.size} > $maxItems.")
+        }
     }
 }

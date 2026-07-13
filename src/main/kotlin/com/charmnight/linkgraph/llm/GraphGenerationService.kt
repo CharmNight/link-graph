@@ -32,8 +32,10 @@ class GraphGenerationService(
     ): GenerationPlan {
         /** 清洗后的设置快照。 */
         val sanitizedSettings = settings.sanitized()
+        /** 远程请求前应用源码片段外发授权策略。 */
+        val sourceContextPolicy = context.withRemoteSourceContextPolicy(sanitizedSettings)
         /** 当前上下文对应的提示词包。 */
-        val promptPackage = promptFactory.buildGenerationPromptPackage(context, sanitizedSettings)
+        val promptPackage = promptFactory.buildGenerationPromptPackage(sourceContextPolicy.context, sanitizedSettings)
 
         if (!sanitizedSettings.llmEnabled) {
             return GenerationPlan(
@@ -53,16 +55,19 @@ class GraphGenerationService(
             /** 远程配置不完整时的规则化回退计划。 */
             val fallbackPlan = buildLocalRulePlan(context, promptPackage.preview)
             return fallbackPlan.copy(
-                warnings = listOf(
-                    sanitizedSettings.remoteLlmSetupHint("规则化生成计划"),
-                ) + fallbackPlan.warnings,
+                warnings = sourceContextPolicy.warnings() +
+                    sanitizedSettings.remoteLlmSetupHint("规则化生成计划") +
+                    fallbackPlan.warnings,
             )
         }
         return runCatching {
             responseSupport.request(
-                remoteConnection.toRequest(
-                    systemPrompt = promptPackage.systemPrompt,
-                    userPrompt = promptPackage.userPrompt,
+                RemoteLlmRequestFactory.create(
+                    connection = remoteConnection,
+                    settings = sanitizedSettings,
+                    content = promptPackage.toRemotePromptContent(
+                        sourceContextClassifications(sourceContextPolicy.context.sourceContext),
+                    ),
                 ),
                 scene = "实现计划生成",
                 schema = LlmStructuredSchemas.GENERATION_PLAN,
@@ -73,13 +78,14 @@ class GraphGenerationService(
             }
         }.map { remote ->
             remote.value.withPrependedWarnings(remote.warnings)
+                .withPrependedWarnings(sourceContextPolicy.warnings())
         }.getOrElse { error ->
             /** 远程失败后的规则化回退计划。 */
             val fallbackPlan = buildLocalRulePlan(context, promptPackage.preview)
             fallbackPlan.copy(
-                warnings = listOf(
-                    "远程 LLM 生成失败，已回退为规则化生成计划：${LlmUserMessageFormatter.describe(error)}",
-                ) + fallbackPlan.warnings,
+                warnings = sourceContextPolicy.warnings() +
+                    "远程 LLM 生成失败，已回退为规则化生成计划：${LlmUserMessageFormatter.describe(error)}" +
+                    fallbackPlan.warnings,
             )
         }
     }

@@ -105,6 +105,67 @@ class RemoteStructuredResponseParserTest {
     }
 
     @Test
+    fun streamsBoundedPreviewWithoutChangingFinalStructuredResponse() {
+        val oversizedDelta = "x".repeat(80 * 1024)
+        val previews = mutableListOf<Pair<String, Boolean>>()
+        val support = RemoteStructuredResponseParser(
+            gateway = object : LlmGateway {
+                override fun generate(request: LlmRequest): LlmResponse {
+                    error("generate should not be used for streaming requests")
+                }
+
+                override fun stream(
+                    request: LlmRequest,
+                    listener: (LlmStreamEvent) -> Unit,
+                ): LlmResponse {
+                    listener(LlmStreamEvent.Started(model = request.model))
+                    listener(LlmStreamEvent.TextDelta(oversizedDelta))
+                    listener(LlmStreamEvent.TextDelta("tail"))
+                    val response = LlmResponse(
+                        content = "{\"summary\":\"remote\"}",
+                        model = request.model,
+                    )
+                    listener(LlmStreamEvent.Completed(response))
+                    return response
+                }
+            },
+        )
+
+        val result = support.request(
+            request = LlmRequest(
+                protocol = LlmWireProtocol.OPENAI_RESPONSES,
+                endpoint = "https://api.openai.com/v1",
+                apiKey = "token",
+                model = "gpt-5.4",
+                timeoutSeconds = 60,
+                temperature = 0.2,
+                systemPrompt = "system",
+                userPrompt = "user",
+                deliveryMode = LlmDeliveryMode.STREAM,
+            ),
+            scene = "实现计划生成",
+            schema = """{"summary":"text"}""",
+            preferStreaming = true,
+            onPreview = { text, finalizing ->
+                previews += text to finalizing
+            },
+        ) { content ->
+            content
+        }
+
+        assertEquals("{\"summary\":\"remote\"}", result.value)
+        assertTrue(previews.isNotEmpty())
+        assertTrue(
+            previews.all { (text, _) -> text.length <= RemoteStructuredResponseParser.MAX_STREAMING_PREVIEW_CHARS },
+            "streaming previews should stay bounded: ${previews.map { it.first.length }}",
+        )
+        assertTrue(
+            previews.any { (text, _) -> text.contains("响应预览已截断") },
+            "bounded preview should explain truncation",
+        )
+    }
+
+    @Test
     fun injectsConcreteParseFailureIntoRepairPrompt() {
         val requests = mutableListOf<LlmRequest>()
         val support = RemoteStructuredResponseParser(

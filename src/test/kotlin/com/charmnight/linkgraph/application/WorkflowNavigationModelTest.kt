@@ -5,7 +5,7 @@ import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.semantic.outcome.FlowchartSummary
 import com.charmnight.linkgraph.semantic.outcome.FlowchartViewDocument
@@ -22,14 +22,14 @@ class WorkflowNavigationModelTest {
             type = NodeType.DOC_PAGE,
             title = "人工说明",
             location = "docs/flow.md:1",
-            sourceTag = GraphSourceTag.DRAFT_MANUAL,
+            provenance = GraphProvenance.USER_DRAFT,
         )
         val baselineNode = GraphNode(
             id = "design:baseline-node",
             type = NodeType.CLASS,
             title = "OrderDraftDto",
             signature = "com.example.OrderDraftDto",
-            sourceTag = GraphSourceTag.DESIGN_BASELINE,
+            provenance = GraphProvenance.DESIGN_IMPORT,
         )
         val snapshot = testSnapshot(
             visibleGraph = GraphDocument(),
@@ -47,7 +47,7 @@ class WorkflowNavigationModelTest {
             id = "decision:allowed",
             type = NodeType.FLOW_SCOPE,
             title = "if (!allowed)",
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
             metadata = mapOf(
                 "flowchart.kind" to "DECISION",
                 "flowchart.projectedFromNodeIds" to "condition:allowed-check",
@@ -57,7 +57,7 @@ class WorkflowNavigationModelTest {
             id = "condition:allowed-check",
             type = NodeType.FLOW_ACTION,
             title = "!checkAllowDownload(fileName)",
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
             metadata = mapOf(
                 "flowchart.kind" to "PROCESS",
                 "flow.kind" to "CONDITION",

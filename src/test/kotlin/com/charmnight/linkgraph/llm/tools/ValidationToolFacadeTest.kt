@@ -20,7 +20,7 @@ class ValidationToolFacadeTest {
         val facade = ValidationToolFacade()
 
         val accepted = facade.hasReadEvidence(
-            draft = GeneratedCodeDraft(
+            draft = GeneratedCodeDraft.patchExistingFile(
                 id = "draft-upload",
                 sourceNodeId = "method:upload-file",
                 title = "CommonController.java",

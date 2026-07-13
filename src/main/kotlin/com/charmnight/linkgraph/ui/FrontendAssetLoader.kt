@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.foundation.LinkGraphDebugEnvironment
+import com.charmnight.linkgraph.source.readBytesBounded
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -66,7 +67,7 @@ internal class ClasspathFrontendAssetLoader(
             readDevelopmentResourceBytesOrNull(resourcePath)?.let { return it }
         }
         return classLoader.getResourceAsStream(resourcePath)?.use { stream ->
-            stream.readBytes()
+            stream.readBytesBounded(MAX_FRONTEND_ASSET_BYTES)
         }
     }
 
@@ -79,8 +80,10 @@ internal class ClasspathFrontendAssetLoader(
         if (!developmentPath.startsWith(developmentRoot)) {
             return null
         }
-        if (Files.isRegularFile(developmentPath)) {
-            return Files.readAllBytes(developmentPath)
+        if (Files.isRegularFile(developmentPath) && Files.size(developmentPath) <= MAX_FRONTEND_ASSET_BYTES) {
+            return Files.newInputStream(developmentPath).use { stream ->
+                stream.readBytesBounded(MAX_FRONTEND_ASSET_BYTES)
+            }
         }
         return null
     }
@@ -90,6 +93,8 @@ internal class ClasspathFrontendAssetLoader(
         private const val DEV_DIST_ENV = "LINKGRAPH_FRONTEND_DEV_DIST"
         /** 控制开发态 dist 根路径的系统属性名。 */
         private const val DEV_DIST_PROPERTY = "linkgraph.frontend.devDist"
+        /** 单个前端资源读取上限，避免错误 devDist 或异常资源拖垮 JCEF 响应。 */
+        private const val MAX_FRONTEND_ASSET_BYTES = 4 * 1024 * 1024
 
         /** 构造开发态加载器：优先从指定 dist 目录读取，未命中再回退到打包资源。 */
         fun development(

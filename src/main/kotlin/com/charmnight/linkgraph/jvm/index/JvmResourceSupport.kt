@@ -1,5 +1,12 @@
 package com.charmnight.linkgraph.jvm.index
 
+import com.charmnight.linkgraph.source.SourceArchiveReadLimits
+import com.charmnight.linkgraph.source.readFileTextBounded
+import com.intellij.openapi.vfs.VirtualFile
+import java.nio.charset.Charset
+import java.nio.charset.StandardCharsets
+import java.nio.file.Path
+
 /**
  * JvmSymbolIndexBuilder 的资源 / SPI 文件纯解析 helper（P2-1 深度拆分）。
  *
@@ -34,3 +41,39 @@ internal fun spiProviderClassNames(text: String): List<String> =
         .filter(String::isNotBlank)
         .distinct()
         .toList()
+
+/** 读取 VirtualFile 文本；超过给定字节上限时返回 null。 */
+internal fun readVirtualFileTextBounded(
+    file: VirtualFile,
+    maxBytes: Int = SourceArchiveReadLimits.MAX_TEXT_ENTRY_BYTES,
+    charset: Charset = file.charset,
+): String? {
+    if (file.length > maxBytes) {
+        return null
+    }
+    return runCatching { String(file.contentsToByteArray(), charset) }.getOrNull()
+}
+
+/** 读取文件系统路径文本；超过给定字节上限时返回 null。 */
+internal fun readPathTextBounded(
+    path: Path,
+    maxBytes: Int = SourceArchiveReadLimits.MAX_TEXT_ENTRY_BYTES,
+    charset: Charset = StandardCharsets.UTF_8,
+): String? =
+    runCatching { readFileTextBounded(path, maxBytes, charset) }.getOrNull()
+
+/** 从受限大小的 VirtualFile SPI 配置中提取 provider 列表。 */
+internal fun readSpiProviderClassNames(file: VirtualFile): List<String> =
+    readVirtualFileTextBounded(
+        file = file,
+        maxBytes = SourceArchiveReadLimits.MAX_SERVICE_ENTRY_BYTES,
+        charset = StandardCharsets.UTF_8,
+    )?.let(::spiProviderClassNames).orEmpty()
+
+/** 从受限大小的路径 SPI 配置中提取 provider 列表。 */
+internal fun readSpiProviderClassNames(path: Path): List<String> =
+    readPathTextBounded(
+        path = path,
+        maxBytes = SourceArchiveReadLimits.MAX_SERVICE_ENTRY_BYTES,
+        charset = StandardCharsets.UTF_8,
+    )?.let(::spiProviderClassNames).orEmpty()

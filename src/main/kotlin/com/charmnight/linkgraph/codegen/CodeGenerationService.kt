@@ -13,10 +13,14 @@ import com.charmnight.linkgraph.agent.model.LlmResultSource
 import com.charmnight.linkgraph.llm.LlmUserMessageFormatter
 import com.charmnight.linkgraph.llm.LlmStructuredSchemas
 import com.charmnight.linkgraph.llm.RemoteStructuredResponseParser
+import com.charmnight.linkgraph.llm.RemoteLlmRequestFactory
 import com.charmnight.linkgraph.llm.RoutingLlmGateway
 import com.charmnight.linkgraph.llm.remoteConnectionOrNull
 import com.charmnight.linkgraph.llm.remoteLlmSetupHint
 import com.charmnight.linkgraph.llm.usesRemoteProvider
+import com.charmnight.linkgraph.llm.withRemoteSourceContextPolicy
+import com.charmnight.linkgraph.llm.sourceContextClassifications
+import com.charmnight.linkgraph.llm.toRemotePromptContent
 import com.charmnight.linkgraph.model.DiffStatus
 import com.charmnight.linkgraph.model.GraphDiffElementKind
 import com.charmnight.linkgraph.model.GraphDocument
@@ -36,19 +40,55 @@ data class GeneratedCodeDraft(
     val sourceNodeId: String,
     /** 前端展示标题。 */
     val title: String,
-    /** 相对项目根目录的目标路径。 */
-    val targetPath: String,
-    /** 新文件草稿完整内容；existing-file 结构化改写时为空。 */
-    val content: String? = null,
-    /** 现有文件结构化改写操作。 */
-    val editOperations: List<CodeEditOperation> = emptyList(),
-    /** 已授权的精确编辑作用域。 */
-    val editScopes: List<EditScope> = emptyList(),
+    /** 已规范化且互斥的新建文件/局部 patch 命令。 */
+    val command: CodeDraftCommand,
     /** 基于当前本地文件准备出的局部 patch 预览。 */
     val preparedEdits: List<PreparedCodeEdit> = emptyList(),
     /** 草稿级别的警告信息。 */
     val warnings: List<String> = emptyList(),
-)
+) {
+    /** 相对项目根目录的目标路径，由命令唯一确定。 */
+    val targetPath: String
+        get() = command.targetPath
+
+    companion object {
+        fun createFile(
+            id: String,
+            sourceNodeId: String,
+            title: String,
+            targetPath: String,
+            content: String,
+            preparedEdits: List<PreparedCodeEdit> = emptyList(),
+            warnings: List<String> = emptyList(),
+        ): GeneratedCodeDraft = GeneratedCodeDraft(
+            id = id,
+            sourceNodeId = sourceNodeId,
+            title = title,
+            command = CodeDraftCommand.CreateFile(targetPath, content),
+            preparedEdits = preparedEdits,
+            warnings = warnings,
+        )
+
+        fun patchExistingFile(
+            id: String,
+            sourceNodeId: String,
+            title: String,
+            targetPath: String,
+            editOperations: List<CodeEditOperation>,
+            editScopes: List<EditScope> = emptyList(),
+            preparedEdits: List<PreparedCodeEdit> = emptyList(),
+            warnings: List<String> = emptyList(),
+        ): GeneratedCodeDraft = GeneratedCodeDraft(
+            id = id,
+            sourceNodeId = sourceNodeId,
+            title = title,
+            command = CodeDraftCommand.PatchExistingFile(targetPath, editOperations, editScopes),
+            preparedEdits = preparedEdits,
+            warnings = warnings,
+        )
+
+    }
+}
 
 /** 草案生成阶段的汇总结果。 */
 data class CodeGenerationResult(
@@ -123,8 +163,10 @@ class CodeGenerationService(
     ): CodeGenerationResult {
         /** 清洗后的设置快照。 */
         val sanitized = settings.sanitized()
+        /** 远程请求前应用源码片段外发授权策略。 */
+        val sourceContextPolicy = context.withRemoteSourceContextPolicy(sanitized)
         /** 当前上下文对应的提示词包。 */
-        val promptPackage = promptFactory.buildCodeGenerationPromptPackage(context, plan, sanitized)
+        val promptPackage = promptFactory.buildCodeGenerationPromptPackage(sourceContextPolicy.context, plan, sanitized)
         if (sanitized.usesRemoteProvider()) {
             /** 远程生成可用时的连接配置。 */
             val remoteConnection = sanitized.remoteConnectionOrNull()
@@ -132,16 +174,19 @@ class CodeGenerationService(
                 /** 配置不完整时回退的本地结果。 */
                 val localResult = generateLocalDrafts(context, plan, promptPackage.preview)
                 return localResult.copy(
-                    warnings = listOf(
-                        sanitized.remoteLlmSetupHint("本地模板代码生成"),
-                    ) + localResult.warnings,
+                    warnings = sourceContextPolicy.warnings() +
+                        sanitized.remoteLlmSetupHint("本地模板代码生成") +
+                        localResult.warnings,
                 )
             }
             runCatching {
                 responseSupport.request(
-                    remoteConnection.toRequest(
-                        systemPrompt = promptPackage.systemPrompt,
-                        userPrompt = promptPackage.userPrompt,
+                    RemoteLlmRequestFactory.create(
+                        connection = remoteConnection,
+                        settings = sanitized,
+                        content = promptPackage.toRemotePromptContent(
+                            sourceContextClassifications(sourceContextPolicy.context.sourceContext),
+                        ),
                     ),
                     scene = "代码生成",
                     schema = LlmStructuredSchemas.CODE_GENERATION_RESULT,
@@ -154,7 +199,7 @@ class CodeGenerationService(
                 val normalizedRemoteResult = remoteResult.value
                     .attachAuthorizedScopes(context.confirmedChanges)
                     .rejectUnsafeExistingFileContentDrafts(context.confirmedChanges)
-                    .withPrependedWarnings(remoteResult.warnings)
+                    .withPrependedWarnings(sourceContextPolicy.warnings() + remoteResult.warnings)
                 if (normalizedRemoteResult.hasUsableDrafts()) {
                     return normalizedRemoteResult
                 }
@@ -172,9 +217,9 @@ class CodeGenerationService(
                 /** 远程失败后的本地回退结果。 */
                 val localResult = generateLocalDrafts(context, plan, promptPackage.preview)
                 return localResult.copy(
-                    warnings = listOf(
-                        "远程 LLM 代码生成失败，已回退为本地模板：${LlmUserMessageFormatter.describe(error)}",
-                    ) + localResult.warnings,
+                    warnings = sourceContextPolicy.warnings() +
+                        "远程 LLM 代码生成失败，已回退为本地模板：${LlmUserMessageFormatter.describe(error)}" +
+                        localResult.warnings,
                     diagnosticDetail = error.message?.trim(),
                 )
             }
@@ -269,10 +314,8 @@ class CodeGenerationService(
         }
         val scopesByFilePath = confirmedScopes.groupBy(EditScope::filePath)
         val patchedDrafts = drafts.map { draft ->
-            if (draft.editOperations.isEmpty() || draft.editScopes.isNotEmpty()) {
-                return@map draft
-            }
-            val operationScopeIds = draft.editOperations.mapNotNull(CodeEditOperation::scopeId).toSet()
+            val patch = draft.command.patchOrNull() ?: return@map draft
+            val operationScopeIds = patch.operations.mapNotNull(CodeEditOperation::scopeId).toSet()
             val matchedScopes = if (operationScopeIds.isNotEmpty()) {
                 confirmedScopes.filter { scope -> scope.scopeId in operationScopeIds }
             } else {
@@ -286,15 +329,17 @@ class CodeGenerationService(
                 val matchedScopeById = matchedScopes.associateBy(EditScope::scopeId)
                 val authoritativeTargetPath = matchedScopes.firstOrNull()?.filePath ?: draft.targetPath
                 draft.copy(
-                    targetPath = authoritativeTargetPath,
-                    editOperations = draft.editOperations.map { operation ->
-                        val authoritativePath = operation.scopeId
-                            ?.let(matchedScopeById::get)
-                            ?.filePath
-                            ?: authoritativeTargetPath
-                        operation.copy(filePath = authoritativePath)
-                    },
-                    editScopes = matchedScopes,
+                    command = patch.copy(
+                        targetPath = authoritativeTargetPath,
+                        operations = patch.operations.map { operation ->
+                            val authoritativePath = operation.scopeId
+                                ?.let(matchedScopeById::get)
+                                ?.filePath
+                                ?: authoritativeTargetPath
+                            operation.copy(filePath = authoritativePath)
+                        },
+                        scopes = matchedScopes,
+                    ),
                 )
             }
         }
@@ -317,25 +362,14 @@ class CodeGenerationService(
         val rejectionWarnings = mutableListOf<String>()
         drafts.forEach { draft ->
             val draftPath = normalizeGeneratedDraftPath(draft.targetPath)
-            val operationPaths = draft.editOperations
-                .map { operation -> normalizeGeneratedDraftPath(operation.filePath) }
-                .toSet()
-            val touchesExistingAuthorizedFile = draftPath in authorizedExistingFiles ||
-                operationPaths.any { operationPath -> operationPath in authorizedExistingFiles }
+            val touchesExistingAuthorizedFile = draftPath in authorizedExistingFiles
             if (!touchesExistingAuthorizedFile) {
                 retainedDrafts += draft
                 return@forEach
             }
 
-            if (draft.editOperations.isEmpty() && draft.content != null) {
+            if (draft.command is CodeDraftCommand.CreateFile) {
                 rejectionWarnings += "已拒绝 existing-file draft '${draft.targetPath}'：现有文件必须使用结构化 editOperations，不能用 content 作为整文件 merge 预览。"
-                return@forEach
-            }
-            if (draft.editOperations.isNotEmpty() && draft.content != null) {
-                retainedDrafts += draft.copy(
-                    content = null,
-                    warnings = draft.warnings + "已忽略 existing-file draft '${draft.targetPath}' 的 content；以结构化 editOperations 为准。",
-                )
                 return@forEach
             }
             retainedDrafts += draft
@@ -371,8 +405,10 @@ class CodeGenerationService(
             id = "draft:${node.id}",
             sourceNodeId = node.id,
             title = Paths.get(targetPath).fileName.toString(),
-            targetPath = targetPath,
-            content = content,
+            command = CodeDraftCommand.CreateFile(
+                targetPath = targetPath,
+                content = content,
+            ),
         )
     }
 

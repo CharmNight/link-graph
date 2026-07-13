@@ -3,6 +3,7 @@ package com.charmnight.linkgraph.source
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import java.nio.file.Files
 import java.nio.file.Path
@@ -10,6 +11,31 @@ import java.util.jar.JarEntry
 import java.util.jar.JarOutputStream
 
 class AttachedJarContentResolverTest {
+    @Test
+    fun resolvesDuplicateClassesByAttachmentOrderAndReportsAmbiguity() {
+        val dir = Files.createTempDirectory("attached-jar-resolver-duplicates")
+        val firstClassJar = dir.resolve("first.jar")
+        val firstSourceJar = dir.resolve("first-sources.jar")
+        val secondClassJar = dir.resolve("second.jar")
+        val secondSourceJar = dir.resolve("second-sources.jar")
+        writeJar(firstClassJar, mapOf("com/example/Duplicate.class" to byteArrayOf(1)))
+        writeJar(firstSourceJar, mapOf("com/example/Duplicate.java" to "class First {}".toByteArray()))
+        writeJar(secondClassJar, mapOf("com/example/Duplicate.class" to byteArrayOf(2)))
+        writeJar(secondSourceJar, mapOf("com/example/Duplicate.java" to "class Second {}".toByteArray()))
+        val resolver = AttachedJarContentResolver(
+            listOf(
+                AttachedJarEntry(path = firstClassJar.toString(), sourceJarPath = firstSourceJar.toString()),
+                AttachedJarEntry(path = secondClassJar.toString(), sourceJarPath = secondSourceJar.toString()),
+            ),
+        )
+
+        val content = assertNotNull(resolver.readClassByQualifiedName("com.example.Duplicate"))
+
+        assertTrue(content.text.contains("First"))
+        assertTrue(content.virtualFileUrl.orEmpty().contains(firstSourceJar.toString()))
+        assertEquals("CLASS_JAR_AMBIGUOUS:2", resolver.lastUnavailableReason)
+    }
+
     @Test
     fun readsSourceJarBeforeClassJar() {
         val dir = Files.createTempDirectory("attached-jar-resolver")
@@ -111,6 +137,26 @@ class AttachedJarContentResolverTest {
         assertTrue(content.text.contains("CompiledExternalService"), content.text)
         assertTrue(content.text.contains("compiled"), content.text)
         assertTrue(!content.text.contains("Decompiled class stub"), content.text)
+    }
+
+    @Test
+    fun rejectsOversizedSourceJarEntry() {
+        val dir = Files.createTempDirectory("attached-jar-resolver")
+        val classJar = dir.resolve("external.jar")
+        val sourceJar = dir.resolve("external-sources.jar")
+        writeJar(classJar, mapOf("com/example/HugeSource.class" to byteArrayOf(0)))
+        writeJar(
+            sourceJar,
+            mapOf("com/example/HugeSource.java" to ByteArray(2 * 1024 * 1024 + 1) { 'x'.code.toByte() }),
+        )
+        val resolver = AttachedJarContentResolver(
+            listOf(AttachedJarEntry(path = classJar.toString(), sourceJarPath = sourceJar.toString())),
+        )
+
+        val content = resolver.readClassByQualifiedName("com.example.HugeSource")
+
+        assertNull(content)
+        assertEquals("JAR_ENTRY_TOO_LARGE", resolver.lastUnavailableReason)
     }
 
     private fun writeJar(path: Path, entries: Map<String, ByteArray>) {

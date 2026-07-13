@@ -148,6 +148,161 @@ class InvocationExpansionUseCaseTest {
     }
 
     @Test
+    fun `reuses the same expansion for the same invocation source and target signature`() {
+        val source = invocationNode(signature = CREATE_INFO_SIGNATURE)
+        val workspace = GraphDocument(nodes = listOf(source))
+        val targetGraph = GraphDocument(
+            nodes = listOf(
+                createInfoMethodNode(),
+                GraphNode(
+                    id = "action:save-info",
+                    type = NodeType.FLOW_ACTION,
+                    title = "saveInfo()",
+                    metadata = mapOf("flow.kind" to "ACTION"),
+                ),
+            ),
+            edges = listOf(
+                GraphEdge(
+                    id = "control:create-to-save",
+                    type = EdgeType.CONTROL_FLOW,
+                    fromNodeId = "method:create-info",
+                    toNodeId = "action:save-info",
+                ),
+            ),
+        )
+
+        val first = useCase.mergeExpansion(
+            workspace = workspace,
+            sourceInvocationNode = source,
+            targetGraph = targetGraph,
+            targetEntryNodeId = "method:create-info",
+            targetSignature = CREATE_INFO_SIGNATURE,
+        )
+        val second = useCase.mergeExpansion(
+            workspace = first.graph,
+            sourceInvocationNode = source,
+            targetGraph = targetGraph,
+            targetEntryNodeId = "method:create-info",
+            targetSignature = CREATE_INFO_SIGNATURE,
+        )
+
+        assertFalse(first.reused)
+        assertTrue(second.reused)
+        assertEquals(first.expansionId, second.expansionId)
+        assertEquals(
+            setOf(first.expansionId),
+            (second.graph.nodes.mapNotNull { it.metadata[InvocationExpansionUseCase.EXPANSION_ID] } +
+                second.graph.edges.mapNotNull { it.metadata[InvocationExpansionUseCase.EXPANSION_ID] }).toSet(),
+        )
+        assertEquals(
+            1,
+            second.graph.edges.count { edge ->
+                edge.type == EdgeType.CALL && edge.fromNodeId == source.id
+            },
+        )
+    }
+
+    @Test
+    fun `normalizes historical connector-only duplicates into the richer canonical expansion`() {
+        val canonicalId = "invocation:canonical"
+        val duplicateId = "invocation:duplicate"
+        val childId = "invocation:child"
+        val source = invocationNode(signature = CREATE_INFO_SIGNATURE)
+        val canonicalMetadata = expansionMetadata(
+            expansionId = canonicalId,
+            sourceInvocationNodeId = source.id,
+            rootNodeId = "method:create-info",
+            targetSignature = CREATE_INFO_SIGNATURE,
+            createdAt = "2026-07-02T00:00:00Z",
+        )
+        val duplicateMetadata = expansionMetadata(
+            expansionId = duplicateId,
+            sourceInvocationNodeId = source.id,
+            rootNodeId = "method:create-info",
+            targetSignature = CREATE_INFO_SIGNATURE,
+            createdAt = "2026-07-01T00:00:00Z",
+        )
+        val childMetadata = expansionMetadata(
+            expansionId = childId,
+            sourceInvocationNodeId = "invoke:audit",
+            rootNodeId = "method:audit",
+            targetSignature = "com.example.AuditService.audit():void",
+            createdAt = "2026-07-03T00:00:00Z",
+        )
+        val historicalGraph = GraphDocument(
+            nodes = listOf(
+                source,
+                createInfoMethodNode().copy(metadata = canonicalMetadata),
+                GraphNode(
+                    id = "invoke:audit",
+                    type = NodeType.FLOW_ACTION,
+                    title = "auditService.audit()",
+                    signature = "com.example.AuditService.audit():void",
+                    metadata = canonicalMetadata + ("flow.kind" to "INVOCATION"),
+                ),
+                GraphNode(
+                    id = "method:audit",
+                    type = NodeType.METHOD,
+                    title = "AuditService.audit",
+                    metadata = childMetadata,
+                ),
+            ),
+            edges = listOf(
+                GraphEdge(
+                    id = "call:canonical",
+                    type = EdgeType.CALL,
+                    fromNodeId = source.id,
+                    toNodeId = "method:create-info",
+                    metadata = canonicalMetadata,
+                ),
+                GraphEdge(
+                    id = "control:canonical-child",
+                    type = EdgeType.CONTROL_FLOW,
+                    fromNodeId = "method:create-info",
+                    toNodeId = "invoke:audit",
+                    metadata = canonicalMetadata,
+                ),
+                GraphEdge(
+                    id = "call:duplicate",
+                    type = EdgeType.CALL,
+                    fromNodeId = source.id,
+                    toNodeId = "method:create-info",
+                    metadata = duplicateMetadata,
+                ),
+                GraphEdge(
+                    id = "call:child",
+                    type = EdgeType.CALL,
+                    fromNodeId = "invoke:audit",
+                    toNodeId = "method:audit",
+                    metadata = childMetadata,
+                ),
+            ),
+        )
+
+        val result = requireNotNull(
+            useCase.reuseEquivalentExpansion(
+                workspace = historicalGraph,
+                sourceInvocationNodeId = source.id,
+                targetSignature = CREATE_INFO_SIGNATURE,
+            ),
+        )
+
+        assertTrue(result.reused)
+        assertEquals(canonicalId, result.expansionId)
+        assertEquals(
+            setOf(canonicalId, childId),
+            (result.graph.nodes.mapNotNull { it.metadata[InvocationExpansionUseCase.EXPANSION_ID] } +
+                result.graph.edges.mapNotNull { it.metadata[InvocationExpansionUseCase.EXPANSION_ID] }).toSet(),
+        )
+        assertEquals(
+            listOf("call:canonical"),
+            result.graph.edges.filter { edge -> edge.fromNodeId == source.id && edge.type == EdgeType.CALL }.map(GraphEdge::id),
+        )
+        assertTrue(result.graph.nodes.any { node -> node.id == "method:audit" })
+        assertTrue(result.graph.edges.any { edge -> edge.id == "call:child" })
+    }
+
+    @Test
     fun `removes expansion nodes even after manual edits but keeps reused existing nodes`() {
         val expansionId = "expansion-1"
         val graph = GraphDocument(
@@ -385,11 +540,16 @@ class InvocationExpansionUseCaseTest {
         expansionId: String,
         sourceInvocationNodeId: String,
         rootNodeId: String,
+        targetSignature: String? = null,
+        createdAt: String? = null,
     ): Map<String, String> = mapOf(
         InvocationExpansionUseCase.EXPANSION_ID to expansionId,
         InvocationExpansionUseCase.EXPANSION_SOURCE_INVOCATION_NODE_ID to sourceInvocationNodeId,
         InvocationExpansionUseCase.EXPANSION_ROOT_NODE_ID to rootNodeId,
-    )
+    ) + listOfNotNull(
+        targetSignature?.let { value -> InvocationExpansionUseCase.EXPANSION_TARGET_SIGNATURE to value },
+        createdAt?.let { value -> InvocationExpansionUseCase.EXPANSION_CREATED_AT to value },
+    ).toMap()
 
     private companion object {
         const val CREATE_INFO_SIGNATURE = "com.example.SystemService.createInfo():void"

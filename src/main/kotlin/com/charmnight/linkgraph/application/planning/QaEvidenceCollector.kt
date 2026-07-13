@@ -6,6 +6,8 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.sourceLocation
+import com.charmnight.linkgraph.source.SourceArchiveReadLimits
+import com.charmnight.linkgraph.source.readFileTextBounded
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
@@ -119,6 +121,7 @@ internal class QaEvidenceCollector(
         val filePath = sourceLocation.filePath ?: return null
         val startOffset = sourceLocation.startOffset
         val endOffset = sourceLocation.endOffset
+        val snippet = loadSnippet(filePath, startOffset, endOffset) ?: return null
         return SourceSnippetContext(
             nodeId = node.id,
             filePath = filePath,
@@ -126,7 +129,7 @@ internal class QaEvidenceCollector(
             endOffset = endOffset,
             startLine = sourceLocation.startLine,
             endLine = sourceLocation.endLine,
-            snippet = loadSnippet(filePath, startOffset, endOffset),
+            snippet = snippet,
         )
     }
 
@@ -140,12 +143,13 @@ internal class QaEvidenceCollector(
             val prefix = "architecture.sourceSample.$sampleIndex"
             val filePath = node.metadata["$prefix.filePath"]?.takeIf(String::isNotBlank) ?: return@mapNotNull null
             val nodeId = node.metadata["$prefix.nodeId"]?.takeIf(String::isNotBlank) ?: node.id
+            val snippet = loadSnippet(filePath, startOffset = null, endOffset = null) ?: return@mapNotNull null
             SourceSnippetContext(
                 nodeId = nodeId,
                 filePath = filePath,
                 startLine = node.metadata["$prefix.startLine"]?.toIntOrNull(),
                 endLine = node.metadata["$prefix.endLine"]?.toIntOrNull(),
-                snippet = loadSnippet(filePath, startOffset = null, endOffset = null),
+                snippet = snippet,
                 origin = node.metadata["$prefix.reason"],
                 decompiled = node.metadata["$prefix.decompiled"]?.toBooleanStrictOrNull() ?: false,
                 virtualFileUrl = node.metadata["$prefix.virtualFileUrl"],
@@ -167,7 +171,8 @@ internal class QaEvidenceCollector(
             if (!Files.isRegularFile(path)) {
                 return@runCatching null
             }
-            val source = Files.readString(path)
+            val source = readFileTextBounded(path, SourceArchiveReadLimits.MAX_TEXT_ENTRY_BYTES)
+                ?: return@runCatching null
             val snippet = if (startOffset != null && endOffset != null) {
                 val safeStart = startOffset.coerceIn(0, source.length)
                 val safeEnd = endOffset.coerceIn(safeStart, source.length)

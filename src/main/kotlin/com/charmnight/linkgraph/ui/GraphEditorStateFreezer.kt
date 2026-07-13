@@ -5,6 +5,8 @@ import com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport
 import com.charmnight.linkgraph.codegen.PreparedCodeEdit
 import com.charmnight.linkgraph.application.indexed.IndexedGraphSummary
 import com.charmnight.linkgraph.application.model.GraphEditOperation
+import com.charmnight.linkgraph.application.model.GraphEdgeEditInput
+import com.charmnight.linkgraph.application.model.GraphNodeEditInput
 import com.charmnight.linkgraph.application.model.GraphEditRejected
 import com.charmnight.linkgraph.application.model.GraphEditTransaction
 import com.charmnight.linkgraph.application.model.GraphProjectionEdgeMapping
@@ -135,14 +137,6 @@ private fun InvocationExpansionSceneState.freeze(): InvocationExpansionSceneStat
         activeExpansionPath = activeExpansionPath.toList(),
         collapsedExpansionIds = collapsedExpansionIds.toSet(),
         activeSiblingByParentContext = activeSiblingByParentContext.toMap(),
-        blockPositions = blockPositions.toMap(),
-        lastChildStateByExpansionId = lastChildStateByExpansionId.mapValues { (_, childState) ->
-            childState.copy(
-                activeExpansionPath = childState.activeExpansionPath.toList(),
-                collapsedExpansionIds = childState.collapsedExpansionIds.toSet(),
-                activeSiblingByParentContext = childState.activeSiblingByParentContext.toMap(),
-            )
-        },
     )
 
 /** 冻结整张图：节点、边与挂载的补丁都递归冻结为不可变副本。 */
@@ -222,6 +216,12 @@ private fun GraphEditOperation.freeze(): GraphEditOperation =
         is GraphEditOperation.UpsertEdge -> copy(edge = edge.freeze())
         is GraphEditOperation.RemoveEdge -> copy()
     }
+
+private fun GraphNodeEditInput.freeze(): GraphNodeEditInput =
+    copy(inputs = inputs.toList(), outputs = outputs.toList(), metadata = metadata.toMap())
+
+private fun GraphEdgeEditInput.freeze(): GraphEdgeEditInput =
+    copy(metadata = metadata.toMap())
 
 /** 冻结架构图结果：连同可见图、完整图、摘要、投影索引与展示控制一起冻结。 */
 private fun ArchitectureGraphResult.freeze(): ArchitectureGraphResult {
@@ -553,11 +553,14 @@ private fun PreparedCodeEdit.freeze(): PreparedCodeEdit {
 /** 冻结生成的代码草稿：递归冻结编辑操作、编辑作用域、已准备编辑和警告列表。 */
 private fun GeneratedCodeDraft.freeze(): GeneratedCodeDraft {
     return copy(
-        editOperations = editOperations.map { operation ->
-            operation.copy(warnings = operation.warnings.toList())
-        },
-        editScopes = editScopes.map { scope ->
-            scope.freeze()
+        command = when (val command = command) {
+            is com.charmnight.linkgraph.codegen.CodeDraftCommand.CreateFile -> command.copy()
+            is com.charmnight.linkgraph.codegen.CodeDraftCommand.PatchExistingFile -> command.copy(
+                operations = command.operations.map { operation ->
+                    operation.copy(warnings = operation.warnings.toList())
+                },
+                scopes = command.scopes.map { scope -> scope.freeze() },
+            )
         },
         preparedEdits = preparedEdits.map { edit -> edit.freeze() },
         warnings = warnings.toList(),

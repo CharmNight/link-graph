@@ -55,7 +55,7 @@ export const ResourceRelationNodeCard = memo(function ResourceRelationNodeCard({
       <div className="flow-node-head">
         <span className="flow-node-doc">{resourceLaneLabel(lane)}</span>
         <div className="flow-node-tags">
-          <IssueBadge certainty={undefined} diffStatus={node.diffStatus} draftCompareStatus={draftCompareStatus} />
+          <IssueBadge confidence={undefined} diffStatus={node.diffStatus} draftCompareStatus={draftCompareStatus} />
         </div>
       </div>
       <strong className="flow-node-owner" title={node.title}>

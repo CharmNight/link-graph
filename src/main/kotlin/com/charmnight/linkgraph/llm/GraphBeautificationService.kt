@@ -53,8 +53,10 @@ class DefaultGraphBeautificationService(
             draftEntries = emptyList(),
             granularity = context.granularity,
         ).steps
+        /** 远程请求前应用源码片段外发授权策略。 */
+        val sourceContextPolicy = context.withRemoteSourceContextPolicy(sanitized)
         /** 链路讲解提示词包。 */
-        val promptPackage = promptFactory.buildBeautificationPromptPackage(context, sanitized, projectedSteps)
+        val promptPackage = promptFactory.buildBeautificationPromptPackage(sourceContextPolicy.context, sanitized, projectedSteps)
         if (!sanitized.usesRemoteProvider()) {
             return fallbackService.beautify(context, sanitized, onPreview)
         }
@@ -64,14 +66,21 @@ class DefaultGraphBeautificationService(
             /** 本地讲解结果。 */
             val fallbackResult = fallbackService.beautify(context, sanitized, onPreview)
             return fallbackResult.copy(
-                warnings = listOf(sanitized.remoteLlmSetupHint("本地规则讲解")) + fallbackResult.warnings,
+                warnings = sourceContextPolicy.warnings() +
+                    sanitized.remoteLlmSetupHint("本地规则讲解") +
+                    fallbackResult.warnings,
             )
         }
         return runCatching {
             responseSupport.request(
-                remoteConnection.toRequest(
-                    systemPrompt = promptPackage.systemPrompt,
-                    userPrompt = promptPackage.userPrompt,
+                RemoteLlmRequestFactory.create(
+                    connection = remoteConnection,
+                    settings = sanitized,
+                    content = promptPackage.toRemotePromptContent(
+                        sourceContextClassifications(
+                            sourceContextPolicy.context.sourceContext + sourceContextPolicy.context.stepSourceContext,
+                        ),
+                    ),
                 ),
                 scene = "链路讲解",
                 schema = LlmStructuredSchemas.BEAUTIFICATION,
@@ -84,14 +93,14 @@ class DefaultGraphBeautificationService(
             val localBaseline = fallbackService.beautify(context, sanitized, onPreview = null)
             remote.value
                 .hydrateStepMetadata(localBaseline, context.granularity)
-                .withPrependedWarnings(remote.warnings)
+                .withPrependedWarnings(sourceContextPolicy.warnings() + remote.warnings)
         }.getOrElse { error ->
             /** 本地讲解结果。 */
             val fallbackResult = fallbackService.beautify(context, sanitized, onPreview)
             fallbackResult.copy(
-                warnings = listOf(
-                    buildRemoteFallbackWarning(error),
-                ) + fallbackResult.warnings,
+                warnings = sourceContextPolicy.warnings() +
+                    buildRemoteFallbackWarning(error) +
+                    fallbackResult.warnings,
             )
         }
     }

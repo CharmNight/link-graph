@@ -10,8 +10,8 @@ import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.project.Project
 import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiClass
-import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiJavaFile
+import com.intellij.psi.PsiManager
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.FilenameIndex
@@ -186,8 +186,9 @@ internal object DebugMethodSignatureLocator {
         parsedSignature: ParsedMethodSignature,
     ): List<PsiClass> {
         val simpleOwner = parsedSignature.simpleOwner ?: return emptyList()
-        return FilenameIndex.getFilesByName(project, "$simpleOwner.java", GlobalSearchScope.allScope(project))
+        return FilenameIndex.getVirtualFilesByName("$simpleOwner.java", GlobalSearchScope.allScope(project))
             .asSequence()
+            .mapNotNull(PsiManager.getInstance(project)::findFile)
             .filterIsInstance<PsiJavaFile>()
             .flatMap { javaFile -> javaFile.classes.asSequence().flatMap(::selfAndInnerClasses) }
             .filter(parsedSignature::matchesClass)
@@ -248,9 +249,7 @@ internal object DebugMethodSignatureLocator {
             projectAndLibrariesScope = collectScopeLookup(psiFacade, shortNamesCache, parsedSignature, everythingScope),
             filenameHits = parsedSignature.simpleOwner
                 ?.let { simpleOwner ->
-                    FilenameIndex.getFilesByName(project, "$simpleOwner.java", allScope)
-                        .map(PsiFile::getVirtualFile)
-                        .filterNotNull()
+                    FilenameIndex.getVirtualFilesByName("$simpleOwner.java", allScope)
                         .map { virtualFile ->
                             FileLookup(
                                 path = virtualFile.path,

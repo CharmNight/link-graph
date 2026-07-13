@@ -127,8 +127,7 @@ class GraphEditRequestPayloadParserTest {
     }
 
     @Test
-    fun enumOrDefaultAcceptsValidValueForOptionalField() {
-        // 验证 enumOrDefault 在传入合法枚举值时也能正常解析（覆盖默认路径）
+    fun rejectsTrustFieldsInNodeEditInput() {
         val result = GraphEditRequestPayloadParser.parse(
             mapOf(
                 "sceneId" to "WORKSPACE_FACT",
@@ -140,16 +139,15 @@ class GraphEditRequestPayloadParserTest {
                         "node" to mapOf(
                             "id" to "node-1",
                             "type" to "METHOD",
-                            "certainty" to "RULE_INFERRED",
+                            "confidence" to "INFERRED",
                         ),
                     ),
                 ),
             ),
         )
 
-        assertTrue(result.issues.isEmpty())
-        val op = result.request?.operations?.single() as GraphEditOperation.UpsertNode
-        assertEquals(com.charmnight.linkgraph.model.Certainty.RULE_INFERRED, op.node.certainty)
+        assertNull(result.request)
+        assertTrue(result.issues.single().message.contains("confidence"))
     }
 
     @Test
@@ -166,6 +164,31 @@ class GraphEditRequestPayloadParserTest {
 
         assertTrue(result.issues.isEmpty())
         assertEquals(0, result.request?.operations?.size)
+    }
+
+    @Test
+    fun tooManyOperationsReturnsIssue() {
+        val operations = List(GraphEditRequestPayloadParser.MAX_OPERATIONS + 1) { index ->
+            mapOf(
+                "type" to "REMOVE_NODE",
+                "nodeId" to "node-$index",
+            )
+        }
+
+        val result = GraphEditRequestPayloadParser.parse(
+            mapOf(
+                "sceneId" to "WORKSPACE_FACT",
+                "baseWorkspaceRevision" to 5,
+                "source" to "FRONTEND",
+                "operations" to operations,
+            ),
+        )
+
+        assertNull(result.request)
+        val issue = result.issues.single()
+        assertEquals(GraphEditIssueCode.INVALID_PAYLOAD_FIELD, issue.code)
+        assertTrue(issue.message.contains("operations"))
+        assertTrue(issue.message.contains(GraphEditRequestPayloadParser.MAX_OPERATIONS.toString()))
     }
 
     @Test

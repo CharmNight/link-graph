@@ -234,7 +234,7 @@ internal class CodeDraftGenerationWorkflow(
     private fun enrichDraftsWithPreparedEdits(drafts: List<GeneratedCodeDraft>): List<GeneratedCodeDraft> {
         val projectBasePath = dependencies.project.basePath ?: return drafts
         return drafts.map { draft ->
-            if (draft.editOperations.isEmpty()) {
+            if (draft.command !is com.charmnight.linkgraph.codegen.CodeDraftCommand.PatchExistingFile) {
                 draft
             } else {
                 val prepared = dependencies.codeDraftWriterService.prepareExistingFileDraft(projectBasePath, draft)

@@ -1,6 +1,6 @@
 package com.charmnight.linkgraph.mermaid
 
-import com.charmnight.linkgraph.model.BindingStatus
+import com.charmnight.linkgraph.model.GraphBinding
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.NodeType
 
@@ -102,7 +102,7 @@ class MermaidValidator {
                     nodeId = node.id,
                 )
 
-                marker == "CONFLICTED" || node.bindingStatus == BindingStatus.CONFLICTED -> issues += MermaidIssue(
+                marker == "CONFLICTED" || node.binding == GraphBinding.CONFLICTED -> issues += MermaidIssue(
                     category = MermaidIssue.Category.BINDING,
                     code = "binding-conflicted",
                     message = "节点 '${node.id}' 的绑定结果冲突。",

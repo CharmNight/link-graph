@@ -5,6 +5,7 @@ import com.charmnight.linkgraph.agent.tools.*
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
+import com.charmnight.linkgraph.codegen.CodeDraftCommand
 import com.charmnight.linkgraph.agent.runtime.RunBudget
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
@@ -18,7 +19,11 @@ class CheckWritableDraftToolTest : BasePlatformTestCase() {
                     id = "draft-1",
                     sourceNodeId = "method:upload-file",
                     title = "invalid draft",
-                    targetPath = "src/main/java/com/example/CommonController.java",
+                    command = CodeDraftCommand.PatchExistingFile(
+                        targetPath = "src/main/java/com/example/CommonController.java",
+                        operations = emptyList(),
+                        scopes = emptyList(),
+                    ),
                 ),
             ),
             context = ToolExecutionContext(
@@ -35,7 +40,7 @@ class CheckWritableDraftToolTest : BasePlatformTestCase() {
     fun testAcceptsNewFileDraftWithContent() {
         val result = CheckWritableDraftTool(ValidationToolFacade()).invoke(
             input = mapOf(
-                "draft" to GeneratedCodeDraft(
+                "draft" to GeneratedCodeDraft.createFile(
                     id = "draft-1",
                     sourceNodeId = "method:upload-file",
                     title = "new draft",

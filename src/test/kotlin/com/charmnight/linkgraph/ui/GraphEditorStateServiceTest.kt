@@ -28,7 +28,7 @@ import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.model.GraphPatchAction
 import com.charmnight.linkgraph.model.GraphPatchOperation
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import com.charmnight.linkgraph.workbench.DraftEntryKind
@@ -99,7 +99,7 @@ class GraphEditorStateServiceTest {
                     id = "method:order-service-place",
                     type = NodeType.METHOD,
                     title = "OrderService.place",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         GraphMetadataKeys.Ui.X to "120",
                         GraphMetadataKeys.Ui.Y to "96",
@@ -163,7 +163,7 @@ class GraphEditorStateServiceTest {
                     type = NodeType.METHOD,
                     title = "OrderService.place",
                     signature = "com.example.OrderService.place(java.lang.String):void",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -173,7 +173,7 @@ class GraphEditorStateServiceTest {
                 type = NodeType.METHOD,
                 title = "OrderRepository.save",
                 signature = "com.example.OrderRepository.save(com.example.Order):void",
-                sourceTag = GraphSourceTag.FACT,
+                provenance = GraphProvenance.CODE_ANALYSIS,
             ),
         )
 
@@ -200,7 +200,7 @@ class GraphEditorStateServiceTest {
                                 id = "method:order-service-place",
                                 type = NodeType.METHOD,
                                 title = "OrderService.place",
-                                sourceTag = GraphSourceTag.FACT,
+                                provenance = GraphProvenance.CODE_ANALYSIS,
                                 metadata = mapOf("flowchart.kind" to "ENTRY"),
                             ),
                         ),
@@ -215,7 +215,7 @@ class GraphEditorStateServiceTest {
                                 id = "sql:order-repository-save",
                                 type = NodeType.SQL,
                                 title = "order_mapper.xml#save",
-                                sourceTag = GraphSourceTag.FACT,
+                                provenance = GraphProvenance.CODE_ANALYSIS,
                                 metadata = mapOf("resource.lane" to "DATA"),
                             ),
                         ),
@@ -254,7 +254,7 @@ class GraphEditorStateServiceTest {
                     id = "method:fact-anchor",
                     type = NodeType.METHOD,
                     title = "FactAnchor",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -264,7 +264,7 @@ class GraphEditorStateServiceTest {
                     id = "scope:guard",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (!allowed)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("flowchart.kind" to "DECISION"),
                 ),
             ),
@@ -275,7 +275,7 @@ class GraphEditorStateServiceTest {
                     id = "action:guard-condition",
                     type = NodeType.FLOW_ACTION,
                     title = "!checkAllowDownload(fileName)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "PROCESS",
                         "flow.kind" to "CONDITION",
@@ -285,7 +285,7 @@ class GraphEditorStateServiceTest {
                     id = "scope:guard",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (!allowed)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("flowchart.kind" to "DECISION"),
                 ),
             ),
@@ -336,14 +336,14 @@ class GraphEditorStateServiceTest {
                     type = NodeType.METHOD,
                     title = "OrderService.submit",
                     signature = "com.example.OrderService.submit():void",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("flowchart.kind" to "ENTRY"),
                 ),
                 GraphNode(
                     id = "action:write-bytes",
                     type = NodeType.FLOW_ACTION,
                     title = "FileUtils.writeBytes(filePath, response.toString())",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flow.kind" to "ACTION",
                         "flowchart.kind" to "PROCESS",
@@ -354,7 +354,7 @@ class GraphEditorStateServiceTest {
                     type = NodeType.FLOW_ACTION,
                     title = "调用 FileUtils.writeBytes",
                     signature = "com.example.FileUtils.writeBytes(java.lang.String,java.lang.String):void",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flow.kind" to "INVOCATION",
                         "flowchart.kind" to "SUBROUTINE",
@@ -367,14 +367,14 @@ class GraphEditorStateServiceTest {
                     type = com.charmnight.linkgraph.model.EdgeType.CONTROL_FLOW,
                     fromNodeId = "method:submit",
                     toNodeId = "action:write-bytes",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 com.charmnight.linkgraph.model.GraphEdge(
                     id = "control:action-to-invoke",
                     type = com.charmnight.linkgraph.model.EdgeType.CONTROL_FLOW,
                     fromNodeId = "action:write-bytes",
                     toNodeId = "invoke:write-bytes",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -408,7 +408,7 @@ class GraphEditorStateServiceTest {
                     type = NodeType.METHOD,
                     title = "CommonController.fileDownload",
                     signature = selectedMethodSignature,
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -418,7 +418,7 @@ class GraphEditorStateServiceTest {
                     id = "scope:file-download-if",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (delete)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("flowchart.kind" to "DECISION"),
                 ),
             ),
@@ -430,14 +430,14 @@ class GraphEditorStateServiceTest {
                     type = NodeType.METHOD,
                     title = "CommonController.fileDownload",
                     signature = selectedMethodSignature,
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("flowchart.kind" to "ENTRY"),
                 ),
                 GraphNode(
                     id = "scope:file-download-if",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (delete)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("flowchart.kind" to "DECISION"),
                 ),
             ),
@@ -463,7 +463,7 @@ class GraphEditorStateServiceTest {
                                     id = "scope:file-download-if",
                                     type = NodeType.FLOW_SCOPE,
                                     title = "if (delete == true)",
-                                    sourceTag = GraphSourceTag.DRAFT_AI,
+                                    provenance = GraphProvenance.AI_DRAFT,
                                     metadata = mapOf("flowchart.kind" to "DECISION"),
                                 ),
                             ),
@@ -503,7 +503,7 @@ class GraphEditorStateServiceTest {
             graph = flowchartFullGraph.copy(
                 nodes = flowchartFullGraph.nodes.map { node ->
                     if (node.id == "scope:file-download-if") {
-                        node.copy(title = "if (delete == true)", sourceTag = GraphSourceTag.DRAFT_AI)
+                        node.copy(title = "if (delete == true)", provenance = GraphProvenance.AI_DRAFT)
                     } else {
                         node
                     }
@@ -566,7 +566,7 @@ class GraphEditorStateServiceTest {
                     id = "method:order-service-place",
                     type = NodeType.METHOD,
                     title = "OrderService.place",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -616,7 +616,7 @@ class GraphEditorStateServiceTest {
                     type = NodeType.METHOD,
                     title = "OrderService.place",
                     signature = "com.example.OrderService.place(java.lang.String):void",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -641,7 +641,7 @@ class GraphEditorStateServiceTest {
                     id = "method:order-service-place",
                     type = NodeType.METHOD,
                     title = "OrderService.place",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -651,7 +651,7 @@ class GraphEditorStateServiceTest {
                     id = "design:order-draft-dto",
                     type = NodeType.CLASS,
                     title = "OrderDraftDto",
-                    sourceTag = GraphSourceTag.DESIGN_BASELINE,
+                    provenance = GraphProvenance.DESIGN_IMPORT,
                 ),
             ),
         )
@@ -679,7 +679,7 @@ class GraphEditorStateServiceTest {
                     id = "method:order-service-place",
                     type = NodeType.METHOD,
                     title = "OrderService.place",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -689,7 +689,7 @@ class GraphEditorStateServiceTest {
                     id = "design:order-draft-dto",
                     type = NodeType.CLASS,
                     title = "OrderDraftDto",
-                    sourceTag = GraphSourceTag.DESIGN_BASELINE,
+                    provenance = GraphProvenance.DESIGN_IMPORT,
                 ),
             ),
         )
@@ -698,7 +698,7 @@ class GraphEditorStateServiceTest {
                 id = "note:manual-fallback",
                 type = NodeType.CLASS,
                 title = "ManualFallback",
-                sourceTag = GraphSourceTag.DRAFT_MANUAL,
+                provenance = GraphProvenance.USER_DRAFT,
             ),
         )
 
@@ -719,7 +719,7 @@ class GraphEditorStateServiceTest {
                     id = "method:order-service-place",
                     type = NodeType.METHOD,
                     title = "OrderService.place",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -728,7 +728,7 @@ class GraphEditorStateServiceTest {
                 id = "note:manual-fallback",
                 type = NodeType.CLASS,
                 title = "ManualFallback",
-                sourceTag = GraphSourceTag.DRAFT_MANUAL,
+                provenance = GraphProvenance.USER_DRAFT,
             ),
         )
 
@@ -756,7 +756,7 @@ class GraphEditorStateServiceTest {
                     id = "method:fact-anchor",
                     type = NodeType.METHOD,
                     title = "FactAnchor",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -766,7 +766,7 @@ class GraphEditorStateServiceTest {
                     id = "method:flow-entry",
                     type = NodeType.METHOD,
                     title = "FlowEntry",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("flowchart.kind" to "ENTRY"),
                 ),
             ),
@@ -777,7 +777,7 @@ class GraphEditorStateServiceTest {
                     id = "sql:order-save",
                     type = NodeType.SQL,
                     title = "order_mapper.xml#save",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("resource.lane" to "DATA"),
                 ),
             ),
@@ -818,7 +818,7 @@ class GraphEditorStateServiceTest {
                 id = "design-note:1",
                 type = NodeType.DOC_PAGE,
                 title = "FlowNote",
-                sourceTag = GraphSourceTag.DRAFT_MANUAL,
+                provenance = GraphProvenance.USER_DRAFT,
             ),
         )
 
@@ -846,7 +846,7 @@ class GraphEditorStateServiceTest {
                     type = NodeType.METHOD,
                     title = "OrderController.submit",
                     signature = callerSignature,
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "ENTRY",
                         "flow.ownerMethod" to callerSignature,
@@ -857,7 +857,7 @@ class GraphEditorStateServiceTest {
                     type = NodeType.FLOW_ACTION,
                     title = "调用 SystemService.createInfo",
                     signature = childSignature,
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flow.kind" to "INVOCATION",
                         "flowchart.kind" to "SUBROUTINE",
@@ -869,7 +869,7 @@ class GraphEditorStateServiceTest {
                     type = NodeType.METHOD,
                     title = "SystemService.createInfo",
                     signature = childSignature,
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "ENTRY",
                         "flow.ownerMethod" to childSignature,
@@ -881,7 +881,7 @@ class GraphEditorStateServiceTest {
                     id = "action:create-info-save",
                     type = NodeType.FLOW_ACTION,
                     title = "saveInfo()",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flow.kind" to "ACTION",
                         "flowchart.kind" to "PROCESS",
@@ -897,14 +897,14 @@ class GraphEditorStateServiceTest {
                     type = com.charmnight.linkgraph.model.EdgeType.CONTROL_FLOW,
                     fromNodeId = "method:submit-order",
                     toNodeId = "invoke:create-info",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 com.charmnight.linkgraph.model.GraphEdge(
                     id = "control-create-to-save",
                     type = com.charmnight.linkgraph.model.EdgeType.CONTROL_FLOW,
                     fromNodeId = "method:create-info",
                     toNodeId = "action:create-info-save",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "linkGraph.expansion.id" to "invocation:expansion-1",
                         "linkGraph.expansion.sourceInvocationNodeId" to "invoke:create-info",
@@ -957,7 +957,7 @@ class GraphEditorStateServiceTest {
                     id = "method:fact-anchor",
                     type = NodeType.METHOD,
                     title = "FactAnchor",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -967,7 +967,7 @@ class GraphEditorStateServiceTest {
                     id = "method:flow-entry",
                     type = NodeType.METHOD,
                     title = "FlowEntry",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("flowchart.kind" to "ENTRY"),
                 ),
             ),
@@ -1004,7 +1004,7 @@ class GraphEditorStateServiceTest {
                 id = "design:1",
                 type = NodeType.METHOD,
                 title = "ManualFlowStep",
-                sourceTag = GraphSourceTag.DRAFT_MANUAL,
+                provenance = GraphProvenance.USER_DRAFT,
             ),
         )
         service.markGraphChanged(editedFlowchartGraph)
@@ -1032,7 +1032,7 @@ class GraphEditorStateServiceTest {
                     id = "method:fact-anchor",
                     type = NodeType.METHOD,
                     title = "FactAnchor",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -1042,7 +1042,7 @@ class GraphEditorStateServiceTest {
                     id = "method:flow-entry",
                     type = NodeType.METHOD,
                     title = "FlowEntry",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("flowchart.kind" to "ENTRY"),
                 ),
             ),
@@ -1053,7 +1053,7 @@ class GraphEditorStateServiceTest {
                     id = "sql:order-save",
                     type = NodeType.SQL,
                     title = "order_mapper.xml#save",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("resource.lane" to "DATA"),
                 ),
             ),
@@ -1094,7 +1094,7 @@ class GraphEditorStateServiceTest {
                 id = "design:1",
                 type = NodeType.METHOD,
                 title = "ManualFlowStep",
-                sourceTag = GraphSourceTag.DRAFT_MANUAL,
+                provenance = GraphProvenance.USER_DRAFT,
                 metadata = mapOf("flowchart.kind" to "PROCESS"),
             ),
         )
@@ -1120,7 +1120,7 @@ class GraphEditorStateServiceTest {
                     id = "method:order-service-place",
                     type = NodeType.METHOD,
                     title = "OrderService.place",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -1180,7 +1180,7 @@ class GraphEditorStateServiceTest {
                     id = "method:order-service-place",
                     type = NodeType.METHOD,
                     title = "OrderService.place",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -1214,7 +1214,7 @@ class GraphEditorStateServiceTest {
                     id = "method:order-service-place",
                     type = NodeType.METHOD,
                     title = "OrderService.place",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -1258,7 +1258,7 @@ class GraphEditorStateServiceTest {
                     id = "method:order-service-place",
                     type = NodeType.METHOD,
                     title = "OrderService.place",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -1539,7 +1539,7 @@ class GraphEditorStateServiceTest {
                     id = "method:order-service-place",
                     type = NodeType.METHOD,
                     title = "OrderService.place",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -1611,7 +1611,7 @@ class GraphEditorStateServiceTest {
                     id = "method:order-service-place",
                     type = NodeType.METHOD,
                     title = "OrderService.place",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -1619,7 +1619,7 @@ class GraphEditorStateServiceTest {
         service.loadGraph(graph, "currentMethod")
         service.asyncRequests.markGeneratedCodeDrafts(
             drafts = listOf(
-                com.charmnight.linkgraph.codegen.GeneratedCodeDraft(
+                com.charmnight.linkgraph.codegen.GeneratedCodeDraft.createFile(
                     id = "draft-1",
                     sourceNodeId = "class:order-draft-dto",
                     title = "OrderDraftDto.java",
@@ -1696,7 +1696,7 @@ class GraphEditorStateServiceTest {
                     id = "method:submit-order",
                     type = NodeType.METHOD,
                     title = "OrderController.submit",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -1726,7 +1726,7 @@ class GraphEditorStateServiceTest {
         )
         service.asyncRequests.markGeneratedCodeDrafts(
             drafts = listOf(
-                GeneratedCodeDraft(
+                GeneratedCodeDraft.createFile(
                     id = "draft-1",
                     sourceNodeId = "method:submit-order",
                     title = "OrderController.java",
@@ -1759,7 +1759,7 @@ class GraphEditorStateServiceTest {
                         id = "method:submit-order",
                         type = NodeType.METHOD,
                         title = "OrderController.submit with compensation",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
             ),
@@ -1784,7 +1784,7 @@ class GraphEditorStateServiceTest {
                     id = "method:order-service-place",
                     type = NodeType.METHOD,
                     title = "OrderService.place",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -1814,7 +1814,7 @@ class GraphEditorStateServiceTest {
                     id = "method:order-service-place",
                     type = NodeType.METHOD,
                     title = "OrderService.place",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )

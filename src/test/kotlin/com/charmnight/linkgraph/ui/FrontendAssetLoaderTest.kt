@@ -131,6 +131,27 @@ class FrontendAssetLoaderTest {
     }
 
     @Test
+    fun explicitDevelopmentLoaderFallsBackWhenDistAssetIsOversized() {
+        val tempDir = Files.createTempDirectory("linkgraph-frontend-loader-oversized")
+        try {
+            val distDir = tempDir.resolve("web/dist/assets")
+            Files.createDirectories(distDir)
+            Files.writeString(tempDir.resolve("web/dist/index.html"), "<html>dev shell</html>")
+            Files.writeString(distDir.resolve("index.js"), "x".repeat(4 * 1024 * 1024 + 1))
+            val loader = ClasspathFrontendAssetLoader.development(
+                classLoader = classpathResourceLoader(),
+                developmentDistRoot = tempDir.resolve("web/dist"),
+            )
+
+            val js = loader.loadAsset("assets/index.js")
+
+            assertEquals("window.__assetSource = 'classpath';", js?.text())
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun runtimeLoaderUsesDevelopmentDistOnlyWhenExplicitEnvironmentPathIsProvided() {
         val tempDir = Files.createTempDirectory("linkgraph-frontend-loader-runtime")
         try {

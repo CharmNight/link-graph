@@ -4,8 +4,6 @@ import com.charmnight.linkgraph.agent.model.*
 import com.charmnight.linkgraph.settings.*
 
 import com.charmnight.linkgraph.foundation.LinkGraphDebugEnvironment
-import com.charmnight.linkgraph.model.BindingStatus
-import com.charmnight.linkgraph.model.Certainty
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDiffElementKind
 import com.charmnight.linkgraph.model.GraphEdge
@@ -13,7 +11,7 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.model.GraphPatchAction
 import com.charmnight.linkgraph.model.GraphPatchOperation
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
@@ -196,10 +194,8 @@ internal object RemoteGraphPatchResultParser {
             inputs = stringList(raw["inputs"]),
             outputs = stringList(raw["outputs"]),
             doc = raw["doc"] as? String,
-            bindingStatus = enumValue<BindingStatus>(raw["bindingStatus"] as? String) ?: BindingStatus.DESIGN_ONLY,
-            certainty = enumValue<Certainty>(raw["certainty"] as? String) ?: Certainty.LLM_SUGGESTED,
             metadata = stringMap(raw["metadata"]),
-            sourceTag = enumValue<GraphSourceTag>(raw["sourceTag"] as? String) ?: GraphSourceTag.DRAFT_AI,
+            provenance = GraphProvenance.AI_DRAFT,
         )
     }
 
@@ -214,10 +210,8 @@ internal object RemoteGraphPatchResultParser {
             fromNodeId = raw["fromNodeId"] as? String ?: return null,
             toNodeId = raw["toNodeId"] as? String ?: return null,
             label = raw["label"] as? String,
-            bindingStatus = enumValue<BindingStatus>(raw["bindingStatus"] as? String) ?: BindingStatus.DESIGN_ONLY,
-            certainty = enumValue<Certainty>(raw["certainty"] as? String) ?: Certainty.LLM_SUGGESTED,
             metadata = stringMap(raw["metadata"]),
-            sourceTag = enumValue<GraphSourceTag>(raw["sourceTag"] as? String) ?: GraphSourceTag.DRAFT_AI,
+            provenance = GraphProvenance.AI_DRAFT,
         )
     }
 

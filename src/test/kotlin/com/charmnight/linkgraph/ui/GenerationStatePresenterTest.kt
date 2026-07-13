@@ -69,11 +69,12 @@ class GenerationStatePresenterTest {
         presenter.presentGeneratedCodeDrafts(
             GeneratedCodeDraftsResult(
                 drafts = listOf(
-                    GeneratedCodeDraft(
+                    GeneratedCodeDraft.createFile(
                         id = "draft-1",
                         sourceNodeId = "node-1",
                         targetPath = "src/App.kt",
                         title = "App",
+                        content = "",
                     ),
                 ),
                 warnings = listOf("warn"),

@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { createNodeSizeRegistry } from "../../../../app/graph/nodeSizeRegistry";
 import { layoutFlowchartView } from "../../../../app/views/flowchart/flowchartLayout";
@@ -63,8 +64,8 @@ function decisionNode(): LinkGraphNode {
     title: "if (order.isValid())",
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
     metadata: {
       "flow.kind": "IF",
       "flowchart.kind": "DECISION",
@@ -79,8 +80,8 @@ function loopDecisionNode(): LinkGraphNode {
     title: "for (line : lines)",
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
     metadata: {
       "flow.kind": "FOREACH",
       "flowchart.kind": "DECISION",
@@ -95,8 +96,8 @@ function mergeNode(metadata?: Record<string, string>): LinkGraphNode {
     title: "汇合",
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
     metadata: {
       "flowchart.kind": "MERGE",
       ...(metadata ?? {}),
@@ -111,8 +112,8 @@ function terminalNode(id = "terminal:return", title = "return"): LinkGraphNode {
     title,
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
     metadata: {
       "terminal.kind": "RETURN",
       "flowchart.kind": "TERMINAL",
@@ -127,8 +128,8 @@ function methodNode(id: string, title: string): LinkGraphNode {
     title,
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
   };
 }
 
@@ -637,8 +638,8 @@ describe("buildFlowchartNodes", () => {
       title: "persistOrder()",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       metadata: { "flowchart.kind": "PROCESS" },
     };
 
@@ -667,8 +668,8 @@ describe("buildFlowchartNodes", () => {
       title: "continueLeft()",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       position: { x: 120, y: 420 },
       metadata: { "flowchart.kind": "PROCESS" },
     };
@@ -678,8 +679,8 @@ describe("buildFlowchartNodes", () => {
       title: "continueRight()",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       position: { x: 840, y: 420 },
       metadata: { "flowchart.kind": "PROCESS" },
     };
@@ -689,8 +690,8 @@ describe("buildFlowchartNodes", () => {
       title: "continueDown()",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       position: { x: 420, y: 620 },
       metadata: { "flowchart.kind": "PROCESS" },
     };
@@ -725,8 +726,8 @@ describe("buildFlowchartNodes", () => {
       title: "throw new Exception(...)",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       position: { x: 120, y: 620 },
       metadata: { "terminal.kind": "THROW", "flowchart.kind": "TERMINAL" },
     };
@@ -736,8 +737,8 @@ describe("buildFlowchartNodes", () => {
       title: "realFileName = ...",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       position: { x: 760, y: 620 },
       metadata: { "flowchart.kind": "PROCESS" },
     };
@@ -770,8 +771,8 @@ describe("buildFlowchartNodes", () => {
       title: "deleteFile(filePath)",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       position: { x: 760, y: 620 },
       metadata: { "flowchart.kind": "PROCESS" },
     };
@@ -781,8 +782,8 @@ describe("buildFlowchartNodes", () => {
       title: "汇合",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       position: { x: 760, y: 860 },
       metadata: { "flowchart.kind": "MERGE" },
     };
@@ -815,8 +816,8 @@ describe("buildFlowchartNodes", () => {
       title: "deleteFile(filePath)",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       position: { x: 760, y: 620 },
       metadata: { "flowchart.kind": "PROCESS" },
     };
@@ -826,8 +827,8 @@ describe("buildFlowchartNodes", () => {
       title: "汇合",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       position: { x: 760, y: 860 },
       metadata: { "flowchart.kind": "MERGE" },
     };
@@ -837,11 +838,11 @@ describe("buildFlowchartNodes", () => {
       title: "FileUtils.deleteFile(filePath)",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "DESIGN_ONLY",
+      confidence: "VERIFIED",
+      binding: "DESIGN_ONLY",
       position: { x: 980, y: 620 },
       metadata: { "flowchart.kind": "SUBROUTINE" },
-      sourceTag: "DRAFT_MANUAL",
+      provenance: "USER_DRAFT",
     };
 
     const builtEdges = buildFlowchartEdges({
@@ -853,7 +854,7 @@ describe("buildFlowchartNodes", () => {
           type: "CONTROL_FLOW",
           source: decision.id,
           target: manualBypassTarget.id,
-          sourceTag: "DRAFT_MANUAL",
+          provenance: "USER_DRAFT",
         },
       ],
       nodeIndex: new Map([
@@ -875,14 +876,14 @@ describe("buildFlowchartNodes", () => {
     const semantic = {
       ...methodNode("method:semantic", "CommonController.uploadFiles"),
       position: { x: 120, y: 96 },
-      sourceTag: "FACT" as const,
+      provenance: "CODE_ANALYSIS" as const,
       metadata: { "flowchart.kind": "ENTRY" },
     };
     const manual = {
       ...methodNode("design:manual", "人工补充节点"),
       position: { x: 520, y: 96 },
-      bindingStatus: "DESIGN_ONLY" as const,
-      sourceTag: "DRAFT_MANUAL" as const,
+      binding: "DESIGN_ONLY" as const,
+      provenance: "USER_DRAFT" as const,
       metadata: {
         "flowchart.kind": "PROCESS",
         "linkGraph.manual": "true",
@@ -911,8 +912,8 @@ describe("buildFlowchartNodes", () => {
       title: "右侧节点",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       position: { x: 760, y: 180 },
       metadata: { "flowchart.kind": "PROCESS" },
     };
@@ -926,7 +927,7 @@ describe("buildFlowchartNodes", () => {
           target: rightTarget.id,
           sourceHandle: "source-left",
           targetHandle: "target-top",
-          sourceTag: "DRAFT_MANUAL",
+          provenance: "USER_DRAFT",
         },
       ],
       nodeIndex: new Map([
@@ -947,8 +948,8 @@ describe("buildFlowchartNodes", () => {
       title: "try",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       metadata: {
         "flow.kind": "TRY",
         "flowchart.kind": "PROCESS",
@@ -1006,8 +1007,8 @@ describe("buildFlowchartNodes", () => {
       title: "prepare attachment header",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       metadata: {
         "flowchart.kind": "PROCESS",
       },
@@ -1062,8 +1063,8 @@ describe("buildFlowchartNodes", () => {
       title: "try",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       metadata: {
         "flow.kind": "TRY",
         "flowchart.kind": "PROCESS",
@@ -1077,8 +1078,8 @@ describe("buildFlowchartNodes", () => {
       title: "doWork()",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       position: { x: 420, y: 620 },
       metadata: { "flowchart.kind": "PROCESS" },
     };
@@ -1088,8 +1089,8 @@ describe("buildFlowchartNodes", () => {
       title: "handleException()",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       position: { x: 820, y: 420 },
       metadata: { "flowchart.kind": "PROCESS" },
     };
@@ -1140,8 +1141,8 @@ describe("buildFlowchartNodes", () => {
       title: "for (file : files)",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       metadata: {
         "flow.kind": "FOREACH",
         "flow.scopeCategory": "LOOP_PRE_TEST",
@@ -1155,8 +1156,8 @@ describe("buildFlowchartNodes", () => {
       title: "newFileNames.add(...)",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       metadata: { "flowchart.kind": "PROCESS" },
       position: { x: 160, y: 720 },
     };
@@ -1314,14 +1315,6 @@ describe("buildFlowchartNodes", () => {
             "linkGraph.expansion.id": "invocation:paypal",
           },
         },
-        {
-          ...methodNode("expansion-block:invocation:stripe", "StripeClient.charge"),
-          type: "DOC_PAGE",
-          metadata: {
-            "flowchart.synthetic": "invocation-expansion-summary",
-            "linkGraph.expansion.id": "invocation:stripe",
-          },
-        },
       ],
       edges: [],
       selectedNodeId: null,
@@ -1331,10 +1324,64 @@ describe("buildFlowchartNodes", () => {
 
     expect(builtNodes.find((node) => node.id === "action:stripe-root")?.className ?? "")
       .toContain("is-active-invocation-expansion");
-    expect(builtNodes.find((node) => node.id === "expansion-block:invocation:stripe")?.className ?? "")
-      .toContain("is-active-invocation-expansion");
     expect(builtNodes.find((node) => node.id === "action:paypal-root")?.className ?? "")
       .not.toContain("is-active-invocation-expansion");
+  });
+
+  it("renders a collapsed expansion badge on the invocation source and reopens that expansion", async () => {
+    const user = userEvent.setup();
+    const onOpenInvocationExpansion = vi.fn();
+    const builtNodes = buildFlowchartNodes({
+      nodes: [
+        {
+          ...methodNode("invoke:create-info", "调用 SystemService.createInfo"),
+          type: "FLOW_ACTION",
+          signature: "com.example.SystemService.createInfo():void",
+          metadata: {
+            "flow.kind": "INVOCATION",
+            "flowchart.kind": "SUBROUTINE",
+          },
+        },
+      ],
+      edges: [],
+      selectedNodeId: null,
+      collapsedInvocationExpansionsByNodeId: {
+        "invoke:create-info": [
+          {
+            expansionId: "invocation:expansion-1",
+            nodeCount: 2,
+            targetTitle: "SystemService.createInfo",
+          },
+          {
+            expansionId: "invocation:expansion-2",
+            nodeCount: 3,
+            targetTitle: "FallbackSystemService.createInfo",
+          },
+        ],
+      },
+      onOpenInvocationExpansion,
+      nodeSizeRegistry: createNodeSizeRegistry(),
+    });
+    const FlowchartNode = FLOWCHART_NODE_TYPES.flowchartNode as (props: Record<string, unknown>) => JSX.Element;
+    const invocationNode = builtNodes[0]!;
+
+    render(
+      <FlowchartNode
+        id={invocationNode.id}
+        data={invocationNode.data}
+        selected={false}
+        isConnectable
+      />,
+    );
+
+    const badge = screen.getByRole("button", { name: "已收起 · 2 节点 · 点击重新打开" });
+    expect(badge).toHaveAttribute("title", "重新打开 SystemService.createInfo");
+    const fallbackBadge = screen.getByRole("button", { name: "已收起 · 3 节点 · 点击重新打开" });
+    expect(fallbackBadge).toHaveAttribute("title", "重新打开 FallbackSystemService.createInfo");
+
+    await user.click(fallbackBadge);
+
+    expect(onOpenInvocationExpansion).toHaveBeenCalledWith("invocation:expansion-2");
   });
 
   it("uses theme-aware node backgrounds in the dark graph stage instead of hardcoded light cards", () => {

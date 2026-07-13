@@ -41,7 +41,7 @@ internal class LlmHttpException(
         }
         if (body.isNotBlank()) {
             append(": ")
-            append(body)
+            append(sanitizeRemoteMessageForUser(body))
         }
     },
 )
@@ -186,6 +186,9 @@ internal object LlmGatewayClient {
                         }
                         extractTextDelta(data)?.takeIf(String::isNotEmpty)?.let { delta ->
                             content.append(delta)
+                            if (content.length > MAX_RESPONSE_CHARS) {
+                                error("Remote LLM stream content exceeded maximum supported size ($MAX_RESPONSE_CHARS chars).")
+                            }
                             listener(LlmStreamEvent.TextDelta(delta))
                         }
                     }
@@ -243,7 +246,7 @@ internal object LlmGatewayClient {
             }
             if (errorMessage.isNotEmpty()) {
                 append(": ")
-                append(errorMessage)
+                append(sanitizeRemoteMessageForUser(errorMessage))
             }
         }
     }
@@ -370,6 +373,13 @@ internal object LlmGatewayClient {
  */
 internal fun LlmResponse.withoutRawBody(): LlmResponse = copy(rawBody = null)
 
+/** 清理流式完成事件里的原始响应体，避免 listener 侧通过事件拿到 raw SSE 内容。 */
+internal fun LlmStreamEvent.withoutRawBody(): LlmStreamEvent =
+    when (this) {
+        is LlmStreamEvent.Completed -> copy(response = response.withoutRawBody())
+        else -> this
+    }
+
 /**
  * 规范化并裁剪响应片段，便于写入错误消息 / 日志 / trace。
  *
@@ -383,6 +393,9 @@ internal fun truncateForTrace(content: String, limit: Int): String {
     val normalized = content.replace("\r", "").replace("\n", "\\n").trim()
     return if (normalized.length <= limit) normalized else normalized.take(limit) + "..."
 }
+
+private fun sanitizeRemoteMessageForUser(content: String): String =
+    truncateForTrace(redactForTrace(content), limit = 2_000)
 
 /**
  * 对要进入 trace / 日志的内容做最低限度的脱敏：把疑似含密钥/口令/会话凭证的 **值** 替换为 `[REDACTED]`，
@@ -442,7 +455,7 @@ private fun redactLine(line: String): String {
 
 /** 关键字 + 分隔符：前后加 \b 边界，避免 newPassword / myApiKey / sessionId123 等合法标识符被误命中。 */
 private val REDACT_KEY_PATTERN: Regex = Regex(
-    """(?i)\b(api[_-]?key|apikey|secret|client[_-]?secret|token|access[_-]?token|refresh[_-]?token|id[_-]?token|bearer|password|passwd|pwd|authorization|cookie|set-cookie|x-api-key|session|session[_-]?id|jsessionid|credentials|private[_-]?key|privatekey)\b\s*[:=]\s*""",
+    """(?i)(["']?)\b(api[_-]?key|apikey|secret|client[_-]?secret|token|access[_-]?token|refresh[_-]?token|id[_-]?token|bearer|password|passwd|pwd|authorization|cookie|set-cookie|x-api-key|session|session[_-]?id|jsessionid|credentials|private[_-]?key|privatekey)\b\1\s*[:=]\s*""",
 )
 
 /** 命中关键字后吃掉的 value 形态：引号字面量优先，其次裸值。

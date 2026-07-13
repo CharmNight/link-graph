@@ -1,22 +1,6 @@
 package com.charmnight.linkgraph.model
 
 /**
- * 标记图元素的来源层。
- */
-enum class GraphSourceTag {
-    /** 表示元素来源于代码事实。 */
-    FACT,
-    /** 表示元素来源于设计基线。 */
-    DESIGN_BASELINE,
-    /** 表示元素来源于人工维护的草稿。 */
-    DRAFT_MANUAL,
-    /** 表示元素来源于 AI 生成的草稿。 */
-    DRAFT_AI,
-    /** 表示元素来源于不确定的事实推导。 */
-    UNCERTAIN_FACT,
-}
-
-/**
  * 定义图补丁支持的操作类型。
  */
 enum class GraphPatchAction {

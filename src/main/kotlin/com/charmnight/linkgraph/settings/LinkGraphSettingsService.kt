@@ -31,6 +31,8 @@ data class LinkGraphSettingsState(
     var timeoutSeconds: Int = DEFAULT_TIMEOUT_SECONDS,
     /** 保存采样温度。 */
     var temperature: Double = DEFAULT_TEMPERATURE,
+    /** 是否允许把真实源码片段发送给远程 LLM。 */
+    var allowRemoteSourceContext: Boolean = DEFAULT_ALLOW_REMOTE_SOURCE_CONTEXT,
     /** 用户显式附加的外部 class/source JAR。 */
     var attachedJars: List<AttachedJarEntry> = emptyList(),
     /** 是否允许对 class JAR 返回反编译来源标记。 */
@@ -99,6 +101,7 @@ data class LinkGraphSettingsState(
             model = effectiveModel(),
             timeoutSeconds = effectiveTimeoutSeconds(),
             temperature = effectiveTemperature(),
+            allowRemoteSourceContext = allowRemoteSourceContext,
             attachedJars = attachedJars
                 .map(AttachedJarEntry::normalized)
                 .filter { entry -> entry.path.isNotBlank() }
@@ -127,6 +130,7 @@ data class LinkGraphSettingsState(
             model = sanitized.model,
             timeoutSeconds = sanitized.timeoutSeconds,
             temperature = sanitized.temperature,
+            allowRemoteSourceContext = sanitized.allowRemoteSourceContext,
             attachedJars = sanitized.attachedJars.map(AttachedJarEntry::normalized).toMutableList(),
             allowClassJarDecompile = sanitized.allowClassJarDecompile,
             allowExternalLibraryExpansion = sanitized.allowExternalLibraryExpansion,
@@ -149,6 +153,7 @@ data class LinkGraphSettingsState(
             "timeoutSeconds=$timeoutSeconds, " +
             "runtimeTimeoutSecondsOverride=$runtimeTimeoutSecondsOverride, " +
             "temperature=$temperature, " +
+            "allowRemoteSourceContext=$allowRemoteSourceContext, " +
             "attachedJars=${attachedJars.size}, " +
             "allowClassJarDecompile=$allowClassJarDecompile, " +
             "allowExternalLibraryExpansion=$allowExternalLibraryExpansion, " +
@@ -172,6 +177,8 @@ data class LinkGraphSettingsState(
         const val MAX_TIMEOUT_SECONDS: Int = 3_600
         /** 定义默认温度。 */
         const val DEFAULT_TEMPERATURE: Double = 0.2
+        /** 默认禁止：只有用户在设置页显式允许，才可把源码片段发往远程 LLM。 */
+        const val DEFAULT_ALLOW_REMOTE_SOURCE_CONTEXT: Boolean = false
         /** 默认开启：允许对 class JAR 提供反编译来源标记。 */
         const val DEFAULT_ALLOW_CLASS_JAR_DECOMPILE: Boolean = true
         /** 默认开启：允许架构索引展开外部库类。 */
@@ -198,6 +205,7 @@ data class LinkGraphPersistentSettingsState(
     var model: String = LinkGraphSettingsState.DEFAULT_MODEL,
     var timeoutSeconds: Int = LinkGraphSettingsState.DEFAULT_TIMEOUT_SECONDS,
     var temperature: Double = LinkGraphSettingsState.DEFAULT_TEMPERATURE,
+    var allowRemoteSourceContext: Boolean = LinkGraphSettingsState.DEFAULT_ALLOW_REMOTE_SOURCE_CONTEXT,
     var attachedJars: MutableList<AttachedJarEntry> = mutableListOf(),
     var allowClassJarDecompile: Boolean = LinkGraphSettingsState.DEFAULT_ALLOW_CLASS_JAR_DECOMPILE,
     var allowExternalLibraryExpansion: Boolean = LinkGraphSettingsState.DEFAULT_ALLOW_EXTERNAL_LIBRARY_EXPANSION,
@@ -222,6 +230,7 @@ data class LinkGraphPersistentSettingsState(
             model = model,
             timeoutSeconds = timeoutSeconds,
             temperature = temperature,
+            allowRemoteSourceContext = allowRemoteSourceContext,
             attachedJars = attachedJars,
             allowClassJarDecompile = allowClassJarDecompile,
             allowExternalLibraryExpansion = allowExternalLibraryExpansion,
@@ -295,7 +304,8 @@ class LinkGraphSettingsService : PersistentStateComponent<LinkGraphPersistentSet
             else -> secretStore.saveApiKey(sanitized.apiKey)
         }
         if (before.architectureIndexSettingsKey() != sanitized.architectureIndexSettingsKey()) {
-            ApplicationManager.getApplication()
+            val application = ApplicationManager.getApplication() ?: return
+            application
                 .messageBus
                 .syncPublisher(LinkGraphSettingsChangedNotifier.TOPIC)
                 .onArchitectureIndexSettingsChanged(before, sanitized)

@@ -1,17 +1,140 @@
 package com.charmnight.linkgraph.architecture.memory
 
 import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PersistentArchitectureIndexCacheStoreTest {
+    @Test
+    fun startupRemovesOrphanFragmentsAndInterruptedTempFiles() {
+        val cacheRoot = Files.createTempDirectory("link-graph-ide-cache")
+        val storeRoot = cacheRoot.resolve("link-graph/architecture-index")
+        Files.createDirectories(storeRoot)
+        val orphan = storeRoot.resolve("orphan.json")
+        val interrupted = storeRoot.resolve("fragment.json.123.tmp")
+        Files.writeString(orphan, "{}")
+        Files.writeString(interrupted, "partial")
+
+        val store = PersistentArchitectureIndexCacheStore(cacheRoot)
+
+        assertFalse(orphan.exists())
+        assertFalse(interrupted.exists())
+        assertEquals(2, store.lastCleanupDiagnostics.removedFileCount)
+    }
+
+    @Test
+    fun corruptManifestClearsManagedFragments() {
+        val cacheRoot = Files.createTempDirectory("link-graph-ide-cache")
+        val key = cacheKey("slice:orders")
+        val firstStore = PersistentArchitectureIndexCacheStore(cacheRoot)
+        firstStore.write(key, ArchitectureIndexSliceFragment(sliceId = "slice:orders"))
+        val fragmentPath = firstStore.pathForTesting(key)
+        Files.writeString(cacheRoot.resolve("link-graph/architecture-index/_manifest.json"), "{broken")
+
+        val recoveredStore = PersistentArchitectureIndexCacheStore(cacheRoot)
+
+        assertFalse(fragmentPath.exists())
+        assertNull(recoveredStore.read(key))
+    }
+
+    @Test
+    fun startupRemovesEntriesFromOlderFragmentSchema() {
+        val cacheRoot = Files.createTempDirectory("link-graph-ide-cache")
+        val oldKey = cacheKey("slice:orders").copy(
+            schemaVersion = ProjectSliceManifest.CURRENT_SCHEMA_VERSION - 1,
+        )
+        val firstStore = PersistentArchitectureIndexCacheStore(cacheRoot)
+        firstStore.write(oldKey, ArchitectureIndexSliceFragment(sliceId = "slice:orders"))
+        val oldPath = firstStore.pathForTesting(oldKey)
+
+        PersistentArchitectureIndexCacheStore(cacheRoot)
+
+        assertFalse(oldPath.exists())
+    }
+
+    @Test
+    fun startupExpiresEntriesPastTtl() {
+        var now = 1_000L
+        val cacheRoot = Files.createTempDirectory("link-graph-ide-cache")
+        val key = cacheKey("slice:orders")
+        val firstStore = PersistentArchitectureIndexCacheStore(
+            cacheRoot,
+            ttlMillis = 100,
+            clockMillis = { now },
+        )
+        firstStore.write(key, ArchitectureIndexSliceFragment(sliceId = "slice:orders"))
+        val path = firstStore.pathForTesting(key)
+        now += 101
+
+        val expiredStore = PersistentArchitectureIndexCacheStore(
+            cacheRoot,
+            ttlMillis = 100,
+            clockMillis = { now },
+        )
+
+        assertFalse(path.exists())
+        assertNull(expiredStore.read(key))
+    }
+
+    @Test
+    fun prunesLeastRecentlyUsedEntriesByCount() {
+        var now = 1_000L
+        val cacheRoot = Files.createTempDirectory("link-graph-ide-cache")
+        val store = PersistentArchitectureIndexCacheStore(
+            cacheRoot,
+            maxEntries = 2,
+            clockMillis = { now },
+        )
+        val first = cacheKey("slice:first")
+        val second = cacheKey("slice:second")
+        val third = cacheKey("slice:third")
+        store.write(first, ArchitectureIndexSliceFragment(sliceId = "slice:first"))
+        now += 1
+        store.write(second, ArchitectureIndexSliceFragment(sliceId = "slice:second"))
+        now += 1
+        assertNotNull(store.read(first))
+        now += 1
+        store.write(third, ArchitectureIndexSliceFragment(sliceId = "slice:third"))
+
+        assertNotNull(store.read(first))
+        assertNull(store.read(second))
+        assertNotNull(store.read(third))
+    }
+
+    @Test
+    fun prunesOldestEntriesByTotalBytes() {
+        val sizingRoot = Files.createTempDirectory("link-graph-ide-cache-size")
+        val sizingStore = PersistentArchitectureIndexCacheStore(sizingRoot)
+        val sampleKey = cacheKey("slice:sample")
+        sizingStore.write(sampleKey, ArchitectureIndexSliceFragment(sliceId = "slice:sample"))
+        val sampleBytes = Files.size(sizingStore.pathForTesting(sampleKey))
+
+        var now = 1_000L
+        val cacheRoot = Files.createTempDirectory("link-graph-ide-cache")
+        val store = PersistentArchitectureIndexCacheStore(
+            cacheRoot,
+            maxTotalBytes = sampleBytes + 16,
+            clockMillis = { now },
+        )
+        val first = cacheKey("slice:first")
+        val second = cacheKey("slice:second")
+        store.write(first, ArchitectureIndexSliceFragment(sliceId = "slice:first"))
+        now += 1
+        store.write(second, ArchitectureIndexSliceFragment(sliceId = "slice:second"))
+
+        assertNull(store.read(first))
+        assertNotNull(store.read(second))
+    }
+
     @Test
     fun schemaVersionInvalidatesFragmentsWithoutJavaFallbackSuperTypes() {
         assertTrue(
@@ -86,6 +209,25 @@ class PersistentArchitectureIndexCacheStoreTest {
     }
 
     @Test
+    fun oversizedCacheReadReturnsNullAndDeletesCacheFile() {
+        val cacheRoot = Files.createTempDirectory("link-graph-ide-cache")
+        val store = PersistentArchitectureIndexCacheStore(cacheRoot)
+        val key = ArchitectureIndexFragmentCacheKey(
+            projectLocationHash = "project",
+            budgetHash = "budget",
+            sliceId = "slice:orders",
+            fileHash = "file",
+            attachedJarFingerprint = null,
+        )
+        Files.createDirectories(cacheRoot.resolve("link-graph/architecture-index"))
+        val cacheFile = store.pathForTesting(key)
+        Files.writeString(cacheFile, "x".repeat(8 * 1024 * 1024 + 1))
+
+        assertNull(store.read(key))
+        assertFalse(cacheFile.exists())
+    }
+
+    @Test
     fun roundTripsFullFidelityFragmentFields() {
         val store = PersistentArchitectureIndexCacheStore(Files.createTempDirectory("link-graph-ide-cache"))
         val key = cacheKey("slice:orders")
@@ -143,6 +285,37 @@ class PersistentArchitectureIndexCacheStoreTest {
         val restored = assertNotNull(store.read(key))
 
         assertEquals(fragment, restored)
+    }
+
+    @Test
+    fun rejectsFragmentWhoseSliceIdConflictsWithCacheKey() {
+        val cacheRoot = Files.createTempDirectory("link-graph-ide-cache")
+        val store = PersistentArchitectureIndexCacheStore(cacheRoot)
+        val key = cacheKey("slice:orders")
+
+        assertFailsWith<IllegalArgumentException> {
+            store.write(key, ArchitectureIndexSliceFragment(sliceId = "slice:payments"))
+        }
+        assertFalse(store.pathForTesting(key).exists())
+    }
+
+    @Test
+    fun rejectsAndDeletesValidFragmentStoredUnderDifferentSliceKey() {
+        val cacheRoot = Files.createTempDirectory("link-graph-ide-cache")
+        val store = PersistentArchitectureIndexCacheStore(cacheRoot)
+        val ordersKey = cacheKey("slice:orders")
+        val paymentsKey = cacheKey("slice:payments")
+        store.write(ordersKey, ArchitectureIndexSliceFragment(sliceId = ordersKey.sliceId))
+        store.write(paymentsKey, ArchitectureIndexSliceFragment(sliceId = paymentsKey.sliceId))
+        val ordersPath = store.pathForTesting(ordersKey)
+        Files.copy(
+            store.pathForTesting(paymentsKey),
+            ordersPath,
+            StandardCopyOption.REPLACE_EXISTING,
+        )
+
+        assertNull(store.read(ordersKey))
+        assertFalse(ordersPath.exists())
     }
 
     private fun cacheKey(sliceId: String): ArchitectureIndexFragmentCacheKey =

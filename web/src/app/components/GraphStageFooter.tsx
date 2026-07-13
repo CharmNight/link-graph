@@ -1,14 +1,14 @@
 import {
   analysisDisplayModeLabel,
-  certaintyLabel,
+  confidenceLabel,
   draftCompareStatusLabel,
-  sourceTagLabel,
+  provenanceLabel,
 } from "../labels";
 import { Chip } from "./Chip";
 import type {
   AnalysisDisplayMode,
   DraftCompareProjection,
-  GraphSourceTag,
+  GraphProvenance,
   IndexedGraphSummary,
   LinkGraphDocument,
 } from "../types";
@@ -52,10 +52,10 @@ export function GraphStageFooter({
   codeDiffStatus,
 }: GraphStageFooterProps) {
   // 收集视图节点上的所有来源标签（去重）
-  const sourceTags = Array.from(new Set(
+  const provenances = Array.from(new Set(
     activeViewGraph.nodes
-      .map((node) => node.sourceTag)
-      .filter((tag): tag is GraphSourceTag => tag != null),
+      .map((node) => node.provenance)
+      .filter((tag): tag is GraphProvenance => tag != null),
   ));
   // 合并节点与边的草稿比对状态（去重）
   const compareStatuses = draftCompareProjection == null
@@ -81,7 +81,7 @@ export function GraphStageFooter({
 
   // 详情级遥测：放在折叠 <details> 内，让默认页脚保持简洁（模式 + 节点数 + 新鲜度）。
   // 这些是诊断信息而非主信息。
-  const hasDetailPills = sourceTags.length > 0
+  const hasDetailPills = provenances.length > 0
     || hasExplanationFocus
     || draftChangedNodeCount > 0
     || compareStatuses.length > 0
@@ -97,11 +97,11 @@ export function GraphStageFooter({
       {hasDetailPills ? (
         <details className="graph-stage-footer-details">
           <summary>详情</summary>
-          <Chip variant="status-pill">{certaintyLabel("PROVEN")}</Chip>
-          <Chip variant="status-pill">{certaintyLabel("RULE_INFERRED")}</Chip>
-          <Chip variant="status-pill">{certaintyLabel("LLM_SUGGESTED")}</Chip>
-          {sourceTags.map((tag) => (
-            <Chip key={tag} variant="status-pill">{sourceTagLabel(tag)}</Chip>
+          <Chip variant="status-pill">{confidenceLabel("VERIFIED")}</Chip>
+          <Chip variant="status-pill">{confidenceLabel("INFERRED")}</Chip>
+          <Chip variant="status-pill">{confidenceLabel("SUGGESTED")}</Chip>
+          {provenances.map((tag) => (
+            <Chip key={tag} variant="status-pill">{provenanceLabel(tag)}</Chip>
           ))}
           {hasExplanationFocus ? <Chip variant="app-pill">讲解焦点</Chip> : null}
           {draftChangedNodeCount > 0 ? <Chip variant="app-pill">草稿变更 {draftChangedNodeCount}</Chip> : null}

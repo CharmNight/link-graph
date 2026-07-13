@@ -29,6 +29,7 @@ const codeDraft: GeneratedCodeDraft = {
   sourceNodeId: "node:1",
   title: "Service edit",
   targetPath: "src/Service.kt",
+  commandKind: "CREATE_FILE",
   content: "updated code",
   warnings: [],
 };

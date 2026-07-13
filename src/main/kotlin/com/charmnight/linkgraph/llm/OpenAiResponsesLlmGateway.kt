@@ -35,7 +35,7 @@ class OpenAiResponsesLlmGateway(
             url = resolveResponsesUrl(request.endpoint),
             headers = openAiHeaders(request),
             payload = buildPayload(request.copy(deliveryMode = LlmDeliveryMode.STREAM)),
-            listener = listener,
+            listener = { event -> listener(event.withoutRawBody()) },
             extractTextDelta = ::extractTextDelta,
         ).withoutRawBody()
     }

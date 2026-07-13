@@ -20,8 +20,6 @@ export interface FlowchartInvocationExpansionSceneState {
   activeExpansionPath: string[];
   collapsedExpansionIds: string[];
   activeSiblingByParentContext: Record<string, string>;
-  blockPositions: Record<string, { x: number; y: number }>;
-  lastChildStateByExpansionId: Record<string, unknown>;
   contextMode: FlowchartInvocationExpansionContextMode;
 }
 
@@ -67,8 +65,6 @@ export function emptyFlowchartInvocationExpansionSceneState(): FlowchartInvocati
     activeExpansionPath: [],
     collapsedExpansionIds: [],
     activeSiblingByParentContext: {},
-    blockPositions: {},
-    lastChildStateByExpansionId: {},
     contextMode: "ACTIVE_CHAIN",
   };
 }
@@ -130,12 +126,6 @@ function normalizeInvocationExpansionSceneState(args: {
     ...(args.sceneState ?? {}),
     activeSiblingByParentContext: {
       ...(args.sceneState?.activeSiblingByParentContext ?? {}),
-    },
-    blockPositions: {
-      ...(args.sceneState?.blockPositions ?? {}),
-    },
-    lastChildStateByExpansionId: {
-      ...(args.sceneState?.lastChildStateByExpansionId ?? {}),
     },
   };
   const entryIds = new Set(args.entries.map((entry) => entry.expansionId));
@@ -204,12 +194,6 @@ function normalizeInvocationExpansionSceneState(args: {
     activeExpansionPath: activePathFor(activeExpansionId, entriesById),
     collapsedExpansionIds: Array.from(collapsedExpansionIds),
     activeSiblingByParentContext,
-    blockPositions: Object.fromEntries(
-      Object.entries(baseState.blockPositions ?? {}).filter(([expansionId]) => entryIds.has(expansionId)),
-    ),
-    lastChildStateByExpansionId: Object.fromEntries(
-      Object.entries(baseState.lastChildStateByExpansionId ?? {}).filter(([expansionId]) => entryIds.has(expansionId)),
-    ),
     contextMode: "ACTIVE_CHAIN",
   };
 }

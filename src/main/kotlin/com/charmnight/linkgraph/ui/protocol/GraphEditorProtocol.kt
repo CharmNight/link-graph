@@ -8,7 +8,7 @@ package com.charmnight.linkgraph.ui.protocol
  */
 object GraphEditorProtocol {
     /** 协议 schema 版本号；前后端握手时校验，避免版本错配。 */
-    const val SCHEMA_VERSION: Int = 1
+    const val SCHEMA_VERSION: Int = 2
 
     /** 产物切片增量消息类型字符串。 */
     const val ARTIFACT_SLICE: String = "ARTIFACT_SLICE"

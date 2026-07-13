@@ -29,8 +29,8 @@ function emptyNode(): LinkGraphNode {
     title: "",
     inputs: [],
     outputs: [],
-    certainty: "PROVEN" as const,
-    bindingStatus: "BOUND" as const,
+    confidence: "VERIFIED" as const,
+    binding: "CODE_BOUND" as const,
     metadata: {},
   };
 }

@@ -18,7 +18,7 @@ import com.charmnight.linkgraph.settings.LinkGraphSettingsState
  * 代码草稿生成场景的 prompt builder（P2-1 深度拆分）。
  *
  * 基于链路图、已确认草稿变更、真实源码片段、差异和计划项，
- * 输出可写入项目目录的代码草稿（drafts + editOperations + editScopes）。
+ * 输出可写入项目目录的代码草稿；edit scope 仅作为输入授权，不允许模型回写。
  */
 
 /** 构造代码草稿生成场景的提示词包。 */

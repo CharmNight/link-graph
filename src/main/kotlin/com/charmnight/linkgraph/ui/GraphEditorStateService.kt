@@ -116,8 +116,6 @@ class GraphEditorStateService {
 
     fun openInvocationExpansion(expansionId: String) = graph.openInvocationExpansion(expansionId)
 
-    fun activateInvocationExpansion(expansionId: String) = graph.activateInvocationExpansion(expansionId)
-
     /** 切换分析结果的展示模式，例如在概览和详情之间切换。 */
     fun switchAnalysisDisplayMode(displayMode: AnalysisDisplayMode) = graph.switchAnalysisDisplayMode(displayMode)
 

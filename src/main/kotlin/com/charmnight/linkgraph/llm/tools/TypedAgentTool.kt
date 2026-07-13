@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
 import com.charmnight.linkgraph.agent.tools.*
+import com.charmnight.linkgraph.json.JsonCodec
 
 import kotlin.reflect.KClass
 
@@ -35,6 +36,7 @@ abstract class TypedAgentTool<I : Any> : AgentTool {
         input: ToolInputPayload,
         context: ToolExecutionContext,
     ): ToolResult {
+        validateInputBudget(input)?.let { rejected -> return rejected }
         val parsed = try {
             parseInput(input)
         } catch (e: InputParseException) {
@@ -48,6 +50,17 @@ abstract class TypedAgentTool<I : Any> : AgentTool {
 
     /** 用解析后的强类型 input 执行工具。 */
     protected abstract fun invokeTyped(input: I, context: ToolExecutionContext): ToolResult
+
+    private fun validateInputBudget(input: ToolInputPayload): ToolResult? {
+        val encodedLength = runCatching { JsonCodec.toJson(input).length }.getOrElse { error ->
+            return failure("工具入参无法序列化为 JSON：${error.message}")
+        }
+        return if (encodedLength > MAX_INPUT_CHARS) {
+            failure("工具入参过大：$encodedLength chars，最大允许 $MAX_INPUT_CHARS chars。")
+        } else {
+            null
+        }
+    }
 
     // ---------- 共享的入参解析辅助函数 ----------
 
@@ -73,8 +86,13 @@ abstract class TypedAgentTool<I : Any> : AgentTool {
     protected fun optionalInt(raw: ToolInputPayload, key: String): Int? = raw.optionalInt(key)
 
     /** 读可选字符串列表；保持与 [ToolInputSupport.optionalStringList] 一致的语义。 */
-    protected fun optionalStringList(raw: ToolInputPayload, key: String): List<String> =
-        raw.optionalStringList(key)
+    protected fun optionalStringList(raw: ToolInputPayload, key: String): List<String> {
+        val values = raw.optionalStringList(key)
+        if (values.size > MAX_STRING_LIST_ITEMS) {
+            throw InputParseException("$key 数量过多：${values.size} > $MAX_STRING_LIST_ITEMS")
+        }
+        return values
+    }
 
     /**
      * 读必填强类型值；缺失或类型不匹配时抛 [InputParseException]，消息区分两种场景：
@@ -114,4 +132,11 @@ abstract class TypedAgentTool<I : Any> : AgentTool {
         message: String,
         val payload: ToolPayload = emptyMap(),
     ) : IllegalArgumentException(message)
+
+    private companion object {
+        /** 单个 typed tool 输入的 JSON 字符上限，避免异常大参数拖垮工具链。 */
+        const val MAX_INPUT_CHARS: Int = 512 * 1024
+        /** 字符串列表参数的最大元素数；更大输入应拆分多轮工具调用。 */
+        const val MAX_STRING_LIST_ITEMS: Int = 512
+    }
 }

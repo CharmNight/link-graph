@@ -8,6 +8,7 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.source.SourceArchiveReadLimits
 import kotlin.io.path.createTempDirectory
 import java.nio.file.Files
 import kotlin.test.Test
@@ -142,5 +143,37 @@ class QaEvidenceCollectorTest {
         assertEquals("arch:layer:api", result.evidenceTrace.single().nodeId)
         assertEquals("class:com.example.api.OrderController", result.evidenceTrace.single().resolvedNodeId)
         assertTrue(result.evidenceTrace.single().mappingTrace.any { trace -> trace.contains("architectureSourceSample") })
+    }
+
+    @Test
+    fun `skips source snippets from oversized files`() {
+        val projectDir = createTempDirectory("qa-evidence-oversized")
+        val hugeFile = projectDir.resolve("src/main/java/com/example/Huge.java")
+        Files.createDirectories(hugeFile.parent)
+        Files.writeString(hugeFile, "x".repeat(SourceArchiveReadLimits.MAX_TEXT_ENTRY_BYTES + 1))
+
+        val collector = QaEvidenceCollector(maxSnippets = 4, maxTraversalDepth = 0)
+        val result = collector.collect(
+            graph = GraphDocument(
+                nodes = listOf(
+                    GraphNode(
+                        id = "method:huge",
+                        type = NodeType.METHOD,
+                        title = "Huge.run",
+                        metadata = mapOf(
+                            "source.filePath" to hugeFile.toString(),
+                            "source.startOffset" to "0",
+                            "source.endOffset" to "10",
+                            "source.startLine" to "1",
+                            "source.endLine" to "1",
+                        ),
+                    ),
+                ),
+            ),
+            selectedNodeIds = listOf("method:huge"),
+        )
+
+        assertTrue(result.sourceContext.isEmpty())
+        assertTrue(result.evidenceTrace.isEmpty())
     }
 }

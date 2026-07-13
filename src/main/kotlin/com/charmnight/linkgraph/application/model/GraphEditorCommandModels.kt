@@ -2,6 +2,8 @@ package com.charmnight.linkgraph.application.model
 
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
+import com.charmnight.linkgraph.model.EdgeType
+import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 
 /**
@@ -62,22 +64,70 @@ data class GraphEditRequest(
     val source: GraphEditRequestSource,
 )
 
+/** 前端/工具可提交的节点编辑意图；不包含信任、证据、差异或源码定位字段。 */
+data class GraphNodeEditInput(
+    val id: String,
+    val type: NodeType,
+    val title: String,
+    val inputs: List<String> = emptyList(),
+    val outputs: List<String> = emptyList(),
+    val doc: String? = null,
+    val metadata: Map<String, String> = emptyMap(),
+) {
+    companion object {
+        fun from(node: GraphNode): GraphNodeEditInput = GraphNodeEditInput(
+            id = node.id,
+            type = node.type,
+            title = node.title,
+            inputs = node.inputs,
+            outputs = node.outputs,
+            doc = node.doc,
+            metadata = node.metadata,
+        )
+    }
+}
+
+/** 前端/工具可提交的边编辑意图；信任字段只能由后端策略赋值。 */
+data class GraphEdgeEditInput(
+    val id: String,
+    val type: EdgeType,
+    val fromNodeId: String,
+    val toNodeId: String,
+    val label: String? = null,
+    val metadata: Map<String, String> = emptyMap(),
+) {
+    companion object {
+        fun from(edge: GraphEdge): GraphEdgeEditInput = GraphEdgeEditInput(
+            id = edge.id,
+            type = edge.type,
+            fromNodeId = edge.fromNodeId,
+            toNodeId = edge.toNodeId,
+            label = edge.label,
+            metadata = edge.metadata,
+        )
+    }
+}
+
 /** 图谱编辑操作的封闭接口，所有具体操作都以子类型形式存在。 */
 sealed interface GraphEditOperation {
-    /** 新增或更新一个节点；存在同 ID 时整体替换。 */
+    /** 新增或更新一个节点；后端策略负责合并受保护字段。 */
     data class UpsertNode(
-        val node: GraphNode,
-    ) : GraphEditOperation
+        val node: GraphNodeEditInput,
+    ) : GraphEditOperation {
+        constructor(node: GraphNode) : this(GraphNodeEditInput.from(node))
+    }
 
     /** 按节点 ID 删除指定节点。 */
     data class RemoveNode(
         val nodeId: String,
     ) : GraphEditOperation
 
-    /** 新增或更新一条边；存在同 ID 时整体替换。 */
+    /** 新增或更新一条边；后端策略负责合并受保护字段。 */
     data class UpsertEdge(
-        val edge: GraphEdge,
-    ) : GraphEditOperation
+        val edge: GraphEdgeEditInput,
+    ) : GraphEditOperation {
+        constructor(edge: GraphEdge) : this(GraphEdgeEditInput.from(edge))
+    }
 
     /** 按边 ID 删除指定边。 */
     data class RemoveEdge(
@@ -99,7 +149,6 @@ enum class GraphEditIssueCode {
     UNSUPPORTED_SCENE,
     INVALID_NODE_TYPE,
     INVALID_EDGE_TYPE,
-    INVALID_SOURCE_TAG,
     PAYLOAD_TOO_LARGE,
     SANITIZER_REJECTED_NODE,
     INVALID_PAYLOAD_FIELD,

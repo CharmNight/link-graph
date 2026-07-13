@@ -1,24 +1,24 @@
 /**
  * 节点/边的"确定性"分级，表示数据来源的可信程度。
- * - PROVEN：来自代码静态分析、可被验证的事实；
- * - RULE_INFERRED：基于规则推断，通常正确但未直接验证；
- * - LLM_SUGGESTED：由大模型给出，需要人工确认。
+ * - VERIFIED：来自代码静态分析、可被验证的事实；
+ * - INFERRED：基于规则推断，通常正确但未直接验证；
+ * - SUGGESTED：由大模型给出，需要人工确认。
  */
-export type Certainty = "PROVEN" | "RULE_INFERRED" | "LLM_SUGGESTED";
+export type GraphConfidence = "VERIFIED" | "INFERRED" | "SUGGESTED" | "DECLARED";
 
 /**
  * 节点与底层资源的"绑定状态"，描述设计图节点与实际代码之间的同步关系。
- * - BOUND：已与代码绑定；
+ * - CODE_BOUND：已与代码绑定；
  * - DESIGN_ONLY：仅存在于设计图，尚未生成/绑定代码；
  * - GENERATABLE：可被生成；
- * - PARTIALLY_SYNCED：部分同步（例如方法已绑定但字段未绑定）；
+ * - PARTIAL：部分同步（例如方法已绑定但字段未绑定）；
  * - CONFLICTED：与代码存在冲突，需要人工解决。
  */
-export type BindingStatus =
-  | "BOUND"
+export type GraphBinding =
+  | "CODE_BOUND"
   | "DESIGN_ONLY"
   | "GENERATABLE"
-  | "PARTIALLY_SYNCED"
+  | "PARTIAL"
   | "CONFLICTED";
 
 /** 与代码/Mermaid 之间的差异状态，用于差异比对视图。 */
@@ -26,7 +26,7 @@ export type DiffStatus = "MATCHED" | "ONLY_IN_CODE" | "ONLY_IN_MERMAID" | "MODIF
 /** 草稿变更在差异比对中的分类：修改、新增、删除。 */
 export type DraftCompareStatus = "MODIFIED" | "ADDED" | "REMOVED";
 /** 节点/边的来源标签，用于追溯数据出处。 */
-export type GraphSourceTag = "FACT" | "DESIGN_BASELINE" | "DRAFT_MANUAL" | "DRAFT_AI" | "UNCERTAIN_FACT";
+export type GraphProvenance = "CODE_ANALYSIS" | "DESIGN_IMPORT" | "USER_DRAFT" | "AI_DRAFT" | "DERIVED";
 /** 图补丁或差异描述中的作用对象类型：节点或边。 */
 export type GraphDiffElementKind = "NODE" | "EDGE";
 /** 图补丁支持的操作类型集合。 */
@@ -129,22 +129,12 @@ export interface LinkGraphLayoutState {
 /** 调用展开上下文模式：默认按用户正在阅读的活动链过滤上下文。 */
 export type InvocationExpansionContextMode = "ACTIVE_CHAIN";
 
-/** 调用展开子状态快照，用于恢复父展开重新打开后的子展开状态。 */
-export interface ChildInvocationExpansionState {
-  activeExpansionId?: string | null;
-  activeExpansionPath?: string[];
-  collapsedExpansionIds?: string[];
-  activeSiblingByParentContext?: Record<string, string>;
-}
-
 /** 流程图调用展开的 UI/session 状态；不写入语义图 metadata。 */
 export interface InvocationExpansionSceneState {
   activeExpansionId?: string | null;
   activeExpansionPath: string[];
   collapsedExpansionIds: string[];
   activeSiblingByParentContext: Record<string, string>;
-  blockPositions: Record<string, GraphPosition>;
-  lastChildStateByExpansionId: Record<string, ChildInvocationExpansionState>;
   contextMode: InvocationExpansionContextMode;
 }
 
@@ -219,9 +209,9 @@ export interface LinkGraphNode {
   /** 文档说明文本。 */
   doc?: string;
   /** 该节点的确定性等级。 */
-  certainty: Certainty;
+  confidence: GraphConfidence;
   /** 与底层代码的绑定状态。 */
-  bindingStatus: BindingStatus;
+  binding: GraphBinding;
   /** 在差异比对中的状态。 */
   diffStatus?: DiffStatus;
   /** 节点坐标（与布局状态独立存储时使用）。 */
@@ -229,7 +219,7 @@ export interface LinkGraphNode {
   /** 自由元数据映射，扩展字段。 */
   metadata?: Record<string, string>;
   /** 来源标签。 */
-  sourceTag?: GraphSourceTag;
+  provenance?: GraphProvenance;
 }
 
 /** 图边：连接两个节点的有向关系。 */
@@ -252,8 +242,12 @@ export interface LinkGraphEdge {
   route?: LinkGraphEdgeRoute;
   /** 自由元数据映射。 */
   metadata?: Record<string, string>;
+  /** 该关系当前结论的可验证程度。 */
+  confidence?: GraphConfidence;
+  /** 该关系与代码或设计目标的绑定状态。 */
+  binding?: GraphBinding;
   /** 来源标签。 */
-  sourceTag?: GraphSourceTag;
+  provenance?: GraphProvenance;
 }
 
 /** 图文档：一张完整的图，包含节点、边及可选的补丁与统计信息。 */
@@ -312,11 +306,32 @@ export interface GraphPatch {
   removedEdgeIds: string[];
 }
 
+/** 前端可提交的节点编辑意图；信任和源码定位字段由后端维护。 */
+export interface GraphNodeEditInput {
+  id: string;
+  type: NodeType;
+  title: string;
+  inputs: string[];
+  outputs: string[];
+  doc?: string;
+  metadata?: Record<string, string>;
+}
+
+/** 前端可提交的边编辑意图；不携带 provenance/confidence/binding/evidence。 */
+export interface GraphEdgeEditInput {
+  id: string;
+  type: EdgeType;
+  source: string;
+  target: string;
+  label?: string;
+  metadata?: Record<string, string>;
+}
+
 /** 图编辑操作联合类型：表示一次原子编辑（节点/边的新增或删除）。 */
 export type GraphEditOperation =
   | {
       type: "UPSERT_NODE";
-      node: LinkGraphNode;
+      node: GraphNodeEditInput;
     }
   | {
       type: "REMOVE_NODE";
@@ -324,7 +339,7 @@ export type GraphEditOperation =
     }
   | {
       type: "UPSERT_EDGE";
-      edge: LinkGraphEdge;
+      edge: GraphEdgeEditInput;
     }
   | {
       type: "REMOVE_EDGE";

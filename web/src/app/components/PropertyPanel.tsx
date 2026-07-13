@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { SyntheticEvent, WheelEvent as ReactWheelEvent } from "react";
-import { bindingStatusLabel, certaintyLabel, nodeTypeLabel } from "../labels";
+import { bindingLabel, confidenceLabel, nodeTypeLabel } from "../labels";
 import { canNavigateToSource } from "../sourceNavigation";
 import type { LinkGraphNode } from "../types";
 import { Button } from "./Button";
@@ -280,8 +280,8 @@ export function PropertyPanel({
           {/* 元数据 chip 行：类型 / 代码状态 / 证据 */}
           <div className="drawer-meta">
             <span className="status-pill">类型：{nodeTypeLabel(draft.type)}</span>
-            <span className="status-pill">代码状态：{bindingStatusLabel(draft.bindingStatus)}</span>
-            <span className="status-pill">证据：{certaintyLabel(draft.certainty)}</span>
+            <span className="status-pill">代码状态：{bindingLabel(draft.binding)}</span>
+            <span className="status-pill">证据：{confidenceLabel(draft.confidence)}</span>
           </div>
 
           <label>

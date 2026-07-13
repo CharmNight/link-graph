@@ -43,6 +43,7 @@ data class InvocationExpansionTarget(
 data class InvocationExpansionMergeResult(
     val graph: GraphDocument,
     val expansionId: String,
+    val reused: Boolean,
 )
 
 /**
@@ -104,6 +105,12 @@ class InvocationExpansionUseCase(
         targetEntryNodeId: String,
         targetSignature: String,
     ): InvocationExpansionMergeResult {
+        reuseEquivalentExpansion(
+            workspace = workspace,
+            sourceInvocationNodeId = sourceInvocationNode.id,
+            targetSignature = targetSignature,
+        )?.let { existing -> return existing }
+
         val expansionId = "invocation:${idGenerator()}"
         val existingNodeIds = workspace.nodes.mapTo(linkedSetOf(), GraphNode::id)
         val existingEdgeIds = workspace.edges.mapTo(linkedSetOf(), GraphEdge::id)
@@ -141,7 +148,109 @@ class InvocationExpansionUseCase(
                 patch = workspace.patch,
             ),
             expansionId = expansionId,
+            reused = false,
         )
+    }
+
+    /**
+     * 查找并复用同一调用源、同一目标签名的已有展开。
+     *
+     * 历史图中若存在多个等价批次，会选择信息最完整的一项作为权威批次，将其它批次仍有价值的
+     * 节点和内部边归入权威批次，并删除重复调用连接线，使后续 registry 只暴露一个展开项。
+     */
+    internal fun reuseEquivalentExpansion(
+        workspace: GraphDocument,
+        sourceInvocationNodeId: String,
+        targetSignature: String,
+    ): InvocationExpansionMergeResult? {
+        val equivalentEntries = InvocationExpansionRegistryBuilder.build(workspace)
+            .filter { entry ->
+                entry.sourceInvocationNodeId == sourceInvocationNodeId.trim() &&
+                    entry.targetSignature == targetSignature.trim()
+            }
+        if (equivalentEntries.isEmpty()) {
+            return null
+        }
+        val canonicalEntry = equivalentEntries.sortedWith(CANONICAL_EXPANSION_COMPARATOR).first()
+        if (equivalentEntries.size == 1) {
+            return InvocationExpansionMergeResult(
+                graph = workspace,
+                expansionId = canonicalEntry.expansionId,
+                reused = true,
+            )
+        }
+        val equivalentExpansionIds = equivalentEntries.mapTo(linkedSetOf(), InvocationExpansionRegistryEntry::expansionId)
+        val canonicalMetadata = canonicalExpansionMetadata(canonicalEntry)
+        val retainedCallEdgeId = workspace.edges
+            .asSequence()
+            .filter { edge ->
+                edge.type == EdgeType.CALL &&
+                    edge.metadata[EXPANSION_ID] == canonicalEntry.expansionId &&
+                    edge.fromNodeId == canonicalEntry.sourceInvocationNodeId
+            }
+            .map(GraphEdge::id)
+            .sorted()
+            .firstOrNull()
+            ?: workspace.edges
+                .asSequence()
+                .filter { edge ->
+                    edge.type == EdgeType.CALL &&
+                        edge.metadata[EXPANSION_ID] in equivalentExpansionIds &&
+                        edge.fromNodeId == canonicalEntry.sourceInvocationNodeId
+                }
+                .map(GraphEdge::id)
+                .sorted()
+                .firstOrNull()
+
+        val normalizedNodes = workspace.nodes.map { node ->
+            if (node.metadata[EXPANSION_ID] in equivalentExpansionIds &&
+                node.metadata[EXPANSION_ID] != canonicalEntry.expansionId
+            ) {
+                node.copy(metadata = node.metadata + canonicalMetadata)
+            } else {
+                node
+            }
+        }
+        val normalizedEdges = workspace.edges.mapNotNull { edge ->
+            val edgeExpansionId = edge.metadata[EXPANSION_ID]
+            if (edgeExpansionId !in equivalentExpansionIds || edgeExpansionId == canonicalEntry.expansionId) {
+                if (
+                    edge.type == EdgeType.CALL &&
+                    edgeExpansionId == canonicalEntry.expansionId &&
+                    edge.fromNodeId == canonicalEntry.sourceInvocationNodeId &&
+                    retainedCallEdgeId != null &&
+                    edge.id != retainedCallEdgeId
+                ) {
+                    null
+                } else {
+                    edge
+                }
+            } else if (edge.type == EdgeType.CALL && edge.fromNodeId == canonicalEntry.sourceInvocationNodeId) {
+                if (edge.id == retainedCallEdgeId) edge.copy(metadata = edge.metadata + canonicalMetadata) else null
+            } else {
+                edge.copy(metadata = edge.metadata + canonicalMetadata)
+            }
+        }
+        return InvocationExpansionMergeResult(
+            graph = GraphDocument(
+                nodes = normalizedNodes,
+                edges = normalizedEdges,
+                patch = workspace.patch,
+            ),
+            expansionId = canonicalEntry.expansionId,
+            reused = true,
+        )
+    }
+
+    private fun canonicalExpansionMetadata(
+        entry: InvocationExpansionRegistryEntry,
+    ): Map<String, String> = buildMap {
+        put(EXPANSION_ID, entry.expansionId)
+        entry.rootNodeId?.let { value -> put(EXPANSION_ROOT_NODE_ID, value) }
+        entry.sourceInvocationNodeId?.let { value -> put(EXPANSION_SOURCE_INVOCATION_NODE_ID, value) }
+        entry.targetSignature?.let { value -> put(EXPANSION_TARGET_SIGNATURE, value) }
+        entry.createdAt?.let { value -> put(EXPANSION_CREATED_AT, value) }
+        put(EXPANSION_KIND, EXPANSION_KIND_INVOCATION)
     }
 
     /**
@@ -215,6 +324,12 @@ class InvocationExpansionUseCase(
      * 展开元数据相关的常量定义集合。
      */
     companion object {
+        private val CANONICAL_EXPANSION_COMPARATOR =
+            compareByDescending<InvocationExpansionRegistryEntry> { entry -> entry.ownedNodeIds.size }
+                .thenByDescending { entry -> entry.childExpansionIds.size }
+                .thenBy { entry -> entry.createdAt ?: "\uffff" }
+                .thenBy(InvocationExpansionRegistryEntry::expansionId)
+
         const val EXPANSION_ID = "linkGraph.expansion.id"
         const val EXPANSION_ROOT_NODE_ID = "linkGraph.expansion.rootNodeId"
         const val EXPANSION_SOURCE_INVOCATION_NODE_ID = "linkGraph.expansion.sourceInvocationNodeId"

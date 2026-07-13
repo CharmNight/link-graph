@@ -71,8 +71,10 @@ data class GraphDiffContext(
     val diff: GraphDiff = GraphDiff(),
     /** 保存当前选中的差异条目标识列表。 */
     val selectedDiffItemIds: List<String> = emptyList(),
-    /** 保存 review graph 查询得到的最小证据包摘要。 */
-    val reviewEvidenceBundle: String = "",
+    /** 保存 review graph 查询得到的非源码结构化证据摘要。 */
+    val reviewEvidenceSummary: String = "",
+    /** 保存差异评审可选使用的源码片段；远程发送前必须经过授权策略。 */
+    val sourceContext: List<SourceSnippetContext> = emptyList(),
 )
 
 /**
@@ -100,28 +102,12 @@ enum class InvocationExpansionContextMode {
     ACTIVE_CHAIN,
 }
 
-/** 调用展开块在流程图中的运行时位置；这是 UI/session state，不写入语义图。 */
-data class InvocationExpansionBlockPosition(
-    val x: Double,
-    val y: Double,
-)
-
-/** 调用展开子状态快照，用于恢复父块重新打开后的子块状态。 */
-data class ChildInvocationExpansionState(
-    val activeExpansionId: String? = null,
-    val activeExpansionPath: List<String> = emptyList(),
-    val collapsedExpansionIds: Set<String> = emptySet(),
-    val activeSiblingByParentContext: Map<String, String> = emptyMap(),
-)
-
 /** 流程图调用展开的运行时场景状态。 */
 data class InvocationExpansionSceneState(
     val activeExpansionId: String? = null,
     val activeExpansionPath: List<String> = emptyList(),
     val collapsedExpansionIds: Set<String> = emptySet(),
     val activeSiblingByParentContext: Map<String, String> = emptyMap(),
-    val blockPositions: Map<String, InvocationExpansionBlockPosition> = emptyMap(),
-    val lastChildStateByExpansionId: Map<String, ChildInvocationExpansionState> = emptyMap(),
     val contextMode: InvocationExpansionContextMode = InvocationExpansionContextMode.ACTIVE_CHAIN,
 )
 
@@ -603,7 +589,7 @@ interface LlmGateway {
         request: LlmRequest,
         listener: (LlmStreamEvent) -> Unit,
     ): LlmResponse {
-        val response = generate(request.copy(deliveryMode = LlmDeliveryMode.FULL))
+        val response = generate(request.copy(deliveryMode = LlmDeliveryMode.FULL)).copy(rawBody = null)
         listener(LlmStreamEvent.Started(model = response.model))
         if (response.content.isNotEmpty()) {
             listener(LlmStreamEvent.TextDelta(response.content))

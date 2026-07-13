@@ -6,6 +6,7 @@ import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.application.usecase.GenerationUseCase
 import com.charmnight.linkgraph.application.usecase.GenerationUseCaseResult
 import com.charmnight.linkgraph.codegen.CodeGenerationResult
+import com.charmnight.linkgraph.codegen.CodeDraftCommand
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.agent.model.GenerationPlan
 import com.charmnight.linkgraph.agent.model.GenerationPlanSource
@@ -61,7 +62,7 @@ class GenerationUseCaseTest {
     @Test
     fun mapsPreparedDraftsToReadyResult() {
         val prepared = listOf(
-            GeneratedCodeDraft(
+            GeneratedCodeDraft.createFile(
                 id = "draft-1",
                 sourceNodeId = "node-1",
                 title = "Draft",
@@ -74,7 +75,14 @@ class GenerationUseCaseTest {
             runtimeResult = AgentRunResult(
                 finalState = runState(),
                 output = CodeGenerationResult(
-                    drafts = listOf(prepared.single().copy(content = "raw")),
+                    drafts = listOf(
+                        prepared.single().copy(
+                            command = CodeDraftCommand.CreateFile(
+                                targetPath = prepared.single().targetPath,
+                                content = "raw",
+                            ),
+                        ),
+                    ),
                     source = LlmResultSource.REMOTE,
                     promptPreview = "prompt",
                 ),

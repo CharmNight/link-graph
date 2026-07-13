@@ -18,6 +18,7 @@ import com.charmnight.linkgraph.agent.model.GraphDiffContext
 import com.charmnight.linkgraph.application.port.GraphDiffPatchPort
 import com.charmnight.linkgraph.agent.model.GraphPatchResult
 import com.charmnight.linkgraph.agent.model.LlmResultSource
+import com.charmnight.linkgraph.agent.model.SourceSnippetContext
 import com.charmnight.linkgraph.review.ReviewChangedSymbolEvidenceRef
 import com.charmnight.linkgraph.review.ReviewEvidenceBundle
 import com.charmnight.linkgraph.review.ReviewRelationEvidenceRef
@@ -269,14 +270,15 @@ internal class DiffReviewWorkflow(
                 designBaseline = designBaseline,
                 diff = diff,
                 selectedDiffItemIds = selectedDiffItemIds,
-                reviewEvidenceBundle = evidenceBuild?.bundle?.let(::summarizeReviewEvidenceBundle).orEmpty(),
+                reviewEvidenceSummary = evidenceBuild?.bundle?.let(::summarizeReviewEvidenceSummary).orEmpty(),
+                sourceContext = evidenceBuild?.bundle?.let(::reviewSourceContext).orEmpty(),
             ),
             warnings = evidenceBuild?.warnings.orEmpty() + listOfNotNull(warning),
         )
     }
 
-    /** 将证据包压缩为 LLM 可读的多行文本摘要，包含变更符号、影响范围、上下游调用、动态关系等。 */
-    private fun summarizeReviewEvidenceBundle(bundle: ReviewEvidenceBundle): String {
+    /** 将证据包压缩为不含源码原文的结构化摘要。 */
+    private fun summarizeReviewEvidenceSummary(bundle: ReviewEvidenceBundle): String {
         val changed = bundle.changedSymbols.joinToString("\n") { symbol ->
             "- changed ${symbol.qualifiedName} | file=${symbol.filePath ?: "unknown"} | lines=${symbol.startLine ?: "?"}-${symbol.endLine ?: "?"} | hunk=${symbol.hunk?.header ?: "file"} | baselineOnly=${symbol.baselineOnly} | unavailable=${symbol.unavailableReason ?: "none"}"
         }.ifBlank { "- 无" }
@@ -318,11 +320,6 @@ internal class DiffReviewWorkflow(
                         append(ref.decompiled)
                     }
                 }
-                val snippet = ref.snippet?.snippet?.takeIf(String::isNotBlank)
-                if (snippet != null) {
-                    append("\n  snippet:\n")
-                    append(snippet.lineSequence().take(12).joinToString("\n") { line -> "  $line" })
-                }
             }
         }.ifBlank { "- 无" }
         val dynamic = (bundle.blastRadius.serviceLoaderLoads + bundle.blastRadius.proxyTargets).take(20).joinToString("\n") { relation ->
@@ -343,6 +340,49 @@ internal class DiffReviewWorkflow(
             $evidence
         """.trimIndent()
     }
+
+    /** 从审查证据中提取源码片段，交由远程源码授权策略统一处理。 */
+    private fun reviewSourceContext(bundle: ReviewEvidenceBundle): List<SourceSnippetContext> =
+        bundle.evidenceRefs.mapNotNull { ref ->
+            val snippet = ref.snippet ?: return@mapNotNull null
+            val identity = when (ref) {
+                is ReviewChangedSymbolEvidenceRef -> ReviewSourceIdentity(
+                    nodeId = ref.symbolId,
+                    filePath = ref.filePath,
+                    startLine = ref.startLine,
+                    endLine = ref.endLine,
+                )
+                is ReviewRelationEvidenceRef -> ReviewSourceIdentity(
+                    nodeId = ref.relationId,
+                    filePath = ref.filePath,
+                    startLine = ref.startLine,
+                    endLine = ref.endLine,
+                )
+                is ReviewSymbolEvidenceRef -> ReviewSourceIdentity(
+                    nodeId = ref.symbolId,
+                    filePath = ref.filePath,
+                )
+            }
+            val filePath = identity.filePath?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+            SourceSnippetContext(
+                nodeId = identity.nodeId,
+                filePath = filePath,
+                startLine = snippet.snippetStartLine ?: identity.startLine,
+                endLine = snippet.snippetEndLine ?: identity.endLine,
+                snippet = snippet.snippet,
+                origin = snippet.snippetOrigin,
+                decompiled = snippet.snippetDecompiled,
+                virtualFileUrl = snippet.snippetVirtualFileUrl,
+            )
+        }
+
+    /** 统一承载不同 review evidence ref 的源码定位字段。 */
+    private data class ReviewSourceIdentity(
+        val nodeId: String,
+        val filePath: String?,
+        val startLine: Int? = null,
+        val endLine: Int? = null,
+    )
 
     /** 统一的事件发送出口，封装对事件总线的访问。 */
     private fun emit(event: GraphEditorApplicationEvent) = eventSink.emit(event)

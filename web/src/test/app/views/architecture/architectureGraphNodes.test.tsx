@@ -306,8 +306,8 @@ function architectureNode({
     title,
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
     metadata: {
       "architecture.node.kind": nodeKind,
       "architecture.boundary.kind": boundaryKind,

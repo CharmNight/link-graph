@@ -18,8 +18,7 @@ import type {
 
 const DEFAULT_FLOWCHART_NODE_HEIGHT = 156;
 const FRAME_PADDING_X = 34;
-const FRAME_HEADER_HEIGHT = 54;
-const FRAME_PADDING_BOTTOM = 28;
+const FRAME_PADDING_Y = 28;
 
 interface FlowchartInvocationExpansionFramesProps {
   nodes: LinkGraphNode[];
@@ -118,9 +117,9 @@ function buildExpansionFrame(
     sourceTitle: sourceInvocationTitle(entry, nodeIndex),
     targetTitle: expansionTitle(entry, nodeIndex),
     style: {
-      transform: `translate(${Math.round(left - FRAME_PADDING_X)}px, ${Math.round(top - FRAME_HEADER_HEIGHT)}px)`,
+      transform: `translate(${Math.round(left - FRAME_PADDING_X)}px, ${Math.round(top - FRAME_PADDING_Y)}px)`,
       width: Math.round(right - left + FRAME_PADDING_X * 2),
-      height: Math.round(bottom - top + FRAME_HEADER_HEIGHT + FRAME_PADDING_BOTTOM),
+      height: Math.round(bottom - top + FRAME_PADDING_Y * 2),
     },
   };
 }
@@ -150,7 +149,11 @@ export function FlowchartInvocationExpansionFrames({
           aria-label={`调用展开 ${frame.sourceTitle} 到 ${frame.targetTitle}`}
           style={frame.style}
         >
-          <div className="flowchart-invocation-expansion-frame__header">
+          <div
+            className="flowchart-invocation-expansion-frame__header"
+            data-testid={`flowchart-invocation-expansion-label-${frame.expansionId}`}
+            data-compact="true"
+          >
             <span>调用展开</span>
             <strong
               className="flowchart-invocation-expansion-frame__source"

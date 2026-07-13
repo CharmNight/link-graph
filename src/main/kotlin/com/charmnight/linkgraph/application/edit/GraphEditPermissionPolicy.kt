@@ -76,12 +76,12 @@ class GraphEditPermissionPolicy {
                     resolutionBuilder.nodeTargetId(operation.edge.toNodeId, targetToNodeId)
                     val existingEdge = edgesById[targetEdgeId]
                     val allowed = if (existingEdge != null) {
-                        val requestedEdge = operation.edge.copy(
-                            id = targetEdgeId,
-                            fromNodeId = targetFromNodeId,
-                            toNodeId = targetToNodeId,
-                        )
-                        requestedEdge == existingEdge ||
+                        operation.edge.matchesExistingEdge(
+                            existing = existingEdge,
+                            targetEdgeId = targetEdgeId,
+                            targetFromNodeId = targetFromNodeId,
+                            targetToNodeId = targetToNodeId,
+                        ) ||
                             projectionIndex.edgeMapping(operation.edge.id)?.let { mapping ->
                                 GraphEditCommandKind.INSERT_NODE_INTO_EDGE in mapping.editableCommandKinds
                             } == true
@@ -248,3 +248,17 @@ class GraphEditPermissionPolicy {
             retryable = false,
         )
 }
+
+/** 判断一次 intent-only 边编辑是否只是现有边的等价回放。 */
+private fun com.charmnight.linkgraph.application.model.GraphEdgeEditInput.matchesExistingEdge(
+    existing: GraphEdge,
+    targetEdgeId: String,
+    targetFromNodeId: String,
+    targetToNodeId: String,
+): Boolean =
+    id == targetEdgeId &&
+        type == existing.type &&
+        targetFromNodeId == existing.fromNodeId &&
+        targetToNodeId == existing.toNodeId &&
+        label == existing.label &&
+        metadata.all { (key, value) -> existing.metadata[key] == value }

@@ -9,7 +9,7 @@ import com.charmnight.linkgraph.agent.model.GenerationPlan
 import com.charmnight.linkgraph.agent.model.GenerationPlanItem
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import kotlin.test.Test
@@ -27,7 +27,7 @@ class GraphEditorTransportSliceRendererTest {
             semanticRevision = 1,
             layoutRevision = 1,
             generatedCodeDrafts = listOf(
-                GeneratedCodeDraft(
+                GeneratedCodeDraft.createFile(
                     id = "draft-1",
                     sourceNodeId = "class:order-draft-dto",
                     title = "OrderDraftDto.java",
@@ -164,7 +164,7 @@ class GraphEditorTransportSliceRendererTest {
                 promptPreview = "system: generate plan\nuser: inspect graph",
             ),
             generatedCodeDrafts = listOf(
-                GeneratedCodeDraft(
+                GeneratedCodeDraft.createFile(
                     id = "draft-1",
                     sourceNodeId = "class:order-draft-dto",
                     title = "OrderDraftDto.java",
@@ -212,7 +212,7 @@ class GraphEditorTransportSliceRendererTest {
         val current = snapshot(
             snapshotRevision = 12,
             generatedCodeDrafts = listOf(
-                GeneratedCodeDraft(
+                GeneratedCodeDraft.createFile(
                     id = "draft-1",
                     sourceNodeId = "class:order-draft-dto",
                     title = "OrderDraftDto.java",
@@ -241,12 +241,38 @@ class GraphEditorTransportSliceRendererTest {
     }
 
     @Test
+    fun oversizedDraftContentArtifactIsOmittedInsteadOfDuplicatedInRegistry() {
+        val renderer = GraphEditorTransportSliceRenderer()
+        val oversizedContent = "x".repeat(GraphEditorArtifactRegistry.MAX_ARTIFACT_CONTENT_BYTES + 1)
+        val current = snapshot(
+            snapshotRevision = 13,
+            generatedCodeDrafts = listOf(
+                GeneratedCodeDraft.createFile(
+                    id = "draft-huge",
+                    sourceNodeId = "class:huge-draft",
+                    title = "HugeDraft.java",
+                    targetPath = "src/main/java/com/example/HugeDraft.java",
+                    content = oversizedContent,
+                ),
+            ),
+        )
+
+        val artifactRefs = renderer.prepareSnapshotArtifacts(current)
+
+        val artifactId = assertNotNull(artifactRefs.generatedCodeDraftContentArtifactIds["draft-huge"])
+        val storedContent = assertNotNull(renderer.artifactContents(listOf(artifactId))[artifactId])
+        assertTrue(storedContent.contains("过大"))
+        assertTrue(storedContent.length < 512)
+        assertFalse(storedContent.contains(oversizedContent.take(128)))
+    }
+
+    @Test
     fun incrementalRenderDoesNotReplaceCommittedArtifactsBeforeDispatchCommit() {
         val renderer = GraphEditorTransportSliceRenderer()
         val previous = snapshot(
             snapshotRevision = 30,
             generatedCodeDrafts = listOf(
-                GeneratedCodeDraft(
+                GeneratedCodeDraft.createFile(
                     id = "draft-1",
                     sourceNodeId = "class:order-draft-dto",
                     title = "OrderDraftDto.java",
@@ -265,7 +291,7 @@ class GraphEditorTransportSliceRendererTest {
         val current = previous.copy(
             snapshotRevision = 31,
             generatedCodeDrafts = listOf(
-                GeneratedCodeDraft(
+                GeneratedCodeDraft.createFile(
                     id = "draft-1",
                     sourceNodeId = "class:order-draft-dto",
                     title = "OrderDraftDto.java",
@@ -300,7 +326,7 @@ class GraphEditorTransportSliceRendererTest {
         val previous = snapshot(
             snapshotRevision = 50,
             generatedCodeDrafts = listOf(
-                GeneratedCodeDraft(
+                GeneratedCodeDraft.createFile(
                     id = "draft-1",
                     sourceNodeId = "class:order-draft-dto",
                     title = "OrderDraftDto.java",
@@ -317,7 +343,7 @@ class GraphEditorTransportSliceRendererTest {
         val current = previous.copy(
             snapshotRevision = 51,
             generatedCodeDrafts = listOf(
-                GeneratedCodeDraft(
+                GeneratedCodeDraft.createFile(
                     id = "draft-1",
                     sourceNodeId = "class:order-draft-dto",
                     title = "OrderDraftDto.java",
@@ -378,7 +404,7 @@ class GraphEditorTransportSliceRendererTest {
         )
         service.asyncRequests.markGeneratedCodeDrafts(
             drafts = listOf(
-                GeneratedCodeDraft(
+                GeneratedCodeDraft.createFile(
                     id = "draft-1",
                     sourceNodeId = "class:order-draft-dto",
                     title = "OrderDraftDto.java",
@@ -449,14 +475,14 @@ class GraphEditorTransportSliceRendererTest {
             snapshot = snapshot(
                 snapshotRevision = 12,
                 generatedCodeDrafts = listOf(
-                    GeneratedCodeDraft(
+                    GeneratedCodeDraft.createFile(
                         id = "draft-1",
                         sourceNodeId = "class:order-draft-dto",
                         title = "OrderDraftDto.java",
                         targetPath = "src/main/java/com/example/OrderDraftDto.java",
                         content = "package com.example;\npublic class OrderDraftDto {}",
                     ),
-                    GeneratedCodeDraft(
+                    GeneratedCodeDraft.patchExistingFile(
                         id = "draft-2",
                         sourceNodeId = "method:submit-order",
                         title = "OrderController.java",
@@ -507,7 +533,7 @@ class GraphEditorTransportSliceRendererTest {
                     id = "method:submit-order",
                     type = NodeType.METHOD,
                     title = "OrderController.submit",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )

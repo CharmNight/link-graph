@@ -6,13 +6,10 @@ import com.charmnight.linkgraph.application.model.GraphEditOperation
 import com.charmnight.linkgraph.application.model.GraphEditRequest
 import com.charmnight.linkgraph.application.model.GraphEditRequestParseResult
 import com.charmnight.linkgraph.application.model.GraphEditRequestSource
+import com.charmnight.linkgraph.application.model.GraphEdgeEditInput
+import com.charmnight.linkgraph.application.model.GraphNodeEditInput
 import com.charmnight.linkgraph.application.model.GraphSceneId
-import com.charmnight.linkgraph.model.BindingStatus
-import com.charmnight.linkgraph.model.Certainty
 import com.charmnight.linkgraph.model.EdgeType
-import com.charmnight.linkgraph.model.GraphEdge
-import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 
 /**
@@ -29,6 +26,11 @@ import com.charmnight.linkgraph.model.NodeType
  * 不再依赖 runCatching 捕获异常。
  */
 object GraphEditRequestPayloadParser {
+    /** 单个图编辑请求序列化后的最大字符数，前端 bridge 与 agent 工具入口共用。 */
+    const val MAX_SERIALIZED_PAYLOAD_CHARS: Int = 512 * 1024
+    /** 单个图编辑请求允许携带的最大操作数，避免小字段大数组绕过总字符上限后冲击后续流程。 */
+    const val MAX_OPERATIONS: Int = 512
+
     /**
      * 解析图谱编辑请求的根负载。
      *
@@ -55,7 +57,12 @@ object GraphEditRequestPayloadParser {
         val baseWorkspaceRevision = (root["baseWorkspaceRevision"] as? Number)?.toLong()
             ?: fail("graph edit request baseWorkspaceRevision is required")
         val source = root.enum<GraphEditRequestSource>("source")
-        val operations = (root["operations"] as? List<*>).orEmpty().mapIndexed { index, raw ->
+        val rawOperations = (root["operations"] as? List<*>).orEmpty()
+        requireField(
+            rawOperations.size <= MAX_OPERATIONS,
+            "graph edit request operations exceed limit: ${rawOperations.size} > $MAX_OPERATIONS",
+        )
+        val operations = rawOperations.mapIndexed { index, raw ->
             parseOperation(raw as? Map<*, *>, index)
         }
         return GraphEditRequest(
@@ -93,25 +100,19 @@ object GraphEditRequestPayloadParser {
     private fun parseGraphNode(
         raw: Map<*, *>?,
         index: Int,
-    ): GraphNode {
+    ): GraphNodeEditInput {
         raw ?: fail("graph edit request operation[$index].node is required", index)
-        return GraphNode(
+        raw.requireOnlyFields(NODE_EDIT_FIELDS, "node", index)
+        return GraphNodeEditInput(
             id = raw.requiredString("id", "graph edit request operation[$index].node.id"),
             type = raw.enum("type"),
             title = (raw["title"] as? String)?.takeIf(String::isNotBlank)
                 ?: (raw["label"] as? String)?.takeIf(String::isNotBlank)
                 ?: raw.requiredString("id", "graph edit request operation[$index].node.id"),
-            location = raw["location"] as? String,
-            signature = raw["signature"] as? String,
             inputs = raw.stringList("inputs"),
             outputs = raw.stringList("outputs"),
             doc = raw["doc"] as? String,
-            sourceKind = raw["sourceKind"] as? String,
-            status = raw["status"] as? String,
-            bindingStatus = raw.enumOrDefault("bindingStatus", BindingStatus.BOUND),
-            certainty = raw.enumOrDefault("certainty", Certainty.PROVEN),
             metadata = raw.stringMap("metadata"),
-            sourceTag = raw.enumOrDefault("sourceTag", GraphSourceTag.FACT),
         )
     }
 
@@ -121,19 +122,16 @@ object GraphEditRequestPayloadParser {
     private fun parseGraphEdge(
         raw: Map<*, *>?,
         index: Int,
-    ): GraphEdge {
+    ): GraphEdgeEditInput {
         raw ?: fail("graph edit request operation[$index].edge is required", index)
-        return GraphEdge(
+        raw.requireOnlyFields(EDGE_EDIT_FIELDS, "edge", index)
+        return GraphEdgeEditInput(
             id = raw.requiredString("id", "graph edit request operation[$index].edge.id"),
             type = raw.enum("type"),
             fromNodeId = raw.requiredString("fromNodeId", "graph edit request operation[$index].edge.fromNodeId"),
             toNodeId = raw.requiredString("toNodeId", "graph edit request operation[$index].edge.toNodeId"),
             label = raw["label"] as? String,
-            certainty = raw.enumOrDefault("certainty", Certainty.PROVEN),
-            bindingStatus = raw.enumOrDefault("bindingStatus", BindingStatus.BOUND),
-            status = raw["status"] as? String,
             metadata = raw.stringMap("metadata"),
-            sourceTag = raw.enumOrDefault("sourceTag", GraphSourceTag.FACT),
         )
     }
 
@@ -188,16 +186,20 @@ object GraphEditRequestPayloadParser {
         return enumValues<T>().firstOrNull { it.name == raw } ?: fail("$key has unsupported value: $raw")
     }
 
-    /**
-     * 读取可选的枚举字段，缺省时返回传入的默认值，无法匹配时报错。
-     */
-    private inline fun <reified T : Enum<T>> Map<*, *>.enumOrDefault(
-        key: String,
-        defaultValue: T,
-    ): T {
-        val raw = this[key] as? String ?: return defaultValue
-        return enumValues<T>().firstOrNull { it.name == raw } ?: fail("$key has unsupported value: $raw")
+    /** 拒绝边界 DTO 未声明的字段，避免调用方误以为信任字段会生效。 */
+    private fun Map<*, *>.requireOnlyFields(
+        allowed: Set<String>,
+        subject: String,
+        operationIndex: Int,
+    ) {
+        val unsupported = keys.filterIsInstance<String>().filterNot(allowed::contains).sorted()
+        if (unsupported.isNotEmpty()) {
+            fail("graph edit request operation[$operationIndex].$subject has unsupported fields: ${unsupported.joinToString()}", operationIndex)
+        }
     }
+
+    private val NODE_EDIT_FIELDS = setOf("id", "type", "title", "label", "inputs", "outputs", "doc", "metadata")
+    private val EDGE_EDIT_FIELDS = setOf("id", "type", "fromNodeId", "toNodeId", "label", "metadata")
 }
 
 /**

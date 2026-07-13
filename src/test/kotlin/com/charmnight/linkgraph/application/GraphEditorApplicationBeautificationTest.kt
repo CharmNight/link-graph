@@ -8,7 +8,7 @@ import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.workbench.AssistantActionId
@@ -52,7 +52,7 @@ class GraphEditorApplicationBeautificationTest : BasePlatformTestCase() {
                 "source.startOffset" to snippetStart.toString(),
                 "source.endOffset" to snippetEnd.toString(),
             ),
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
         )
         val hiddenActionNode = GraphNode(
             id = "flow-action:return-user",
@@ -63,21 +63,21 @@ class GraphEditorApplicationBeautificationTest : BasePlatformTestCase() {
                 "flow.anchorMethod" to methodSignature,
                 "flow.ownerMethod" to methodSignature,
             ),
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
         )
         val methodNode = GraphNode(
             id = GraphNode.stableId(NodeType.METHOD, methodSignature),
             type = NodeType.METHOD,
             title = "ShiroUtils.getSysUser",
             signature = methodSignature,
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
         )
         val crossMethodNode = GraphNode(
             id = "method:downstream-helper",
             type = NodeType.METHOD,
             title = "UserMapper.selectUserById",
             signature = "com.ruoyi.system.mapper.UserMapper.selectUserById(java.lang.Long):SysUser",
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
         )
         val visibleGraph = GraphDocument(
             nodes = listOf(methodNode, visibleActionNode),
@@ -143,7 +143,7 @@ class GraphEditorApplicationBeautificationTest : BasePlatformTestCase() {
             type = NodeType.METHOD,
             title = "DownloadController.fileDownload",
             signature = methodSignature,
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
         )
         val actionNode = GraphNode(
             id = "flow-action:method-signature",
@@ -156,7 +156,7 @@ class GraphEditorApplicationBeautificationTest : BasePlatformTestCase() {
                 "source.startOffset" to lineStart.toString(),
                 "source.endOffset" to lineEnd.toString(),
             ),
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
         )
 
         val stateService = project.getService(GraphEditorStateService::class.java)
@@ -191,21 +191,21 @@ class GraphEditorApplicationBeautificationTest : BasePlatformTestCase() {
             type = NodeType.METHOD,
             title = "ShiroUtils.setSysUser",
             signature = methodSignature,
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
         )
         val visibleDraftNode = GraphNode(
             id = "doc:manual-note",
             type = NodeType.DOC_PAGE,
             title = "人工补充说明",
             doc = "当前画布里新增的说明节点。",
-            sourceTag = GraphSourceTag.DRAFT_MANUAL,
+            provenance = GraphProvenance.USER_DRAFT,
         )
         val staleFactOnlyCrossNode = GraphNode(
             id = "method:fallback-guard",
             type = NodeType.METHOD,
             title = "FallbackGuard.handle",
             signature = "com.example.FallbackGuard.handle():void",
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
         )
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraphProjection(
@@ -218,7 +218,7 @@ class GraphEditorApplicationBeautificationTest : BasePlatformTestCase() {
                         type = EdgeType.CALL,
                         fromNodeId = methodNode.id,
                         toNodeId = staleFactOnlyCrossNode.id,
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
             ),

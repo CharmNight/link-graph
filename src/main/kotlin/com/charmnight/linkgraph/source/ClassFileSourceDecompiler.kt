@@ -2,11 +2,12 @@ package com.charmnight.linkgraph.source
 
 import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VirtualFile
-import java.net.URLClassLoader
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Comparator
+import java.util.jar.JarEntry
 import java.util.jar.JarFile
+import java.util.jar.JarOutputStream
 
 /**
  * 字节码反编译工具：通过 IntelliJ 内置 ClassFileDecompiler 反编译 .class 文件，
@@ -59,6 +60,9 @@ internal object ClassFileSourceDecompiler {
     ): Result {
         val normalizedJar = jarPath.normalize().takeIf(Files::isRegularFile)
             ?: return Result(null, "CLASS_JAR_NOT_FOUND")
+        classEntryLimitFailure(normalizedJar, classEntryName)?.let { diagnostic ->
+            return Result(null, diagnostic)
+        }
         val virtualFile = runCatching {
             StandardFileSystems.jar().let { jarFileSystem ->
                 jarFileSystem.refreshAndFindFileByPath("${normalizedJar}!/$classEntryName")
@@ -84,32 +88,26 @@ internal object ClassFileSourceDecompiler {
         return decompileJarEntryWithDiagnostic(jarPath, classEntryName).text
     }
 
-    /** 使用独立 FernFlower 反编译 jar：先尝试同进程加载，失败再尝试外部进程，并清理临时目录。 */
+    /** 使用独立 FernFlower 子进程反编译仅含目标类族的临时 jar。 */
     private fun decompileWithFernflower(
         inputJar: Path,
         classEntryName: String,
     ): Result {
         val decompilerJar = fernflowerJar()
             ?: return Result(null, "FERNFLOWER_JAR_NOT_FOUND")
-        val outputDir = Files.createTempDirectory("link-graph-decompile")
-        try {
-            if (runFernflowerInProcess(inputJar, outputDir, decompilerJar) == true) {
-                readFernflowerOutput(outputDir, inputJar.fileName.toString(), classEntryName)
-                    ?.takeIf(::looksLikeDecompiledJava)
-                    ?.let { text -> return Result(text) }
-            }
-        } finally {
-            runCatching {
-                Files.walk(outputDir)
-                    .sorted(Comparator.reverseOrder())
-                    .forEach(Files::deleteIfExists)
-            }
-        }
-        val processOutputDir = Files.createTempDirectory("link-graph-decompile-process")
+        val workDir = Files.createTempDirectory("link-graph-decompile")
         return try {
-            runFernflowerOutOfProcess(inputJar, processOutputDir, decompilerJar)
+            val boundedInputJar = workDir.resolve("input.jar")
+            val outputDir = workDir.resolve("output")
+            Files.createDirectories(outputDir)
+            runCatching {
+                createBoundedFernflowerInputJar(inputJar, classEntryName, boundedInputJar)
+            }.getOrElse { error ->
+                return Result(null, error.message ?: "FERNFLOWER_INPUT_INVALID")
+            }
+            runFernflowerOutOfProcess(boundedInputJar, outputDir, decompilerJar)
                 ?: return Result(null, "FERNFLOWER_PROCESS_FAILED")
-            val text = readFernflowerOutput(processOutputDir, inputJar.fileName.toString(), classEntryName)
+            val text = readFernflowerOutput(outputDir, boundedInputJar.fileName.toString(), classEntryName)
                 ?.takeIf(::looksLikeDecompiledJava)
             if (text == null) {
                 Result(null, "FERNFLOWER_OUTPUT_MISSING")
@@ -118,7 +116,7 @@ internal object ClassFileSourceDecompiler {
             }
         } finally {
             runCatching {
-                Files.walk(processOutputDir)
+                Files.walk(workDir)
                     .sorted(Comparator.reverseOrder())
                     .forEach(Files::deleteIfExists)
             }
@@ -131,10 +129,10 @@ internal object ClassFileSourceDecompiler {
         inputJarName: String,
         classEntryName: String,
     ): String? {
-        val javaEntryName = classEntryName.removeSuffix(".class") + ".java"
+        val javaEntryName = classEntryName.removeSuffix(".class").substringBefore('$') + ".java"
         val exploded = outputDir.resolve(javaEntryName)
         if (Files.isRegularFile(exploded)) {
-            return Files.readString(exploded)
+            return readFileTextBounded(exploded, SourceArchiveReadLimits.MAX_FERNFLOWER_OUTPUT_BYTES)
         }
         val candidateJars = buildList {
             add(outputDir.resolve(inputJarName))
@@ -158,20 +156,8 @@ internal object ClassFileSourceDecompiler {
         return runCatching {
             JarFile(jarPath.toFile()).use { jar ->
                 val entry = jar.getJarEntry(entryName) ?: return null
-                jar.getInputStream(entry).bufferedReader(Charsets.UTF_8).use { reader -> reader.readText() }
+                jar.readEntryTextBounded(entry, SourceArchiveReadLimits.MAX_FERNFLOWER_OUTPUT_BYTES)
             }
-        }.getOrNull()
-    }
-
-    /** 在当前进程内通过 URLClassLoader 加载 FernFlower 并执行反编译，成功返回 true。 */
-    private fun runFernflowerInProcess(inputJar: Path, outputDir: Path, decompilerJar: Path): Boolean? {
-        return runCatching {
-            URLClassLoader(arrayOf(decompilerJar.toUri().toURL()), javaClass.classLoader).use { loader ->
-                val main = loader.loadClass("org.jetbrains.java.decompiler.main.decompiler.ConsoleDecompiler")
-                    .getMethod("main", Array<String>::class.java)
-                main.invoke(null, arrayOf("-log=ERROR", inputJar.toString(), outputDir.toString()) as Any)
-            }
-            true
         }.getOrNull()
     }
 
@@ -182,7 +168,7 @@ internal object ClassFileSourceDecompiler {
                 .takeIf(Files::isRegularFile)
                 ?.toString()
                 ?: "java"
-            val exitCode = ProcessBuilder(
+            val process = ProcessBuilder(
                 javaExecutable,
                 "-cp",
                 decompilerJar.toString(),
@@ -193,11 +179,87 @@ internal object ClassFileSourceDecompiler {
             )
                 .redirectErrorStream(true)
                 .start()
-                .apply { inputStream.bufferedReader().use { reader -> reader.readText() } }
-                .waitFor()
-            exitCode == 0
+            val result = TimedProcessRunner.run(
+                process = process,
+                timeoutMillis = FERNFLOWER_PROCESS_TIMEOUT_MILLIS,
+                maxOutputBytes = SourceArchiveReadLimits.MAX_FERNFLOWER_PROCESS_OUTPUT_BYTES,
+            )
+            !result.timedOut && !result.outputLimitExceeded && result.exitCode == 0
         }.getOrNull()?.takeIf { it }
     }
+
+    /**
+     * 构建 Fernflower 的最小输入归档：只复制目标外部类及其所有 `$` 嵌套类。
+     * 条目数、单项大小和总字节数均有硬限制，任何超限都会拒绝整个反编译请求。
+     */
+    internal fun createBoundedFernflowerInputJar(
+        sourceJar: Path,
+        requestedClassEntryName: String,
+        targetJar: Path,
+    ): List<String> {
+        require(requestedClassEntryName.endsWith(".class")) { "FERNFLOWER_INPUT_NOT_CLASS" }
+        require(!requestedClassEntryName.startsWith('/') && ".." !in requestedClassEntryName.split('/')) {
+            "FERNFLOWER_INPUT_ENTRY_INVALID"
+        }
+        val classBase = requestedClassEntryName.removeSuffix(".class").substringBefore('$')
+        val outerEntryName = "$classBase.class"
+        val nestedPrefix = "$classBase\$"
+        return JarFile(sourceJar.toFile()).use { jar ->
+            val selected = jar.entries().asSequence()
+                .filterNot(JarEntry::isDirectory)
+                .filter { entry ->
+                    entry.name == outerEntryName ||
+                        (entry.name.startsWith(nestedPrefix) && entry.name.endsWith(".class"))
+                }
+                .sortedWith(
+                    compareBy<JarEntry>(
+                        { entry -> entry.name.count { character -> character == '$' } },
+                        JarEntry::getName,
+                    ),
+                )
+                .toList()
+            require(selected.any { entry -> entry.name == requestedClassEntryName }) {
+                "CLASS_JAR_ENTRY_NOT_FOUND"
+            }
+            require(selected.size <= SourceArchiveReadLimits.MAX_FERNFLOWER_INPUT_ENTRIES) {
+                "FERNFLOWER_INPUT_ENTRY_LIMIT"
+            }
+            var totalBytes = 0L
+            val copied = mutableListOf<String>()
+            targetJar.parent?.let(Files::createDirectories)
+            JarOutputStream(Files.newOutputStream(targetJar)).use { output ->
+                selected.forEach { entry ->
+                    val bytes = jar.readEntryBytesBounded(entry, SourceArchiveReadLimits.MAX_CLASS_ENTRY_BYTES)
+                        ?: error("FERNFLOWER_INPUT_CLASS_TOO_LARGE")
+                    totalBytes += bytes.size
+                    require(totalBytes <= SourceArchiveReadLimits.MAX_FERNFLOWER_INPUT_BYTES) {
+                        "FERNFLOWER_INPUT_BYTE_LIMIT"
+                    }
+                    output.putNextEntry(JarEntry(entry.name))
+                    output.write(bytes)
+                    output.closeEntry()
+                    copied += entry.name
+                }
+            }
+            copied
+        }
+    }
+
+    /** 校验反编译目标 class 条目存在且不超过大小上限。 */
+    private fun classEntryLimitFailure(jarPath: Path, entryName: String): String? =
+        runCatching {
+            JarFile(jarPath.toFile()).use { jar ->
+                val entry = jar.getJarEntry(entryName) ?: return@use "CLASS_JAR_ENTRY_NOT_FOUND"
+                if (entry.isDirectory) {
+                    return@use "CLASS_JAR_ENTRY_NOT_FOUND"
+                }
+                if (jar.isEntryWithinLimit(entry, SourceArchiveReadLimits.MAX_CLASS_ENTRY_BYTES)) {
+                    null
+                } else {
+                    "JAR_ENTRY_TOO_LARGE"
+                }
+            }
+        }.getOrElse { error -> error.message ?: error.javaClass.simpleName }
 
     /** 查找 FernFlower 反编译 jar：依次搜索 classpath、IDE 安装目录，最后回落到 Gradle 缓存。 */
     private fun fernflowerJar(): Path? {
@@ -241,4 +303,6 @@ internal object ClassFileSourceDecompiler {
         }
         return listOf(" class ", " interface ", " enum ", " record ", "@interface ").any(text::contains)
     }
+
+    private const val FERNFLOWER_PROCESS_TIMEOUT_MILLIS: Long = 30_000
 }

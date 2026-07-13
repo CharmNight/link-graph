@@ -11,6 +11,55 @@ import kotlin.test.assertTrue
 
 class GraphModelTest {
     @Test
+    fun serializesOnlyOrthogonalGraphTrustFields() {
+        val json = GraphJson.toJson(
+            GraphDocument(
+                nodes = listOf(
+                    GraphNode(
+                        id = "draft:order-service",
+                        type = NodeType.SERVICE,
+                        title = "Order Service",
+                        provenance = GraphProvenance.USER_DRAFT,
+                        confidence = GraphConfidence.DECLARED,
+                        binding = GraphBinding.DESIGN_ONLY,
+                    ),
+                ),
+            ),
+        )
+
+        assertTrue(json.contains("\"provenance\":\"USER_DRAFT\""))
+        assertTrue(json.contains("\"confidence\":\"DECLARED\""))
+        assertTrue(json.contains("\"binding\":\"DESIGN_ONLY\""))
+        assertFalse(json.contains("\"sourceTag\""))
+        assertFalse(json.contains("\"certainty\""))
+        assertFalse(json.contains("\"bindingStatus\""))
+    }
+
+    @Test
+    fun graphJsonRejectsLegacyTrustFieldsInsteadOfMergingThem() {
+        val error = assertFailsWith<IllegalStateException> {
+            GraphJson.fromJson(
+                """
+                    {
+                      "nodes": [{
+                        "id": "draft:order-service",
+                        "type": "SERVICE",
+                        "title": "Order Service",
+                        "provenance": "USER_DRAFT",
+                        "confidence": "DECLARED",
+                        "binding": "DESIGN_ONLY",
+                        "sourceTag": "FACT"
+                      }],
+                      "edges": []
+                    }
+                """.trimIndent(),
+            )
+        }
+
+        assertTrue(error.message.orEmpty().contains("sourceTag"))
+    }
+
+    @Test
     fun stableNodeIdNormalization() {
         val stableId = GraphNode.stableId(
             type = NodeType.METHOD,
@@ -66,8 +115,8 @@ class GraphModelTest {
             doc = "Generated from bytecode",
             sourceKind = "JAVA_METHOD",
             status = "DISCOVERED",
-            certainty = Certainty.LLM_SUGGESTED,
-            bindingStatus = BindingStatus.DESIGN_ONLY,
+            confidence = GraphConfidence.SUGGESTED,
+            binding = GraphBinding.DESIGN_ONLY,
             uncertainty = GraphUncertainty(
                 reason = "symbol unresolved",
                 confidence = 0.35,
@@ -87,7 +136,7 @@ class GraphModelTest {
 
         val parsed = GraphJson.fromJson(json)
         val parsedNode = parsed.nodes.single()
-        assertEquals(Certainty.LLM_SUGGESTED, parsedNode.certainty)
+        assertEquals(GraphConfidence.SUGGESTED, parsedNode.confidence)
         assertEquals("missing", parsedNode.title)
         assertEquals("src/main/java/com/example/Service.java:42", parsedNode.location)
         assertEquals("missing(java.lang.String):void", parsedNode.signature)
@@ -96,7 +145,7 @@ class GraphModelTest {
         assertEquals("Generated from bytecode", parsedNode.doc)
         assertEquals("JAVA_METHOD", parsedNode.sourceKind)
         assertEquals("DISCOVERED", parsedNode.status)
-        assertEquals(BindingStatus.DESIGN_ONLY, parsedNode.bindingStatus)
+        assertEquals(GraphBinding.DESIGN_ONLY, parsedNode.binding)
         assertEquals(DiffStatus.ONLY_IN_CODE, parsedNode.diff.status)
         assertNotNull(parsedNode.uncertainty)
         assertEquals("symbol unresolved", parsedNode.uncertainty.reason)
@@ -108,7 +157,7 @@ class GraphModelTest {
             id = GraphNode.stableId(NodeType.CLASS, "com.example.Service"),
             type = NodeType.CLASS,
             title = "Service",
-            sourceTag = GraphSourceTag.DRAFT_AI,
+            provenance = GraphProvenance.AI_DRAFT,
             diff = GraphDiff(status = DiffStatus.ONLY_IN_MERMAID),
         )
         val edge = GraphEdge(
@@ -121,10 +170,10 @@ class GraphModelTest {
             fromNodeId = GraphNode.stableId(NodeType.CLASS, "com.example.Caller"),
             toNodeId = node.id,
             label = "calls",
-            certainty = Certainty.RULE_INFERRED,
-            bindingStatus = BindingStatus.PARTIALLY_SYNCED,
+            confidence = GraphConfidence.INFERRED,
+            binding = GraphBinding.PARTIAL,
             status = "ACTIVE",
-            sourceTag = GraphSourceTag.DESIGN_BASELINE,
+            provenance = GraphProvenance.DESIGN_IMPORT,
             diff = GraphDiff(status = DiffStatus.MODIFIED),
         )
         val original = GraphDocument(
@@ -151,11 +200,11 @@ class GraphModelTest {
 
         assertEquals(DiffStatus.ONLY_IN_MERMAID, roundTrip.nodes.single().diff.status)
         assertEquals(DiffStatus.MODIFIED, roundTrip.edges.single().diff.status)
-        assertEquals(Certainty.RULE_INFERRED, roundTrip.edges.single().certainty)
-        assertEquals(BindingStatus.PARTIALLY_SYNCED, roundTrip.edges.single().bindingStatus)
+        assertEquals(GraphConfidence.INFERRED, roundTrip.edges.single().confidence)
+        assertEquals(GraphBinding.PARTIAL, roundTrip.edges.single().binding)
         assertEquals("ACTIVE", roundTrip.edges.single().status)
-        assertEquals(GraphSourceTag.DRAFT_AI, roundTrip.nodes.single().sourceTag)
-        assertEquals(GraphSourceTag.DESIGN_BASELINE, roundTrip.edges.single().sourceTag)
+        assertEquals(GraphProvenance.AI_DRAFT, roundTrip.nodes.single().provenance)
+        assertEquals(GraphProvenance.DESIGN_IMPORT, roundTrip.edges.single().provenance)
         assertNotNull(roundTrip.patch)
         assertEquals("apply ai suggestions", roundTrip.patch.summary)
         assertEquals(GraphPatchAction.ADD_NODE, roundTrip.patch.operations.single().action)
@@ -372,13 +421,13 @@ class GraphModelTest {
         )
 
         assertEquals(
-            setOf("PROVEN", "RULE_INFERRED", "LLM_SUGGESTED"),
-            Certainty.entries.map { it.name }.toSet(),
+            setOf("VERIFIED", "INFERRED", "SUGGESTED", "DECLARED"),
+            GraphConfidence.entries.map { it.name }.toSet(),
         )
 
         assertEquals(
-            setOf("BOUND", "DESIGN_ONLY", "GENERATABLE", "PARTIALLY_SYNCED", "CONFLICTED"),
-            BindingStatus.entries.map { it.name }.toSet(),
+            setOf("CODE_BOUND", "DESIGN_ONLY", "GENERATABLE", "PARTIAL", "CONFLICTED"),
+            GraphBinding.entries.map { it.name }.toSet(),
         )
 
         assertEquals(
@@ -387,8 +436,8 @@ class GraphModelTest {
         )
 
         assertEquals(
-            setOf("FACT", "DESIGN_BASELINE", "DRAFT_MANUAL", "DRAFT_AI", "UNCERTAIN_FACT"),
-            GraphSourceTag.entries.map { it.name }.toSet(),
+            setOf("CODE_ANALYSIS", "DESIGN_IMPORT", "USER_DRAFT", "AI_DRAFT", "DERIVED"),
+            GraphProvenance.entries.map { it.name }.toSet(),
         )
 
         assertEquals(

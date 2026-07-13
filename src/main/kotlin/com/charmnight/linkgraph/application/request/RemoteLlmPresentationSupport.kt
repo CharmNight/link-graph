@@ -14,8 +14,8 @@ internal data class RemoteLlmPresentationConnection(
     fun requestUrl(): String = requestUrl
 }
 
-/** 判断当前设置是否选择了远程 provider。 */
-internal fun LinkGraphSettingsState.usesRemoteProvider(): Boolean =
+/** 判断当前设置是否选择了远程 provider，仅用于展示状态，不代表可以发起远程请求。 */
+internal fun LinkGraphSettingsState.isRemoteProviderSelected(): Boolean =
     sanitized().providerPreset().isRemote
 
 /**

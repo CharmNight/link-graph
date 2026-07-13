@@ -14,7 +14,7 @@ import com.charmnight.linkgraph.agent.model.LlmResultSource
 import com.charmnight.linkgraph.agent.capability.QaCapability
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.ui.GraphEditorStateService
@@ -112,7 +112,7 @@ class QaRetryWorkflowTest : BasePlatformTestCase() {
                     type = NodeType.METHOD,
                     title = "OrderController.submit",
                     signature = "com.example.OrderController.submit():void",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )

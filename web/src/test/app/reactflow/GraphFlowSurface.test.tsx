@@ -315,8 +315,8 @@ function baseNode(id = "method:anchor"): LinkGraphNode {
     title: id,
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
     position: { x: 120, y: 96 },
   };
 }
@@ -1596,6 +1596,169 @@ describe("GraphFlowSurface", () => {
       includeHiddenNodes: true,
     });
     expect(reactFlowSetCenterMock).not.toHaveBeenCalled();
+  });
+
+  it("focuses a newly active invocation expansion locally without fitting the whole flowchart", () => {
+    installResizeObserverStub();
+    vi.useFakeTimers();
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function getBoundingClientRect(this: HTMLElement) {
+      if ((this as HTMLElement).dataset.testid === "graph-canvas-shell") {
+        return {
+          left: 0,
+          top: 0,
+          right: 1280,
+          bottom: 720,
+          width: 1280,
+          height: 720,
+          x: 0,
+          y: 0,
+          toJSON: () => undefined,
+        };
+      }
+      return {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: 0,
+        height: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => undefined,
+      };
+    });
+    const initialProps = surfaceProps({ viewportMode: "FLOWCHART" });
+    const { rerender } = render(<GraphFlowSurface {...initialProps} />);
+
+    act(() => {
+      vi.runAllTimers();
+    });
+    reactFlowFitViewMock.mockClear();
+    reactFlowSetCenterMock.mockClear();
+
+    const source = { ...baseNode("invoke:create-info"), position: { x: 120, y: 96 } };
+    const root = { ...baseNode("method:create-info"), position: { x: 600, y: 120 } };
+    const callEdge: LinkGraphEdge = {
+      id: "call:create-info",
+      type: "CALL",
+      source: source.id,
+      target: root.id,
+    };
+    const expandedProps = surfaceProps({
+      viewportMode: "FLOWCHART",
+      nodes: [source, root],
+      edges: [callEdge],
+      flowNodes: [source, root].map((node) => ({
+        id: node.id,
+        data: { label: node.title },
+        position: node.position ?? { x: 0, y: 0 },
+      })),
+      flowEdges: [{ id: callEdge.id, source: callEdge.source, target: callEdge.target }],
+      anchorNodeId: source.id,
+      invocationExpansionFocus: {
+        expansionId: "invocation:1",
+        sourceNodeId: source.id,
+        rootNodeId: root.id,
+      },
+    });
+    rerender(<GraphFlowSurface {...expandedProps} />);
+
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(reactFlowSetCenterMock).toHaveBeenCalledWith(480, 168, {
+      zoom: 1,
+      duration: 280,
+      easing: [0.4, 0, 0.2, 1],
+    });
+    expect(reactFlowFitViewMock).not.toHaveBeenCalled();
+
+    rerender(<GraphFlowSurface {...expandedProps} invocationExpansionFocus={null} />);
+    act(() => {
+      vi.runAllTimers();
+    });
+    rerender(<GraphFlowSurface {...expandedProps} />);
+    act(() => {
+      vi.runAllTimers();
+    });
+    vi.useRealTimers();
+
+    expect(reactFlowSetCenterMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("focuses the active invocation expansion when an expanded scene is restored", () => {
+    installResizeObserverStub();
+    vi.useFakeTimers();
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function getBoundingClientRect(this: HTMLElement) {
+      const isCanvas = (this as HTMLElement).dataset.testid === "graph-canvas-shell";
+      const width = isCanvas ? 1280 : 0;
+      const height = isCanvas ? 720 : 0;
+      return { left: 0, top: 0, right: width, bottom: height, width, height, x: 0, y: 0, toJSON: () => undefined };
+    });
+    const source = { ...baseNode("invoke:create-info"), position: { x: 120, y: 96 } };
+    const root = { ...baseNode("method:create-info"), position: { x: 600, y: 120 } };
+
+    renderSurface({
+      viewportMode: "FLOWCHART",
+      nodes: [source, root],
+      flowNodes: [source, root].map((node) => ({ id: node.id, data: { label: node.title }, position: node.position })),
+      anchorNodeId: source.id,
+      invocationExpansionFocus: {
+        expansionId: "invocation:restored",
+        sourceNodeId: source.id,
+        rootNodeId: root.id,
+      },
+    });
+
+    act(() => {
+      vi.runAllTimers();
+    });
+    vi.useRealTimers();
+
+    expect(reactFlowSetCenterMock).toHaveBeenCalledWith(480, 168, {
+      zoom: 1,
+      duration: 280,
+      easing: [0.4, 0, 0.2, 1],
+    });
+    expect(reactFlowFitViewMock).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the normal flowchart viewport when expansion focus endpoints are incomplete", () => {
+    installResizeObserverStub();
+    vi.useFakeTimers();
+    const initialProps = surfaceProps({ viewportMode: "FLOWCHART" });
+    const { rerender } = render(<GraphFlowSurface {...initialProps} />);
+
+    act(() => {
+      vi.runAllTimers();
+    });
+    reactFlowFitViewMock.mockClear();
+    reactFlowSetCenterMock.mockClear();
+
+    const source = { ...baseNode("invoke:create-info"), position: { x: 120, y: 96 } };
+    rerender(
+      <GraphFlowSurface
+        {...surfaceProps({
+          viewportMode: "FLOWCHART",
+          nodes: [source],
+          flowNodes: [{ id: source.id, data: { label: source.title }, position: source.position }],
+          anchorNodeId: source.id,
+          invocationExpansionFocus: {
+            expansionId: "invocation:missing-root",
+            sourceNodeId: source.id,
+            rootNodeId: "method:missing",
+          },
+        })}
+      />,
+    );
+
+    act(() => {
+      vi.runAllTimers();
+    });
+    vi.useRealTimers();
+
+    expect(reactFlowSetCenterMock).not.toHaveBeenCalled();
+    expect(reactFlowFitViewMock).toHaveBeenCalledTimes(1);
   });
 
   it("publishes node drag updates even when structural editing is disabled", () => {

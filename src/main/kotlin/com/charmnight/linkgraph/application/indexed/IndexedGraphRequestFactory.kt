@@ -64,7 +64,7 @@ object IndexedGraphRequestFactory {
             includeExternalLibraries = request.includeExternalLibraries ?: includeExternalLibraries,
             includeJdk = request.includeJdk ?: includeJdk,
             relationDetail = request.relationDetail ?: relationDetail,
-            viewport = request.viewport,
+            viewport = request.viewport.normalized(),
         )
 
     /** 决定类图视图的基底请求：若开启了引用覆盖层且未指定范围节点，则切换到 usage 覆盖请求，否则按节点展开类图。 */
@@ -135,8 +135,17 @@ fun requestReviewGraphRequest(selectedDiffItemIds: List<String> = emptyList()): 
 /** 把用户传入的类图选项与默认值合并：成员数限制未显式设置时沿用默认。 */
 private fun IndexedClassDiagramOptions.mergeInto(defaults: IndexedClassDiagramOptions): IndexedClassDiagramOptions =
     IndexedClassDiagramOptions(
-        neighborhoodLimit = neighborhoodLimit,
-        memberLimit = memberLimit.takeIf { it != IndexedClassDiagramOptions().memberLimit } ?: defaults.memberLimit,
+        neighborhoodLimit = IndexedGraphRequestLimits.clampClassNeighborhood(neighborhoodLimit),
+        memberLimit = IndexedGraphRequestLimits.clampClassMembers(
+            memberLimit.takeIf { it != IndexedClassDiagramOptions().memberLimit } ?: defaults.memberLimit,
+        ),
+    )
+
+/** 把视口节点/边预算约束到索引图统一上限。 */
+private fun IndexedGraphViewportOptions.normalized(): IndexedGraphViewportOptions =
+    copy(
+        maxVisibleNodes = IndexedGraphRequestLimits.clampViewportNodes(maxVisibleNodes),
+        maxVisibleEdges = IndexedGraphRequestLimits.clampViewportEdges(maxVisibleEdges),
     )
 
 /** 把用户传入的引用选项与默认值合并，空字符串字段回退到默认，并对用量限制做归一化。 */
@@ -164,11 +173,17 @@ private fun IndexedClassUsageOptions.normalized(): IndexedClassUsageOptions =
 /** 把用户传入的评审视图选项与默认值合并：相关测试/上下游节点数未显式设置时沿用默认。 */
 private fun IndexedReviewGraphOptions.mergeInto(defaults: IndexedReviewGraphOptions): IndexedReviewGraphOptions =
     IndexedReviewGraphOptions(
-        maxChangedNodes = maxChangedNodes,
-        maxRelatedTestNodes = maxRelatedTestNodes.takeIf { it != IndexedReviewGraphOptions().maxRelatedTestNodes }
-            ?: defaults.maxRelatedTestNodes,
-        maxUpstreamNodes = maxUpstreamNodes.takeIf { it != IndexedReviewGraphOptions().maxUpstreamNodes }
-            ?: defaults.maxUpstreamNodes,
-        maxDownstreamNodes = maxDownstreamNodes.takeIf { it != IndexedReviewGraphOptions().maxDownstreamNodes }
-            ?: defaults.maxDownstreamNodes,
+        maxChangedNodes = IndexedGraphRequestLimits.clampReviewBucket(maxChangedNodes),
+        maxRelatedTestNodes = IndexedGraphRequestLimits.clampReviewBucket(
+            maxRelatedTestNodes.takeIf { it != IndexedReviewGraphOptions().maxRelatedTestNodes }
+                ?: defaults.maxRelatedTestNodes,
+        ),
+        maxUpstreamNodes = IndexedGraphRequestLimits.clampReviewBucket(
+            maxUpstreamNodes.takeIf { it != IndexedReviewGraphOptions().maxUpstreamNodes }
+                ?: defaults.maxUpstreamNodes,
+        ),
+        maxDownstreamNodes = IndexedGraphRequestLimits.clampReviewBucket(
+            maxDownstreamNodes.takeIf { it != IndexedReviewGraphOptions().maxDownstreamNodes }
+                ?: defaults.maxDownstreamNodes,
+        ),
     )

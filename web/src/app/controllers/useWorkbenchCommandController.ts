@@ -1,6 +1,5 @@
 import {
   applyCodeDrafts,
-  activateInvocationExpansion,
   collapseInvocationExpansion,
   exportMermaid,
   openInvocationExpansion,
@@ -242,15 +241,6 @@ export function useWorkbenchCommandController({
     });
   }
 
-  function handleActivateInvocationExpansion(expansionId: string) {
-    bridgeCommands.runBridgeCommand("激活调用展开", () => activateInvocationExpansion(expansionId), {
-      successFeedback: {
-        level: "INFO",
-        message: "已激活调用展开。",
-      },
-    });
-  }
-
   return {
     handleRequestAnalysisDisplayMode,
     handleRequestArchitectureGraph,
@@ -271,6 +261,5 @@ export function useWorkbenchCommandController({
     handleRemoveInvocationExpansion,
     handleCollapseInvocationExpansion,
     handleOpenInvocationExpansion,
-    handleActivateInvocationExpansion,
   };
 }

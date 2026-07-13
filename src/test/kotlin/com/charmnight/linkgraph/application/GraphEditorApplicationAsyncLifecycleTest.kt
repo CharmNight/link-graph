@@ -9,7 +9,7 @@ import com.charmnight.linkgraph.agent.model.GraphPatchResult
 import com.charmnight.linkgraph.agent.model.LlmResultSource
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.ui.GraphEditorCommandRouter
@@ -279,7 +279,7 @@ class GraphEditorApplicationAsyncLifecycleTest : BasePlatformTestCase() {
                     type = NodeType.METHOD,
                     title = "OrderService.place",
                     signature = "com.example.OrderService.place():void",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )

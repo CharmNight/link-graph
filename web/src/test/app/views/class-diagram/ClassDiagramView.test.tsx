@@ -156,8 +156,8 @@ const nodes: LinkGraphNode[] = [
     signature: "com.example.OrderService",
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
     metadata: {
       "architecture.qualifiedName": "com.example.OrderService",
       "presentation.role": "ANCHOR",
@@ -566,8 +566,8 @@ describe("ClassDiagramView", () => {
       title: "OrderRepository",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
     };
     const paymentPortNode: LinkGraphNode = {
       id: "class:PaymentPort",
@@ -575,8 +575,8 @@ describe("ClassDiagramView", () => {
       title: "PaymentPort",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
     };
     const resultNode: LinkGraphNode = {
       id: "class:OrderResult",
@@ -584,8 +584,8 @@ describe("ClassDiagramView", () => {
       title: "OrderResult",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
     };
     const localTypeNode: LinkGraphNode = {
       id: "class:OrderServiceTest",
@@ -593,8 +593,8 @@ describe("ClassDiagramView", () => {
       title: "OrderServiceTest",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
     };
     const secondaryNode: LinkGraphNode = {
       id: "class:SecondaryMapper",
@@ -602,8 +602,8 @@ describe("ClassDiagramView", () => {
       title: "SecondaryMapper",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
     };
     const graphNodes = [
       nodes[0],
@@ -708,8 +708,8 @@ describe("ClassDiagramView", () => {
       title: "KafkaConfig",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       metadata: {
         "presentation.role": "COLLABORATOR",
         "presentation.laneId": "collaborator",
@@ -769,8 +769,8 @@ describe("ClassDiagramView", () => {
       title: "PaymentPort",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       metadata: {
         "presentation.role": "INTERFACE",
         "presentation.laneId": "abstraction",
@@ -783,8 +783,8 @@ describe("ClassDiagramView", () => {
       title: "OrderController",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       metadata: {
         "presentation.role": "CALLER",
         "presentation.laneId": "caller",
@@ -797,8 +797,8 @@ describe("ClassDiagramView", () => {
       title: "OrderRepository",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       metadata: {
         "presentation.role": "COLLABORATOR",
         "presentation.laneId": "collaborator",
@@ -811,8 +811,8 @@ describe("ClassDiagramView", () => {
       title: "OrderResult",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
       metadata: {
         "presentation.role": "OUTPUT",
         "presentation.laneId": "output",
@@ -964,8 +964,8 @@ describe("ClassDiagramView", () => {
       title: "OrderRepository",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
     };
     useMeasuredLayoutMock.mockImplementation(({ graph }) => ({
       nodes: graph.nodes,
@@ -1152,8 +1152,8 @@ describe("ClassDiagramView", () => {
       title: "OrderRepository",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "BOUND",
+      confidence: "VERIFIED",
+      binding: "CODE_BOUND",
     };
     const structureOnlyView: ClassDiagramViewDocument = {
       ...view,

@@ -7,6 +7,7 @@ import com.charmnight.linkgraph.application.indexed.IndexedGraphPresetRequest
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRequest
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRequestFactory
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRelationDetail
+import com.charmnight.linkgraph.application.indexed.IndexedGraphRequestLimits
 import com.charmnight.linkgraph.application.indexed.IndexedGraphViewportOptions
 import com.charmnight.linkgraph.application.indexed.IndexedReviewGraphOptions
 import com.charmnight.linkgraph.application.edit.GraphEditRequestPayloadParser
@@ -81,8 +82,8 @@ internal object GraphBrowserPayloadParser {
      */
     private fun parseIndexedViewport(raw: Map<*, *>?): IndexedGraphViewportOptions =
         IndexedGraphViewportOptions(
-            maxVisibleNodes = raw?.intOrNull("maxVisibleNodes"),
-            maxVisibleEdges = raw?.intOrNull("maxVisibleEdges"),
+            maxVisibleNodes = IndexedGraphRequestLimits.clampViewportNodes(raw?.intOrNull("maxVisibleNodes")),
+            maxVisibleEdges = IndexedGraphRequestLimits.clampViewportEdges(raw?.intOrNull("maxVisibleEdges")),
         )
 
     /**
@@ -90,8 +91,10 @@ internal object GraphBrowserPayloadParser {
      */
     private fun parseIndexedClassDiagramOptions(raw: Map<*, *>?): IndexedClassDiagramOptions =
         IndexedClassDiagramOptions(
-            neighborhoodLimit = raw?.intOrNull("neighborhoodLimit") ?: 24,
-            memberLimit = raw?.intOrNull("memberLimit") ?: 5,
+            neighborhoodLimit = IndexedGraphRequestLimits.clampClassNeighborhood(
+                raw?.intOrNull("neighborhoodLimit") ?: 24,
+            ),
+            memberLimit = IndexedGraphRequestLimits.clampClassMembers(raw?.intOrNull("memberLimit") ?: 5),
         )
 
     /**
@@ -141,10 +144,18 @@ internal object GraphBrowserPayloadParser {
      */
     private fun parseIndexedReviewOptions(raw: Map<*, *>?): IndexedReviewGraphOptions =
         IndexedReviewGraphOptions(
-            maxChangedNodes = raw?.intOrNull("maxChangedNodes") ?: 120,
-            maxRelatedTestNodes = raw?.intOrNull("maxRelatedTestNodes") ?: 40,
-            maxUpstreamNodes = raw?.intOrNull("maxUpstreamNodes") ?: 40,
-            maxDownstreamNodes = raw?.intOrNull("maxDownstreamNodes") ?: 40,
+            maxChangedNodes = IndexedGraphRequestLimits.clampReviewBucket(
+                raw?.intOrNull("maxChangedNodes") ?: 120,
+            ),
+            maxRelatedTestNodes = IndexedGraphRequestLimits.clampReviewBucket(
+                raw?.intOrNull("maxRelatedTestNodes") ?: 40,
+            ),
+            maxUpstreamNodes = IndexedGraphRequestLimits.clampReviewBucket(
+                raw?.intOrNull("maxUpstreamNodes") ?: 40,
+            ),
+            maxDownstreamNodes = IndexedGraphRequestLimits.clampReviewBucket(
+                raw?.intOrNull("maxDownstreamNodes") ?: 40,
+            ),
         )
 
     /** 取出必填字符串字段，若缺失或为空白则按描述信息抛出异常。 */
@@ -203,7 +214,7 @@ internal enum class GraphBrowserPayloadKind(
  * 图谱浏览器各类负载的字符上限常量集合。
  */
 internal object GraphBrowserPayloadLimits {
-    const val GRAPH_EDIT_SCRIPT_MAX_CHARS: Int = 512 * 1024
+    const val GRAPH_EDIT_SCRIPT_MAX_CHARS: Int = GraphEditRequestPayloadParser.MAX_SERIALIZED_PAYLOAD_CHARS
     const val MERMAID_PAYLOAD_MAX_CHARS: Int = 1024 * 1024
     const val STRUCTURED_PAYLOAD_MAX_CHARS: Int = 64 * 1024
     const val IDENTIFIER_PAYLOAD_MAX_CHARS: Int = 8 * 1024

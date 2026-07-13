@@ -78,6 +78,43 @@ class IndexedGraphModelsTest {
     }
 
     @Test
+    fun presetFactoryNormalizesBudgetsWhenBridgeParsingIsBypassed() {
+        val reviewRequest = IndexedGraphRequestFactory.fromPreset(
+            IndexedGraphPresetRequest(
+                preset = IndexedGraphPreset.REVIEW,
+                viewport = IndexedGraphViewportOptions(
+                    maxVisibleNodes = Int.MAX_VALUE,
+                    maxVisibleEdges = Int.MAX_VALUE,
+                ),
+                review = IndexedReviewGraphOptions(
+                    maxChangedNodes = Int.MAX_VALUE,
+                    maxRelatedTestNodes = Int.MAX_VALUE,
+                    maxUpstreamNodes = -1,
+                    maxDownstreamNodes = -1,
+                ),
+            ),
+        )
+        val classRequest = IndexedGraphRequestFactory.fromPreset(
+            IndexedGraphPresetRequest(
+                preset = IndexedGraphPreset.CLASS_DIAGRAM,
+                classDiagram = IndexedClassDiagramOptions(
+                    neighborhoodLimit = Int.MAX_VALUE,
+                    memberLimit = -1,
+                ),
+            ),
+        )
+
+        assertEquals(IndexedGraphRequestLimits.MAX_VIEWPORT_NODES, reviewRequest.viewport.maxVisibleNodes)
+        assertEquals(IndexedGraphRequestLimits.MAX_VIEWPORT_EDGES, reviewRequest.viewport.maxVisibleEdges)
+        assertEquals(IndexedGraphRequestLimits.MAX_REVIEW_BUCKET, reviewRequest.review.maxChangedNodes)
+        assertEquals(IndexedGraphRequestLimits.MAX_REVIEW_BUCKET, reviewRequest.review.maxRelatedTestNodes)
+        assertEquals(0, reviewRequest.review.maxUpstreamNodes)
+        assertEquals(0, reviewRequest.review.maxDownstreamNodes)
+        assertEquals(IndexedGraphRequestLimits.MAX_CLASS_NEIGHBORHOOD, classRequest.classDiagram.neighborhoodLimit)
+        assertEquals(0, classRequest.classDiagram.memberLimit)
+    }
+
+    @Test
     fun indexedGraphSummaryCarriesDefaultFreshnessContract() {
         val summary = IndexedGraphSummary(
             view = "ARCHITECTURE",

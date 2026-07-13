@@ -2,6 +2,7 @@ package com.charmnight.linkgraph.jvm.index
 
 import com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget
 import com.charmnight.linkgraph.source.AttachedJarIndex
+import com.charmnight.linkgraph.source.SourceArchiveReadLimits
 import com.charmnight.linkgraph.source.SourceOrigin
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.progress.ProgressManager
@@ -113,8 +114,7 @@ internal class ExternalLibraryIndexer(
                 .filter { file -> if (file.url.startsWith("jrt://")) budget.includeJdk else budget.includeExternalLibraries }
                 .forEach { file ->
                     ProgressManager.checkCanceled()
-                    val providers = runCatching { String(file.contentsToByteArray(), StandardCharsets.UTF_8) }
-                        .getOrDefault("").let(::spiProviderClassNames)
+                    val providers = readSpiProviderClassNames(file)
                     if (providers.isEmpty()) return@forEach
                     val origin = sourceOriginForExternalFile(file)
                     val resourcePath = displayPathForExternalResource(file)
@@ -157,7 +157,11 @@ internal class ExternalLibraryIndexer(
                         files.filter(Files::isRegularFile).forEach { file ->
                             ProgressManager.checkCanceled()
                             val serviceName = file.fileName.toString().takeIf(String::isNotBlank) ?: return@forEach
-                            val text = runCatching { Files.readString(file, StandardCharsets.UTF_8) }.getOrDefault("")
+                            val text = readPathTextBounded(
+                                file,
+                                SourceArchiveReadLimits.MAX_SERVICE_ENTRY_BYTES,
+                                StandardCharsets.UTF_8,
+                            ) ?: return@forEach
                             val providers = spiProviderClassNames(text)
                             if (providers.isEmpty()) return@forEach
                             val moduleName = modulePath.fileName.toString()

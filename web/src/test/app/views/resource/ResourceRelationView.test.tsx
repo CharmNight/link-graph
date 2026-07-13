@@ -62,8 +62,8 @@ const view: ResourceRelationViewDocument = {
         title: "order_mapper.xml#insertOrder",
         inputs: [],
         outputs: [],
-        certainty: "PROVEN",
-        bindingStatus: "BOUND",
+        confidence: "VERIFIED",
+        binding: "CODE_BOUND",
         metadata: {
           "resource.lane": "DATA",
         },

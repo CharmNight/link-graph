@@ -42,8 +42,8 @@ const view: ReviewGraphViewDocument = {
         title: "NewService.moved",
         inputs: [],
         outputs: [],
-        certainty: "PROVEN",
-        bindingStatus: "BOUND",
+        confidence: "VERIFIED",
+        binding: "CODE_BOUND",
         metadata: {
           "review.role": "CHANGED",
         },

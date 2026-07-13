@@ -10,6 +10,7 @@ import com.charmnight.linkgraph.agent.model.LlmResultSource
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 
 class ProjectPathNormalizerTest {
     @Test
@@ -41,7 +42,7 @@ class ProjectPathNormalizerTest {
 
         val result = CodeGenerationResult(
             drafts = listOf(
-                GeneratedCodeDraft(
+                GeneratedCodeDraft.patchExistingFile(
                     id = "draft-upload-file",
                     sourceNodeId = "method:upload-file",
                     title = "CommonController.java",
@@ -80,17 +81,18 @@ class ProjectPathNormalizerTest {
         assertEquals(externalFile, normalizedPlan.items.last().targetPath)
 
         val normalizedDraft = normalizedResult.drafts.single()
+        val normalizedPatch = assertIs<CodeDraftCommand.PatchExistingFile>(normalizedDraft.command)
         assertEquals(
             "ruoyi-admin/src/main/java/com/ruoyi/web/controller/common/CommonController.java",
             normalizedDraft.targetPath,
         )
         assertEquals(
             "ruoyi-admin/src/main/java/com/ruoyi/web/controller/common/CommonController.java",
-            normalizedDraft.editOperations.single().filePath,
+            normalizedPatch.operations.single().filePath,
         )
         assertEquals(
             "ruoyi-admin/src/main/java/com/ruoyi/web/controller/common/CommonController.java",
-            normalizedDraft.editScopes.single().filePath,
+            normalizedPatch.scopes.single().filePath,
         )
     }
 }

@@ -7,7 +7,7 @@ import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -227,7 +227,7 @@ class InteractiveGraphProjectorTest {
                     fromNodeId = anchor.id,
                     toNodeId = lambdaScope.id,
                     metadata = mapOf("callOrder" to "2"),
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 callEdge(anchor.id, afterCall.id, callOrder = 3),
                 GraphEdge(
@@ -236,7 +236,7 @@ class InteractiveGraphProjectorTest {
                     fromNodeId = lambdaScope.id,
                     toNodeId = ifScope.id,
                     metadata = mapOf("callOrder" to "0"),
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 callEdge(ifScope.id, validate.id, callOrder = 0),
                 callEdge(ifScope.id, record.id, callOrder = 1),
@@ -296,7 +296,7 @@ class InteractiveGraphProjectorTest {
                     fromNodeId = anchor.id,
                     toNodeId = outerIf.id,
                     metadata = mapOf("callOrder" to "1"),
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 GraphEdge(
                     id = "flow-edge-outer-inner",
@@ -304,7 +304,7 @@ class InteractiveGraphProjectorTest {
                     fromNodeId = outerIf.id,
                     toNodeId = innerIf.id,
                     metadata = mapOf("callOrder" to "0"),
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 callEdge(innerIf.id, dataScopeFilter.id, callOrder = 0),
                 callEdge(innerIf.id, permissionLookup.id, callOrder = 1),
@@ -364,7 +364,7 @@ class InteractiveGraphProjectorTest {
                     fromNodeId = anchor.id,
                     toNodeId = outerIf.id,
                     metadata = mapOf("callOrder" to "1"),
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 GraphEdge(
                     id = "flow-edge-outer-inner",
@@ -372,7 +372,7 @@ class InteractiveGraphProjectorTest {
                     fromNodeId = outerIf.id,
                     toNodeId = innerIf.id,
                     metadata = mapOf("callOrder" to "0"),
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 callEdge(innerIf.id, deepBusinessA.id, callOrder = 0),
                 callEdge(innerIf.id, deepBusinessB.id, callOrder = 1),
@@ -436,7 +436,7 @@ class InteractiveGraphProjectorTest {
                     fromNodeId = anchor.id,
                     toNodeId = outerIf.id,
                     metadata = mapOf("callOrder" to "0"),
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 GraphEdge(
                     id = "flow-edge-outer-inner",
@@ -444,7 +444,7 @@ class InteractiveGraphProjectorTest {
                     fromNodeId = outerIf.id,
                     toNodeId = innerIf.id,
                     metadata = mapOf("callOrder" to "0"),
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 callEdge(innerIf.id, permission.id, callOrder = 0),
                 callEdge(innerIf.id, getContext.id, callOrder = 1),
@@ -504,7 +504,7 @@ class InteractiveGraphProjectorTest {
                     fromNodeId = anchor.id,
                     toNodeId = ifScope.id,
                     metadata = mapOf("callOrder" to "0"),
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 callEdge(ifScope.id, copyAction.id, callOrder = 0),
                 callEdge(ifScope.id, directBusiness.id, callOrder = 1),
@@ -558,7 +558,7 @@ class InteractiveGraphProjectorTest {
                     fromNodeId = anchor.id,
                     toNodeId = ifScope.id,
                     metadata = mapOf("callOrder" to "0"),
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 callEdge(anchor.id, directCurrentMethodCall.id, callOrder = 1),
                 callEdge(ifScope.id, copyAction.id, callOrder = 0),
@@ -633,7 +633,7 @@ class InteractiveGraphProjectorTest {
                     fromNodeId = anchor.id,
                     toNodeId = ifScope.id,
                     metadata = mapOf("callOrder" to "0"),
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 callEdge(anchor.id, directCurrentMethodCall.id, callOrder = 1),
                 callEdge(ifScope.id, copyAction.id, callOrder = 0),
@@ -788,6 +788,6 @@ class InteractiveGraphProjectorTest {
                 put("callOrder", callOrder.toString())
             }
         },
-        sourceTag = GraphSourceTag.FACT,
+        provenance = GraphProvenance.CODE_ANALYSIS,
     )
 }

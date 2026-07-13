@@ -88,6 +88,10 @@ internal class GraphEditorApplicationEventProjector(
                 subjectPresenter().presentFeedback(event.level, event.message, event.preservePreviousStatusKind)
             is GraphEditorApplicationEvent.AnalysisDisplayModeChanged ->
                 subjectPresenter().presentAnalysisDisplayMode(event.displayMode)
+            is GraphEditorApplicationEvent.InvocationExpansionOpened -> {
+                stateService.openInvocationExpansion(event.expansionId)
+                requestBrowserSync()
+            }
             is GraphEditorApplicationEvent.SelectedMethodChanged ->
                 subjectPresenter().presentSelectedMethod(event.signature)
             is GraphEditorApplicationEvent.AnalysisOutcomeLoaded ->

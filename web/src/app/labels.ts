@@ -1,14 +1,14 @@
 import type {
   AnalysisDisplayMode,
   AsyncRequestExecutionMode,
-  BindingStatus,
-  Certainty,
+  GraphBinding,
+  GraphConfidence,
   DraftCompareStatus,
   DiffStatus,
   EdgeType,
   GenerationPlanSource,
   GraphPatchAction,
-  GraphSourceTag,
+  GraphProvenance,
   LlmResultSource,
   MermaidIssueCategory,
   NodeType,
@@ -19,14 +19,16 @@ import type {
   StepKind,
 } from "./types";
 
-export function certaintyLabel(value: Certainty): string {
+export function confidenceLabel(value: GraphConfidence): string {
   switch (value) {
-    case "PROVEN":
+    case "VERIFIED":
       return "已确认";
-    case "RULE_INFERRED":
+    case "INFERRED":
       return "规则推断";
-    case "LLM_SUGGESTED":
+    case "SUGGESTED":
       return "AI建议";
+    case "DECLARED":
+      return "人工声明";
   }
 }
 
@@ -45,15 +47,15 @@ export function relationConfidenceLabel(value?: string | null): string | null {
   }
 }
 
-export function bindingStatusLabel(value: BindingStatus): string {
+export function bindingLabel(value: GraphBinding): string {
   switch (value) {
-    case "BOUND":
+    case "CODE_BOUND":
       return "已绑定";
     case "DESIGN_ONLY":
       return "仅设计";
     case "GENERATABLE":
       return "可生成";
-    case "PARTIALLY_SYNCED":
+    case "PARTIAL":
       return "部分同步";
     case "CONFLICTED":
       return "存在冲突";
@@ -400,17 +402,17 @@ export function analysisDisplayModeLabel(value: AnalysisDisplayMode): string {
   }
 }
 
-export function sourceTagLabel(value: GraphSourceTag): string {
+export function provenanceLabel(value: GraphProvenance): string {
   switch (value) {
-    case "FACT":
+    case "CODE_ANALYSIS":
       return "事实层";
-    case "DESIGN_BASELINE":
+    case "DESIGN_IMPORT":
       return "设计基线";
-    case "DRAFT_MANUAL":
+    case "USER_DRAFT":
       return "人工草稿";
-    case "DRAFT_AI":
+    case "AI_DRAFT":
       return "AI草稿";
-    case "UNCERTAIN_FACT":
+    case "DERIVED":
       return "待确认事实";
   }
 }

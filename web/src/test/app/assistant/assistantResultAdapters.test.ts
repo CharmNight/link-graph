@@ -91,6 +91,7 @@ function codeDraft(id: string): GeneratedCodeDraft {
     sourceNodeId: "method:submit-order",
     title: `${id}.kt`,
     targetPath: `src/main/kotlin/${id}.kt`,
+    commandKind: "CREATE_FILE",
     content: "class Draft",
     warnings: [],
   };

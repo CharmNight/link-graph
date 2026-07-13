@@ -10,8 +10,8 @@ function methodNode(overrides: Partial<LinkGraphNode> = {}): LinkGraphNode {
     signature: "com.example.OrderService.submit(java.lang.String):java.lang.Boolean",
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
     ...overrides,
   };
 }

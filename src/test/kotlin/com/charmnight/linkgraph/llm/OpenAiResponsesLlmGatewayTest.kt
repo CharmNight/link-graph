@@ -3,14 +3,39 @@ package com.charmnight.linkgraph.llm
 import com.charmnight.linkgraph.agent.model.*
 import com.charmnight.linkgraph.settings.*
 
-import com.charmnight.linkgraph.testing.*
-
+import java.io.ByteArrayInputStream
+import java.nio.charset.StandardCharsets
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
+import kotlin.test.assertNull
 
 class OpenAiResponsesLlmGatewayTest {
+    @Test
+    fun streamDoesNotExposeRawBodyInCompletedEvent() {
+        val body = """
+            data: {"type":"response.output_text.delta","delta":"hel"}
+            data: {"type":"response.output_text.delta","delta":"lo"}
+            data: [DONE]
+        """.trimIndent()
+        val client = RecordingHttpClient(
+            SimpleHttpResponse(
+                statusCode = 200,
+                body = ByteArrayInputStream(body.toByteArray(StandardCharsets.UTF_8)),
+            ),
+        )
+        val gateway = OpenAiResponsesLlmGateway(clientFactory = { client })
+        val events = mutableListOf<LlmStreamEvent>()
+
+        val response = gateway.stream(streamRequest(), events::add)
+
+        assertEquals("hello", response.content)
+        assertNull(response.rawBody)
+        val completed = events.filterIsInstance<LlmStreamEvent.Completed>().single()
+        assertEquals("hello", completed.response.content)
+        assertNull(completed.response.rawBody)
+    }
+
     @Test
     fun resolvesResponsesEndpointFromBaseUrl() {
         val gateway = OpenAiResponsesLlmGateway()
@@ -135,4 +160,16 @@ class OpenAiResponsesLlmGatewayTest {
 
         assertEquals("hello", delta)
     }
+
+    private fun streamRequest(): LlmRequest = LlmRequest(
+        protocol = LlmWireProtocol.OPENAI_RESPONSES,
+        endpoint = "https://api.example.com/v1",
+        apiKey = "token",
+        model = "gpt-5.4",
+        timeoutSeconds = 60,
+        temperature = 0.2,
+        systemPrompt = "system prompt",
+        userPrompt = "user prompt",
+        deliveryMode = LlmDeliveryMode.STREAM,
+    )
 }

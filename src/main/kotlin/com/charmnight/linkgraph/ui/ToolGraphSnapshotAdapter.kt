@@ -6,8 +6,6 @@ import com.charmnight.linkgraph.agent.tools.ToolGraphSnapshot
 import com.charmnight.linkgraph.agent.tools.ToolGraphView
 import com.charmnight.linkgraph.agent.tools.ToolGraphProjectionIndex
 import com.charmnight.linkgraph.agent.tools.ToolGraphProjectionNodeMapping
-import com.charmnight.linkgraph.agent.model.ChildInvocationExpansionState as AgentChildInvocationExpansionState
-import com.charmnight.linkgraph.agent.model.InvocationExpansionBlockPosition
 import com.charmnight.linkgraph.agent.model.InvocationExpansionContextMode as AgentInvocationExpansionContextMode
 import com.charmnight.linkgraph.agent.model.InvocationExpansionSceneState as AgentInvocationExpansionSceneState
 import com.charmnight.linkgraph.ui.GraphEditorStateSnapshot
@@ -94,17 +92,6 @@ private fun InvocationExpansionSceneState.toAgentInvocationExpansionSceneState()
         activeExpansionPath = activeExpansionPath,
         collapsedExpansionIds = collapsedExpansionIds,
         activeSiblingByParentContext = activeSiblingByParentContext,
-        blockPositions = blockPositions.mapValues { (_, position) ->
-            InvocationExpansionBlockPosition(x = position.x, y = position.y)
-        },
-        lastChildStateByExpansionId = lastChildStateByExpansionId.mapValues { (_, childState) ->
-            AgentChildInvocationExpansionState(
-                activeExpansionId = childState.activeExpansionId,
-                activeExpansionPath = childState.activeExpansionPath,
-                collapsedExpansionIds = childState.collapsedExpansionIds,
-                activeSiblingByParentContext = childState.activeSiblingByParentContext,
-            )
-        },
         contextMode = when (contextMode) {
             InvocationExpansionContextMode.ACTIVE_CHAIN -> AgentInvocationExpansionContextMode.ACTIVE_CHAIN
         },

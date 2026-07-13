@@ -1,12 +1,12 @@
 package com.charmnight.linkgraph.application.debug
 
-import com.charmnight.linkgraph.model.BindingStatus
-import com.charmnight.linkgraph.model.Certainty
+import com.charmnight.linkgraph.model.GraphBinding
+import com.charmnight.linkgraph.model.GraphConfidence
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 
 /**
@@ -159,7 +159,7 @@ internal class DebugGraphFactory {
                 type = EdgeType.CALL,
                 fromNodeId = left.id,
                 toNodeId = right.id,
-                sourceTag = GraphSourceTag.FACT,
+                provenance = GraphProvenance.CODE_ANALYSIS,
             )
         }
         return DebugGraphDefinition(
@@ -208,7 +208,7 @@ internal class DebugGraphFactory {
                         type = EdgeType.CALL,
                         fromNodeId = anchor.id,
                         toNodeId = node.id,
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 )
                 if (index > 0) {
@@ -219,7 +219,7 @@ internal class DebugGraphFactory {
                             type = EdgeType.CALL,
                             fromNodeId = neighborNodes[index - 1].id,
                             toNodeId = node.id,
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     )
                 }
@@ -256,9 +256,9 @@ internal class DebugGraphFactory {
             inputs = listOf("com.example.order.Payload$index", "java.lang.String"),
             outputs = listOf(spec.signature.substringAfterLast(':')),
             doc = spec.doc,
-            bindingStatus = BindingStatus.BOUND,
-            certainty = Certainty.PROVEN,
-            sourceTag = GraphSourceTag.FACT,
+            binding = GraphBinding.CODE_BOUND,
+            confidence = GraphConfidence.VERIFIED,
+            provenance = GraphProvenance.CODE_ANALYSIS,
         )
     }
 }

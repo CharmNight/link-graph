@@ -2,8 +2,8 @@ package com.charmnight.linkgraph.application.workflow.review
 
 import com.charmnight.linkgraph.application.model.WorkflowEditorSnapshot
 import com.charmnight.linkgraph.application.model.toRiskResolutionSnapshot
+import com.charmnight.linkgraph.application.request.isRemoteProviderSelected
 import com.charmnight.linkgraph.application.request.remoteConnectionOrNull
-import com.charmnight.linkgraph.application.request.usesRemoteProvider
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.workbench.DraftValidationState
 import com.charmnight.linkgraph.workbench.RiskResolutionService
@@ -28,7 +28,7 @@ fun evaluateQaEligibility(
 
 /** 当前设置是否选了远程 provider。 */
 fun effectiveRemoteRequested(settings: LinkGraphSettingsState): Boolean =
-    settings.usesRemoteProvider()
+    settings.isRemoteProviderSelected()
 
 /** 当前远程连接是否支持流式输出；非远程或未配置时返回 false。 */
 fun effectiveStreamingSupported(settings: LinkGraphSettingsState): Boolean =

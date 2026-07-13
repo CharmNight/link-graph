@@ -10,7 +10,10 @@ import com.charmnight.linkgraph.application.workflow.FrontendGraphMutationSaniti
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
+import com.charmnight.linkgraph.model.GraphBinding
+import com.charmnight.linkgraph.model.GraphConfidence
 import com.charmnight.linkgraph.model.GraphNode
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -105,6 +108,9 @@ class GraphEditApplierTest {
         val newNode = applied.graph.nodes.single()
         assertNull(newNode.location)
         assertNull(newNode.signature)
+        assertEquals(GraphProvenance.USER_DRAFT, newNode.provenance)
+        assertEquals(GraphConfidence.DECLARED, newNode.confidence)
+        assertEquals(GraphBinding.DESIGN_ONLY, newNode.binding)
     }
 
     @Test
@@ -191,6 +197,85 @@ class GraphEditApplierTest {
         // 非受保护前缀：前端值胜出
         assertEquals("frontend-color", merged["presentation.color"], "非受保护字段允许前端覆盖")
         assertEquals("100", merged["layout.x"], "layout.* 应允许前端写入")
+    }
+
+    @Test
+    fun stripsTrustedMetadataAndFactSourceFromNewFrontendEdges() {
+        val nodeA = node("node-a")
+        val nodeB = node("node-b")
+        val applied = applier.apply(
+            snapshot = WorkflowEditorSnapshot(
+                workspaceGraph = GraphDocument(nodes = listOf(nodeA, nodeB)),
+            ),
+            request = request(
+                GraphEditOperation.UpsertEdge(
+                    edge("edge-ab", "node-a", "node-b").copy(
+                        provenance = GraphProvenance.CODE_ANALYSIS,
+                        metadata = mapOf(
+                            "source.path" to "/tmp/Escape.java",
+                            "jvm.relation.kind" to "CALLS",
+                            "signature.edge" to "evil",
+                            "presentation.color" to "frontend-color",
+                            "layout.x" to "100",
+                        ),
+                    ),
+                ),
+            ),
+            resolution = GraphEditResolution.identity(),
+        )
+
+        val newEdge = applied.graph.edges.single()
+        assertEquals(GraphProvenance.USER_DRAFT, newEdge.provenance)
+        assertEquals(GraphConfidence.DECLARED, newEdge.confidence)
+        assertEquals(GraphBinding.DESIGN_ONLY, newEdge.binding)
+        assertEquals(
+            mapOf(
+                "presentation.color" to "frontend-color",
+                "layout.x" to "100",
+            ),
+            newEdge.metadata,
+        )
+    }
+
+    @Test
+    fun existingEdgeTrustedMetadataAndSourceTagProtectedFromFrontendOverwrite() {
+        val nodeA = node("node-a")
+        val nodeB = node("node-b")
+        val trustedEdge = edge("edge-ab", "node-a", "node-b", label = "old").copy(
+            provenance = GraphProvenance.CODE_ANALYSIS,
+            metadata = mapOf(
+                "jvm.relation.kind" to "CALLS",
+                "source.path" to "/trusted/Real.java",
+                "presentation.color" to "trusted-color",
+            ),
+        )
+        val applied = applier.apply(
+            snapshot = WorkflowEditorSnapshot(
+                workspaceGraph = GraphDocument(nodes = listOf(nodeA, nodeB), edges = listOf(trustedEdge)),
+            ),
+            request = request(
+                GraphEditOperation.UpsertEdge(
+                    edge("edge-ab", "node-a", "node-b", label = "updated").copy(
+                        provenance = GraphProvenance.AI_DRAFT,
+                        metadata = mapOf(
+                            "jvm.relation.kind" to "OVERRIDDEN",
+                            "source.path" to "/untrusted/Escape.java",
+                            "presentation.color" to "frontend-color",
+                            "layout.x" to "100",
+                        ),
+                    ),
+                ),
+            ),
+            resolution = GraphEditResolution.identity(),
+        )
+
+        val merged = applied.graph.edges.single()
+        assertEquals("updated", merged.label)
+        assertEquals(GraphProvenance.CODE_ANALYSIS, merged.provenance)
+        assertEquals("CALLS", merged.metadata["jvm.relation.kind"])
+        assertEquals("/trusted/Real.java", merged.metadata["source.path"])
+        assertEquals("frontend-color", merged.metadata["presentation.color"])
+        assertEquals("100", merged.metadata["layout.x"])
     }
 
     private fun applierResultHasNoIssues(result: GraphEditApplierResult): Boolean = result.issues.isEmpty()

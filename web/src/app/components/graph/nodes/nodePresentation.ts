@@ -1,4 +1,4 @@
-import { nodeTypeLabel, sourceTagLabel } from "../../../labels";
+import { nodeTypeLabel, provenanceLabel } from "../../../labels";
 import { resolveFlowchartKind } from "../../../flowchartKind";
 import type { LinkGraphNode } from "../../../types";
 
@@ -322,18 +322,18 @@ export function nodeSourceBadge(node: LinkGraphNode): { text: string; title: str
   if (isMethodBoundaryExplanationNode(node)) {
     return { text: "解释", title: "系统解释节点" };
   }
-  const sourceTag = node.sourceTag ?? "FACT";
-  switch (sourceTag) {
-    case "FACT":
+  const provenance = node.provenance ?? "CODE_ANALYSIS";
+  switch (provenance) {
+    case "CODE_ANALYSIS":
       return null;
-    case "DESIGN_BASELINE":
-      return { text: "设计", title: sourceTagLabel(sourceTag) };
-    case "DRAFT_MANUAL":
-      return { text: "人工草稿", title: sourceTagLabel(sourceTag) };
-    case "DRAFT_AI":
-      return { text: "AI 草稿", title: sourceTagLabel(sourceTag) };
-    case "UNCERTAIN_FACT":
-      return { text: "待确认", title: sourceTagLabel(sourceTag) };
+    case "DESIGN_IMPORT":
+      return { text: "设计", title: provenanceLabel(provenance) };
+    case "USER_DRAFT":
+      return { text: "人工草稿", title: provenanceLabel(provenance) };
+    case "AI_DRAFT":
+      return { text: "AI 草稿", title: provenanceLabel(provenance) };
+    case "DERIVED":
+      return { text: "待确认", title: provenanceLabel(provenance) };
   }
 }
 

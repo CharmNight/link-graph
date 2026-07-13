@@ -12,8 +12,8 @@ function flowNode(): LinkGraphNode {
     signature: "validate(request)",
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
     metadata: {
       "flowchart.kind": "PROCESS",
     },
@@ -27,8 +27,8 @@ function expandedInvocationNode(): LinkGraphNode {
     title: "saveInfo()",
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
     metadata: {
       "flow.kind": "ACTION",
       "flowchart.kind": "PROCESS",
@@ -46,8 +46,8 @@ function expandedScopeNode(): LinkGraphNode {
     title: "if (saved)",
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
     metadata: {
       "flow.kind": "IF",
       "flowchart.kind": "DECISION",
@@ -65,8 +65,8 @@ function expandedMergeNode(): LinkGraphNode {
     title: "汇合",
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
     metadata: {
       "flowchart.kind": "MERGE",
       "flow.ownerMethod": "com.example.SourceToMapUtil.genderSourceMap(java.lang.Object):java.util.Map",

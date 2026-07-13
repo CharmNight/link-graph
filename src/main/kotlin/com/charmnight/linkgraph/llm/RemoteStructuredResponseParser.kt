@@ -199,16 +199,41 @@ internal class RemoteStructuredResponseParser(
             return gateway.generate(request.copy(deliveryMode = LlmDeliveryMode.FULL))
         }
         val preview = StringBuilder()
+        var previewTruncated = false
+
+        fun appendPreview(text: String): Boolean {
+            if (text.isEmpty() || previewTruncated) {
+                return false
+            }
+            if (preview.length + text.length <= MAX_STREAMING_PREVIEW_CHARS) {
+                preview.append(text)
+                return true
+            }
+            val marker = "\n[响应预览已截断，最大 $MAX_STREAMING_PREVIEW_CHARS chars。]"
+            val maxTextChars = (MAX_STREAMING_PREVIEW_CHARS - marker.length).coerceAtLeast(0)
+            if (preview.length > maxTextChars) {
+                preview.setLength(maxTextChars)
+            }
+            val remaining = (maxTextChars - preview.length).coerceAtLeast(0)
+            if (remaining > 0) {
+                preview.append(text.take(remaining))
+            }
+            preview.append(marker)
+            previewTruncated = true
+            return true
+        }
+
         val response = gateway.stream(request.copy(deliveryMode = LlmDeliveryMode.STREAM)) { event ->
             when (event) {
                 is LlmStreamEvent.TextDelta -> {
-                    preview.append(event.text)
-                    onPreview?.invoke(preview.toString(), false)
+                    if (appendPreview(event.text)) {
+                        onPreview?.invoke(preview.toString(), false)
+                    }
                 }
 
                 is LlmStreamEvent.Completed -> {
                     if (preview.isEmpty() && event.response.content.isNotEmpty()) {
-                        preview.append(event.response.content)
+                        appendPreview(event.response.content)
                     }
                     onPreview?.invoke(preview.toString(), true)
                 }
@@ -218,7 +243,8 @@ internal class RemoteStructuredResponseParser(
             }
         }
         if (preview.isEmpty() && response.content.isNotEmpty()) {
-            onPreview?.invoke(response.content, true)
+            appendPreview(response.content)
+            onPreview?.invoke(preview.toString(), true)
         }
         return response
     }
@@ -320,5 +346,9 @@ internal class RemoteStructuredResponseParser(
     /** 判断当前协议是否支持下发原生结构化输出 schema。 */
     private fun LlmWireProtocol.supportsNativeStructuredOutput(): Boolean {
         return this == LlmWireProtocol.OPENAI_RESPONSES
+    }
+
+    internal companion object {
+        const val MAX_STREAMING_PREVIEW_CHARS: Int = 64 * 1024
     }
 }

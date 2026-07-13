@@ -17,7 +17,7 @@ class ValidateEditScopeToolTest : BasePlatformTestCase() {
     fun testRejectsExistingFileDraftWithoutValidatedScope() {
         val result = ValidateEditScopeTool(ValidationToolFacade()).invoke(
             input = mapOf(
-                "draft" to GeneratedCodeDraft(
+                "draft" to GeneratedCodeDraft.patchExistingFile(
                     id = "draft-1",
                     sourceNodeId = "method:upload-file",
                     title = "rewrite upload",
@@ -58,7 +58,7 @@ class ValidateEditScopeToolTest : BasePlatformTestCase() {
         )
         val result = ValidateEditScopeTool(ValidationToolFacade()).invoke(
             input = mapOf(
-                "draft" to GeneratedCodeDraft(
+                "draft" to GeneratedCodeDraft.patchExistingFile(
                     id = "draft-1",
                     sourceNodeId = "method:upload-file",
                     title = "rewrite upload",
@@ -101,7 +101,7 @@ class ValidateEditScopeToolTest : BasePlatformTestCase() {
         )
         val result = ValidateEditScopeTool(ValidationToolFacade()).invoke(
             input = mapOf(
-                "draft" to GeneratedCodeDraft(
+                "draft" to GeneratedCodeDraft.patchExistingFile(
                     id = "draft-1",
                     sourceNodeId = "method:upload-file",
                     title = "rewrite upload",

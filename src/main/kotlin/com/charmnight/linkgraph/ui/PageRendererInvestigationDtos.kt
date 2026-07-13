@@ -138,6 +138,7 @@ internal data class GeneratedCodeDraftDto(
     val sourceNodeId: String,
     val title: String,
     val targetPath: String,
+    val commandKind: String,
     val contentArtifactId: String?,
     val content: String?,
     val editOperations: List<CodeEditOperationDto>,

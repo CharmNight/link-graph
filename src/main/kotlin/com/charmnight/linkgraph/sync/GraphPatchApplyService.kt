@@ -100,13 +100,13 @@ class GraphPatchApplyService {
             doc = incoming.doc ?: existing.doc,
             sourceKind = incoming.sourceKind ?: existing.sourceKind,
             status = incoming.status ?: existing.status,
-            bindingStatus = incoming.bindingStatus,
-            certainty = incoming.certainty,
+            binding = incoming.binding,
+            confidence = incoming.confidence,
             diff = incoming.diff,
             evidence = if (incoming.evidence.isEmpty()) existing.evidence else incoming.evidence,
             uncertainty = incoming.uncertainty ?: existing.uncertainty,
             metadata = existing.metadata + incoming.metadata,
-            sourceTag = incoming.sourceTag,
+            provenance = incoming.provenance,
         )
     }
 
@@ -133,14 +133,14 @@ class GraphPatchApplyService {
             fromNodeId = incoming.fromNodeId,
             toNodeId = incoming.toNodeId,
             label = incoming.label ?: existing.label,
-            certainty = incoming.certainty,
-            bindingStatus = incoming.bindingStatus,
+            confidence = incoming.confidence,
+            binding = incoming.binding,
             status = incoming.status ?: existing.status,
             diff = incoming.diff,
             evidence = if (incoming.evidence.isEmpty()) existing.evidence else incoming.evidence,
             uncertainty = incoming.uncertainty ?: existing.uncertainty,
             metadata = existing.metadata + incoming.metadata,
-            sourceTag = incoming.sourceTag,
+            provenance = incoming.provenance,
         )
     }
 }

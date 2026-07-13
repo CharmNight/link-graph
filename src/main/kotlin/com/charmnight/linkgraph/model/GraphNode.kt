@@ -42,10 +42,12 @@ data class GraphNode(
     val sourceKind: String? = null,
     /** 保存用于界面展示的状态。 */
     val status: String? = null,
-    /** 保存节点与外部对象的绑定状态。 */
-    val bindingStatus: BindingStatus = BindingStatus.BOUND,
-    /** 保存当前节点结论的可信程度。 */
-    val certainty: Certainty = Certainty.PROVEN,
+    /** 保存节点最初的产生来源。 */
+    val provenance: GraphProvenance = GraphProvenance.CODE_ANALYSIS,
+    /** 保存节点与真实代码或设计目标之间的绑定状态。 */
+    val binding: GraphBinding = provenance.defaultBinding(),
+    /** 保存当前节点结论的可验证程度。 */
+    val confidence: GraphConfidence = provenance.defaultConfidence(),
     /** 保存节点的差异信息。 */
     val diff: GraphDiff = GraphDiff(),
     /** 保存支撑节点结论的证据列表。 */
@@ -54,8 +56,6 @@ data class GraphNode(
     val uncertainty: GraphUncertainty? = null,
     /** 保存节点的扩展元数据。 */
     val metadata: Map<String, String> = emptyMap(),
-    /** 保存节点的数据来源标签。 */
-    val sourceTag: GraphSourceTag = GraphSourceTag.FACT,
 ) {
     /**
      * 提供稳定节点标识的构建逻辑。

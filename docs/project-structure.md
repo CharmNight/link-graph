@@ -72,10 +72,10 @@
   - 共享图模型定义。
 - `workbench`
   - 问答会话、草稿确认、风险决策、步骤投影和工作台布局偏好等领域类型与服务。
-- `mermaid`、`diff`、`sync`、`navigation`、`codegen`、`llm`、`investigation`、`settings`
+- `mermaid`、`diff`、`sync`、`navigation`、`codegen`、`agent`、`llm`、`investigation`、`settings`
   - 各自聚焦的领域能力模块。
 
-`llm` 下按运行职责继续拆分：
+`agent` 下按受控运行职责继续拆分：
 
 - `runtime`
   - 受控 Agent Run、步骤执行、预算和停止策略。
@@ -85,8 +85,19 @@
   - 跨步骤和跨阶段传递的结构化 Artifact。
 - `capability`
   - 问答、实现建议、代码 diff 等 Agent Capability。
+
+`llm` 下按远程模型与提示词职责继续拆分：
+
+- `prompt`
+  - 问答、生成、Diff 审阅、美化等提示词构造器和共享渲染辅助。
+- `qa`
+  - 问答结果分类、本地规则回退、证据摘要和会话支持。
 - `context`
   - 源码片段等上下文收集与去重支撑。
+- `tools`
+  - LLM/Agent 可调用的项目图谱、源码、架构索引和草稿访问工具门面。
+- `capability`、`artifact`、`runtime`
+  - 保留兼容或跨层复用的 LLM 能力、产物和运行支撑；新增受控 Agent Run 优先放在 `agent` 对应子包。
 
 `investigation` 用于风险线程继续取证的完整链路，包括领域模型、流水线编排、证据闸门、取证目标规划、结果展示、结果适配和 resolver 实现。
 

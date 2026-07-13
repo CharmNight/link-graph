@@ -21,6 +21,7 @@ import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import kotlin.test.assertNotNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class GraphGenerationServiceTest {
@@ -101,6 +102,105 @@ class GraphGenerationServiceTest {
         assertEquals("Generate DTO", plan.items.single().title)
         assertEquals("src/main/java/com/example/OrderDraft.java", plan.items.single().targetPath)
         assertTrue(plan.warnings.contains("Check mapper binding."))
+    }
+
+    @Test
+    fun remoteGenerationPlanStripsSourceSnippetsByDefault() {
+        val requests = mutableListOf<LlmRequest>()
+        val service = GraphGenerationService(
+            promptFactory = LlmPromptFactory(),
+            gateway = object : LlmGateway {
+                override fun generate(request: LlmRequest): LlmResponse {
+                    requests += request
+                    return LlmResponse(
+                        content = """
+                            {
+                              "summary": "Remote plan",
+                              "items": [],
+                              "warnings": []
+                            }
+                        """.trimIndent(),
+                        model = request.model,
+                    )
+                }
+            },
+        )
+
+        val plan = service.generatePlan(
+            context = sampleContext().copy(
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "method:submit-order",
+                        filePath = "src/main/java/com/example/OrderService.java",
+                        startLine = 12,
+                        endLine = 14,
+                        snippet = "private final String shouldNotLeaveWorkspace = \"generation-secret\";",
+                    ),
+                ),
+            ),
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://api.example.com/v1",
+                apiKey = "secret-key",
+                model = "gpt-4.1-mini",
+            ),
+        )
+
+        assertEquals(1, requests.size)
+        assertFalse(requests.single().userPrompt.contains("shouldNotLeaveWorkspace"))
+        assertFalse(requests.single().userPrompt.contains("generation-secret"))
+        assertTrue(plan.warnings.any { it.contains("源码片段外发未授权") })
+    }
+
+    @Test
+    fun remoteGenerationPlanIncludesSourceSnippetsWhenExplicitlyAllowed() {
+        val requests = mutableListOf<LlmRequest>()
+        val service = GraphGenerationService(
+            promptFactory = LlmPromptFactory(),
+            gateway = object : LlmGateway {
+                override fun generate(request: LlmRequest): LlmResponse {
+                    requests += request
+                    return LlmResponse(
+                        content = """
+                            {
+                              "summary": "Remote plan",
+                              "items": [],
+                              "warnings": []
+                            }
+                        """.trimIndent(),
+                        model = request.model,
+                    )
+                }
+            },
+        )
+
+        val plan = service.generatePlan(
+            context = sampleContext().copy(
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "method:submit-order",
+                        filePath = "src/main/java/com/example/OrderService.java",
+                        startLine = 12,
+                        endLine = 14,
+                        snippet = "void explicitlyAllowedSourceContext() {}",
+                    ),
+                ),
+            ),
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://api.example.com/v1",
+                apiKey = "secret-key",
+                model = "gpt-4.1-mini",
+                allowRemoteSourceContext = true,
+            ),
+        )
+
+        assertEquals(1, requests.size)
+        assertTrue(requests.single().userPrompt.contains("相关源码片段"))
+        assertTrue(requests.single().userPrompt.contains("explicitlyAllowedSourceContext"))
+        assertFalse(plan.warnings.any { it.contains("源码片段外发未授权") })
     }
 
     @Test

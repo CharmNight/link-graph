@@ -55,22 +55,12 @@ enum class InvocationExpansionContextMode {
     ACTIVE_CHAIN,
 }
 
-/** 调用展开子状态快照，用于后续恢复父块重新打开后的子块状态。 */
-data class ChildInvocationExpansionState(
-    val activeExpansionId: String? = null,
-    val activeExpansionPath: List<String> = emptyList(),
-    val collapsedExpansionIds: Set<String> = emptySet(),
-    val activeSiblingByParentContext: Map<String, String> = emptyMap(),
-)
-
 /** 流程图调用展开的 UI/session 状态；不属于语义图 metadata。 */
 data class InvocationExpansionSceneState(
     val activeExpansionId: String? = null,
     val activeExpansionPath: List<String> = emptyList(),
     val collapsedExpansionIds: Set<String> = emptySet(),
     val activeSiblingByParentContext: Map<String, String> = emptyMap(),
-    val blockPositions: Map<String, GraphLayoutPosition> = emptyMap(),
-    val lastChildStateByExpansionId: Map<String, ChildInvocationExpansionState> = emptyMap(),
     val contextMode: InvocationExpansionContextMode = InvocationExpansionContextMode.ACTIVE_CHAIN,
 )
 

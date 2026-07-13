@@ -16,8 +16,8 @@ function classNode(id: string, title = id): LinkGraphNode {
     title,
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
   };
 }
 

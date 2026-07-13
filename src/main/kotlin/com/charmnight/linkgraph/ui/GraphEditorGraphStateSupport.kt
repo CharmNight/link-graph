@@ -164,10 +164,6 @@ internal class GraphEditorGraphStateSupport(
         mutate { currentState -> currentState.withOpenedInvocationExpansion(expansionId) }
     }
 
-    fun activateInvocationExpansion(expansionId: String) {
-        mutate { currentState -> currentState.withActivatedInvocationExpansion(expansionId) }
-    }
-
     /** 切换分析结果的展示模式（例如仅展示关键节点或全量节点）。 */
     fun switchAnalysisDisplayMode(displayMode: AnalysisDisplayMode) {
         mutate { currentState -> currentState.withSwitchedAnalysisDisplayMode(displayMode) }

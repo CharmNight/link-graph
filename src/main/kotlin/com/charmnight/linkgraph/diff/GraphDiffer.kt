@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.diff
 
 import com.charmnight.linkgraph.mermaid.MermaidBindingService
-import com.charmnight.linkgraph.model.BindingStatus
+import com.charmnight.linkgraph.model.GraphBinding
 import com.charmnight.linkgraph.model.DiffStatus
 import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDiffElementKind
@@ -140,7 +140,7 @@ class GraphDiffer(
                     NodeOutcome(
                         node = codeNode.copy(
                             diff = diff,
-                            bindingStatus = if (status == DiffStatus.MODIFIED) BindingStatus.PARTIALLY_SYNCED else codeNode.bindingStatus,
+                            binding = if (status == DiffStatus.MODIFIED) GraphBinding.PARTIAL else codeNode.binding,
                         ),
                         entry = diff.takeIf { it.status != DiffStatus.MATCHED }?.let {
                             GraphDiffEntry(
@@ -250,7 +250,7 @@ class GraphDiffer(
         return EdgeOutcome(
             edge = codeEdge.copy(
                 diff = diff,
-                bindingStatus = if (status == DiffStatus.MODIFIED) BindingStatus.PARTIALLY_SYNCED else codeEdge.bindingStatus,
+                binding = if (status == DiffStatus.MODIFIED) GraphBinding.PARTIAL else codeEdge.binding,
             ),
             entry = diff.takeIf { it.status != DiffStatus.MATCHED }?.let {
                 GraphDiffEntry(

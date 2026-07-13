@@ -134,6 +134,70 @@ export interface GraphContentBounds {
   height: number;
 }
 
+/** 新激活的调用展开在流程图中的局部聚焦端点。 */
+export interface InvocationExpansionViewportFocus {
+  expansionId: string;
+  sourceNodeId: string;
+  rootNodeId: string;
+}
+
+/** 调用展开局部视口的中心、缩放和原始节点边界。 */
+export interface InvocationExpansionViewportTarget {
+  centerX: number;
+  centerY: number;
+  zoom: number;
+  bounds: GraphContentBounds;
+}
+
+/**
+ * 根据调用源和被调入口计算局部视口目标。只计算真实节点边界，ViewportPortal 中的
+ * 展开分组装饰不会进入结果；端点或画布尺寸缺失时返回 null，由调度层执行常规回退。
+ */
+export function invocationExpansionViewportTarget(args: {
+  focus: InvocationExpansionViewportFocus;
+  nodes: LinkGraphNode[];
+  nodeViewportSize: (node: LinkGraphNode) => { width: number; height: number };
+  viewportSize: { width: number; height: number };
+  minZoom: number;
+}): InvocationExpansionViewportTarget | null {
+  const sourceNode = args.nodes.find((node) => node.id === args.focus.sourceNodeId);
+  const rootNode = args.nodes.find((node) => node.id === args.focus.rootNodeId);
+  if (!sourceNode?.position || !rootNode?.position || args.viewportSize.width <= 0 || args.viewportSize.height <= 0) {
+    return null;
+  }
+  const sourceSize = args.nodeViewportSize(sourceNode);
+  const rootSize = args.nodeViewportSize(rootNode);
+  const minX = Math.min(sourceNode.position.x, rootNode.position.x);
+  const minY = Math.min(sourceNode.position.y, rootNode.position.y);
+  const maxX = Math.max(sourceNode.position.x + sourceSize.width, rootNode.position.x + rootSize.width);
+  const maxY = Math.max(sourceNode.position.y + sourceSize.height, rootNode.position.y + rootSize.height);
+  const bounds = {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: Math.max(1, maxX - minX),
+    height: Math.max(1, maxY - minY),
+  };
+  const horizontalPadding = Math.min(96, Math.max(48, args.viewportSize.width * 0.08));
+  const verticalPadding = Math.min(80, Math.max(40, args.viewportSize.height * 0.1));
+  const zoom = clamp(
+    Math.min(
+      1,
+      Math.max(1, args.viewportSize.width - horizontalPadding * 2) / bounds.width,
+      Math.max(1, args.viewportSize.height - verticalPadding * 2) / bounds.height,
+    ),
+    args.minZoom,
+    1,
+  );
+  return {
+    centerX: minX + bounds.width / 2,
+    centerY: minY + bounds.height / 2,
+    zoom,
+    bounds,
+  };
+}
+
 /**
  * 计算图内容的边界框（包含所有节点与边路由）。
  *

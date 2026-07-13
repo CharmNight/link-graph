@@ -12,15 +12,74 @@ import com.charmnight.linkgraph.model.GraphDiffEntry
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphPatchAction
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class GraphDiffPatchServiceTest {
+    @Test
+    fun stripsReviewEvidenceSourceWhenRemoteSourceContextIsNotAllowed() {
+        var capturedRequest: LlmRequest? = null
+        val result = GraphDiffPatchService(
+            gateway = object : LlmGateway {
+                override fun generate(request: LlmRequest): LlmResponse {
+                    capturedRequest = request
+                    return emptyRemotePatchResponse(request)
+                }
+            },
+        ).review(
+            context = GraphDiffContext(
+                reviewEvidenceSummary = "- evidence com.example.Secret",
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "class:secret",
+                        filePath = "src/main/java/com/example/Secret.java",
+                        snippet = "SECRET_SOURCE_MARKER",
+                    ),
+                ),
+            ),
+            question = "请检查差异。",
+            settings = remoteSettings(allowRemoteSourceContext = false),
+        )
+
+        val request = requireNotNull(capturedRequest)
+        assertFalse(request.userPrompt.contains("SECRET_SOURCE_MARKER"))
+        assertTrue(result.warnings.contains(REMOTE_SOURCE_CONTEXT_BLOCKED_WARNING))
+    }
+
+    @Test
+    fun keepsReviewEvidenceSourceWhenRemoteSourceContextIsAllowed() {
+        var capturedRequest: LlmRequest? = null
+        GraphDiffPatchService(
+            gateway = object : LlmGateway {
+                override fun generate(request: LlmRequest): LlmResponse {
+                    capturedRequest = request
+                    return emptyRemotePatchResponse(request)
+                }
+            },
+        ).review(
+            context = GraphDiffContext(
+                reviewEvidenceSummary = "- evidence com.example.Secret",
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "class:secret",
+                        filePath = "src/main/java/com/example/Secret.java",
+                        snippet = "SECRET_SOURCE_MARKER",
+                    ),
+                ),
+            ),
+            question = "请检查差异。",
+            settings = remoteSettings(allowRemoteSourceContext = true),
+        )
+
+        assertTrue(requireNotNull(capturedRequest).userPrompt.contains("SECRET_SOURCE_MARKER"))
+    }
+
     @Test
     fun buildsMockDiffExplanationAndRevisionPatch() {
         val result = GraphDiffPatchService().review(
@@ -31,7 +90,7 @@ class GraphDiffPatchServiceTest {
                             id = "method:order-service-place",
                             type = NodeType.METHOD,
                             title = "OrderService.place",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -42,7 +101,7 @@ class GraphDiffPatchServiceTest {
                             type = NodeType.CLASS,
                             title = "DefaultChannelFallback",
                             doc = "设计里要求补默认兜底处理。",
-                            sourceTag = GraphSourceTag.DESIGN_BASELINE,
+                            provenance = GraphProvenance.DESIGN_IMPORT,
                         ),
                     ),
                 ),
@@ -75,7 +134,7 @@ class GraphDiffPatchServiceTest {
         val addedNode = result.patch.operations.firstNotNullOfOrNull { it.node }
         assertNotNull(addedNode)
         assertEquals("DefaultChannelFallback", addedNode.title)
-        assertEquals(GraphSourceTag.DRAFT_AI, addedNode.sourceTag)
+        assertEquals(GraphProvenance.AI_DRAFT, addedNode.provenance)
     }
 
     @Test
@@ -102,7 +161,7 @@ class GraphDiffPatchServiceTest {
                                   "type": "CLASS",
                                   "title": "DefaultChannelFallback",
                                   "doc": "远程建议先转成待实现草稿节点。",
-                                  "sourceTag": "DRAFT_AI"
+                                  "provenance": "AI_DRAFT"
                                 }
                               }
                             ],
@@ -126,7 +185,7 @@ class GraphDiffPatchServiceTest {
                             id = "method:order-service-place",
                             type = NodeType.METHOD,
                             title = "OrderService.place",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -136,7 +195,7 @@ class GraphDiffPatchServiceTest {
                             id = "design:default-fallback",
                             type = NodeType.CLASS,
                             title = "DefaultChannelFallback",
-                            sourceTag = GraphSourceTag.DESIGN_BASELINE,
+                            provenance = GraphProvenance.DESIGN_IMPORT,
                         ),
                     ),
                 ),
@@ -192,7 +251,7 @@ class GraphDiffPatchServiceTest {
                                       "type": "CLASS",
                                       "title": "DefaultChannelFallback",
                                       "doc": "远程建议先转成待实现草稿节点。",
-                                      "sourceTag": "DRAFT_AI"
+                                      "provenance": "AI_DRAFT"
                                     }
                                   }
                                 ],
@@ -217,7 +276,7 @@ class GraphDiffPatchServiceTest {
                             id = "method:order-service-place",
                             type = NodeType.METHOD,
                             title = "OrderService.place",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -227,7 +286,7 @@ class GraphDiffPatchServiceTest {
                             id = "design:default-fallback",
                             type = NodeType.CLASS,
                             title = "DefaultChannelFallback",
-                            sourceTag = GraphSourceTag.DESIGN_BASELINE,
+                            provenance = GraphProvenance.DESIGN_IMPORT,
                         ),
                     ),
                 ),
@@ -267,7 +326,7 @@ class GraphDiffPatchServiceTest {
                             id = "method:order-service-place",
                             type = NodeType.METHOD,
                             title = "OrderService.place",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -301,7 +360,7 @@ class GraphDiffPatchServiceTest {
                             id = "method:order-service-place",
                             type = NodeType.METHOD,
                             title = "OrderService.place",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -312,14 +371,14 @@ class GraphDiffPatchServiceTest {
                             type = NodeType.CLASS,
                             title = "DefaultChannelFallback",
                             doc = "设计里要求补默认兜底处理。",
-                            sourceTag = GraphSourceTag.DESIGN_BASELINE,
+                            provenance = GraphProvenance.DESIGN_IMPORT,
                         ),
                         GraphNode(
                             id = "design:qa-note",
                             type = NodeType.DOC_PAGE,
                             title = "QaNote",
                             doc = "另一个设计节点。",
-                            sourceTag = GraphSourceTag.DESIGN_BASELINE,
+                            provenance = GraphProvenance.DESIGN_IMPORT,
                         ),
                     ),
                 ),
@@ -352,4 +411,33 @@ class GraphDiffPatchServiceTest {
         assertTrue(result.answer.contains("DefaultChannelFallback"))
         assertEquals("DefaultChannelFallback", result.patch?.operations?.firstNotNullOfOrNull { it.node }?.title)
     }
+
+    private fun remoteSettings(allowRemoteSourceContext: Boolean): LinkGraphSettingsState =
+        LinkGraphSettingsState(
+            llmEnabled = true,
+            provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+            endpoint = "https://api.example.com/v1",
+            apiKey = "token",
+            model = "gpt-test",
+            allowRemoteSourceContext = allowRemoteSourceContext,
+        )
+
+    private fun emptyRemotePatchResponse(request: LlmRequest): LlmResponse =
+        LlmResponse(
+            content = """
+                {
+                  "answer": "已检查差异。",
+                  "warnings": [],
+                  "patch": {
+                    "summary": "无修订",
+                    "operations": [],
+                    "addedNodeIds": [],
+                    "removedNodeIds": [],
+                    "addedEdgeIds": [],
+                    "removedEdgeIds": []
+                  }
+                }
+            """.trimIndent(),
+            model = request.model,
+        )
 }

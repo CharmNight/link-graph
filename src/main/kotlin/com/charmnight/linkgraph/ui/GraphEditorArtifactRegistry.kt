@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.ui
 
+import com.charmnight.linkgraph.foundation.utf8ByteLengthAtMost
+import com.charmnight.linkgraph.source.SourceArchiveReadLimits
 import java.security.MessageDigest
 
 /**
@@ -59,8 +61,14 @@ class GraphEditorArtifactRegistry {
             if (content.isNullOrBlank()) {
                 return null
             }
-            val artifactId = "$kind:${sanitize(ownerKey)}:${fingerprint(content)}"
-            nextArtifacts[artifactId] = content
+            val withinLimit = utf8ByteLengthAtMost(content, MAX_ARTIFACT_CONTENT_BYTES)
+            val fingerprintSource = if (withinLimit) {
+                content
+            } else {
+                "${content.take(OVERSIZED_FINGERPRINT_SAMPLE_CHARS)}:${content.length}:oversized"
+            }
+            val artifactId = "$kind:${sanitize(ownerKey)}:${fingerprint(fingerprintSource)}"
+            nextArtifacts[artifactId] = if (withinLimit) content else oversizedArtifactContent()
             return artifactId
         }
 
@@ -68,7 +76,7 @@ class GraphEditorArtifactRegistry {
             register(
                 kind = "draft-content",
                 ownerKey = draft.id,
-                content = draft.content,
+                content = (draft.command as? com.charmnight.linkgraph.codegen.CodeDraftCommand.CreateFile)?.content,
             )?.let { artifactId ->
                 draft.id to artifactId
             }
@@ -137,7 +145,7 @@ class GraphEditorArtifactRegistry {
                         register(
                             kind = "assistant-draft-content",
                             ownerKey = "$resultId:${draft.id}",
-                            content = draft.content,
+                            content = (draft.command as? com.charmnight.linkgraph.codegen.CodeDraftCommand.CreateFile)?.content,
                         )?.let { artifactId -> draft.id to artifactId }
                     }.toMap(),
                 )
@@ -186,7 +194,12 @@ class GraphEditorArtifactRegistry {
         return bytes.take(8).joinToString(separator = "") { byte -> "%02x".format(byte) }
     }
 
-    private companion object {
+    private fun oversizedArtifactContent(): String =
+        "内容过大，已省略展示。最大允许 $MAX_ARTIFACT_CONTENT_BYTES bytes。"
+
+    internal companion object {
+        const val MAX_ARTIFACT_CONTENT_BYTES: Int = SourceArchiveReadLimits.MAX_TEXT_ENTRY_BYTES
+        private const val OVERSIZED_FINGERPRINT_SAMPLE_CHARS: Int = 4096
         private val NON_ID_CHAR_REGEX = Regex("[^A-Za-z0-9._-]")
     }
 }

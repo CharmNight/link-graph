@@ -7,8 +7,12 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.psi.PsiDocumentManager
+import com.charmnight.linkgraph.foundation.utf8ByteLengthAtMost
+import com.charmnight.linkgraph.source.SourceArchiveReadLimits
+import com.charmnight.linkgraph.source.readFileTextBounded
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
@@ -37,24 +41,33 @@ class CodeDraftWriterService(
         projectBasePath: String?,
         draft: GeneratedCodeDraft,
     ): PreparedCodeEditBatch {
+        val previewText = draft.command.createFileContentOrNull().orEmpty()
         if (projectBasePath.isNullOrBlank()) {
             return PreparedCodeEditBatch(
                 canApply = false,
-                previewText = draft.content.orEmpty(),
+                previewText = previewText,
                 warnings = listOf("项目根路径不可用，无法准备 existing-file patch。"),
             )
         }
         val applyService = codeEditApplyService
             ?: return PreparedCodeEditBatch(
                 canApply = false,
-                previewText = draft.content.orEmpty(),
+                previewText = previewText,
                 warnings = listOf("scope-safe apply 需要 IDE project 上下文。"),
             )
         val normalizedDraft = ProjectPathNormalizer.normalizeDraft(draft, projectBasePath)
-        if (normalizedDraft.editOperations.isEmpty()) {
+        if (!CodeDraftContentLimits.isWithinCommandLimit(normalizedDraft.command)) {
             return PreparedCodeEditBatch(
                 canApply = false,
-                previewText = normalizedDraft.content.orEmpty(),
+                previewText = "",
+                warnings = listOf(CodeDraftContentLimits.oversizedContentWarning(normalizedDraft.targetPath)),
+            )
+        }
+        val patch = normalizedDraft.command.patchOrNull()
+        if (patch == null) {
+            return PreparedCodeEditBatch(
+                canApply = false,
+                previewText = normalizedDraft.command.createFileContentOrNull().orEmpty(),
                 warnings = listOf("当前草稿不包含 existing-file 局部 patch。"),
             )
         }
@@ -62,22 +75,22 @@ class CodeDraftWriterService(
             pathPolicy.resolveExistingFile(projectBasePath, normalizedDraft.targetPath)
         }?.path ?: return PreparedCodeEditBatch(
             canApply = false,
-            previewText = normalizedDraft.content.orEmpty(),
+            previewText = "",
             warnings = listOf("已跳过 '${normalizedDraft.targetPath}'，因为它不存在或解析到了项目目录之外。"),
         )
         val beforeText = safeFileSystemRead(normalizedDraft.targetPath) {
             currentFileText(target)
         } ?: return PreparedCodeEditBatch(
             canApply = false,
-            previewText = normalizedDraft.content.orEmpty(),
+            previewText = "",
             warnings = listOf(fileSystemFailureWarning(normalizedDraft.targetPath, lastFileSystemError.get())),
         )
         return computeOnIdeThread {
             applyService.prepareEdits(
                 filePath = normalizedDraft.targetPath,
                 beforeText = beforeText,
-                operations = normalizedDraft.editOperations,
-                editScopes = normalizedDraft.editScopes,
+                operations = patch.operations,
+                editScopes = patch.scopes,
             )
         }
     }
@@ -104,6 +117,11 @@ class CodeDraftWriterService(
 
         drafts.forEach { draft ->
             val normalizedDraft = ProjectPathNormalizer.normalizeDraft(draft, projectBasePath)
+            if (!CodeDraftContentLimits.isWithinCommandLimit(normalizedDraft.command)) {
+                skippedFiles += normalizedDraft.targetPath
+                warnings += CodeDraftContentLimits.oversizedContentWarning(normalizedDraft.targetPath)
+                return@forEach
+            }
             val scopedTarget = safeFileSystemRead(normalizedDraft.targetPath) {
                 pathPolicy.resolveWritableDraftTarget(projectBasePath, normalizedDraft.targetPath)
             }
@@ -116,15 +134,27 @@ class CodeDraftWriterService(
             }
             val target = scopedTarget.path
             if (!scopedTarget.existed) {
-                runDraftFileSystemOperation(normalizedDraft.targetPath, skippedFiles, warnings) {
-                    target.parent?.let(Files::createDirectories)
-                    Files.writeString(target, normalizedDraft.content ?: "")
-                    refreshFile(target)
-                    writtenFiles += normalizedDraft.targetPath
+                when (val command = normalizedDraft.command) {
+                    is CodeDraftCommand.CreateFile -> {
+                        runDraftFileSystemOperation(normalizedDraft.targetPath, skippedFiles, warnings) {
+                            writeNewFileAtomically(
+                                projectBasePath = projectBasePath,
+                                targetPath = normalizedDraft.targetPath,
+                                target = target,
+                                content = command.content,
+                            )
+                            refreshFile(target)
+                            writtenFiles += normalizedDraft.targetPath
+                        }
+                    }
+                    is CodeDraftCommand.PatchExistingFile -> {
+                        skippedFiles += normalizedDraft.targetPath
+                        warnings += "已跳过 '${normalizedDraft.targetPath}'，因为局部 patch 的目标文件不存在。"
+                    }
                 }
                 return@forEach
             }
-            if (normalizedDraft.editOperations.isNotEmpty()) {
+            if (normalizedDraft.command is CodeDraftCommand.PatchExistingFile) {
                 val prepared = runDraftFileSystemOperation(normalizedDraft.targetPath, skippedFiles, warnings) {
                     prepareExistingFileDraft(projectBasePath, normalizedDraft)
                 } ?: return@forEach
@@ -150,24 +180,17 @@ class CodeDraftWriterService(
                 writtenFiles += normalizedDraft.targetPath
                 return@forEach
             }
-            val contentMatches = if (normalizedDraft.content != null) {
-                runDraftFileSystemOperation(normalizedDraft.targetPath, skippedFiles, warnings) {
-                    Files.isRegularFile(target) && Files.readString(target) == normalizedDraft.content
-                } ?: return@forEach
-            } else {
-                false
-            }
+            val create = normalizedDraft.command as CodeDraftCommand.CreateFile
+            val contentMatches = runDraftFileSystemOperation(normalizedDraft.targetPath, skippedFiles, warnings) {
+                Files.isRegularFile(target) && currentFileText(target) == create.content
+            } ?: return@forEach
             if (contentMatches) {
                 refreshFile(target)
                 writtenFiles += normalizedDraft.targetPath
                 return@forEach
             }
             skippedFiles += normalizedDraft.targetPath
-            warnings += if (normalizedDraft.editScopes.isEmpty()) {
-                "已跳过 '${normalizedDraft.targetPath}'，因为 existing-file writeback 缺少 validated scope。"
-            } else {
-                "已跳过 '${normalizedDraft.targetPath}'，因为 existing-file 写回仅支持局部 patch apply。"
-            }
+            warnings += "已跳过 '${normalizedDraft.targetPath}'，因为 CREATE_FILE 不能覆盖已有文件。"
         }
 
         return GeneratedCodeDraftWriteReport(
@@ -175,6 +198,29 @@ class CodeDraftWriterService(
             skippedFiles = skippedFiles,
             warnings = warnings,
         )
+    }
+
+    /** 先写同目录临时文件，再原子移动到最终目标，避免中途失败留下半个新文件。 */
+    private fun writeNewFileAtomically(
+        projectBasePath: String,
+        targetPath: String,
+        target: Path,
+        content: String,
+    ) {
+        val parent = target.parent ?: error("目标文件 '$targetPath' 缺少父目录。")
+        Files.createDirectories(parent)
+        val recheckedTarget = pathPolicy.resolveWritableDraftTarget(projectBasePath, targetPath)
+            ?: error("目标文件 '$targetPath' 在创建目录后不再位于项目范围内。")
+        check(!recheckedTarget.existed && recheckedTarget.path == target) {
+            "目标文件 '$targetPath' 已存在或路径在写入前发生变化。"
+        }
+        val temporary = Files.createTempFile(parent, ".${target.fileName}.", ".tmp")
+        try {
+            Files.writeString(temporary, content)
+            Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE)
+        } finally {
+            Files.deleteIfExists(temporary)
+        }
     }
 
     /**
@@ -285,16 +331,33 @@ class CodeDraftWriterService(
      * 否则直接用 NIO 读取磁盘内容。
      */
     private fun currentFileText(target: Path): String {
+        requireReadableTextSize(target)
         val ideProject = project
         if (ideProject == null) {
-            return Files.readString(target)
+            return readFileTextBounded(target, SourceArchiveReadLimits.MAX_TEXT_ENTRY_BYTES)
+                ?: error(oversizedFileMessage(target))
         }
         return computeOnIdeThread {
             val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(target)
             val document = virtualFile?.let(FileDocumentManager.getInstance()::getDocument)
-            document?.text ?: Files.readString(target)
+            document?.text?.takeIf { text ->
+                utf8ByteLengthAtMost(text, SourceArchiveReadLimits.MAX_TEXT_ENTRY_BYTES)
+            }
+                ?: readFileTextBounded(target, SourceArchiveReadLimits.MAX_TEXT_ENTRY_BYTES)
+                ?: error(oversizedFileMessage(target))
         }
     }
+
+    /** 在读取现有目标文件前做大小检查，避免 diff/patch 准备阶段无界读入。 */
+    private fun requireReadableTextSize(target: Path) {
+        val size = runCatching { Files.size(target) }.getOrDefault(0L)
+        if (size > SourceArchiveReadLimits.MAX_TEXT_ENTRY_BYTES) {
+            error(oversizedFileMessage(target, size))
+        }
+    }
+
+    private fun oversizedFileMessage(target: Path, size: Long = runCatching { Files.size(target) }.getOrDefault(-1L)): String =
+        "目标文件过大：${target.fileName} ${size.coerceAtLeast(0L)} bytes，最大允许 ${SourceArchiveReadLimits.MAX_TEXT_ENTRY_BYTES} bytes"
 
     /**
      * 在 IDE 的事件分发线程上同步执行一段动作。

@@ -3,13 +3,10 @@ package com.charmnight.linkgraph.llm
 import com.charmnight.linkgraph.agent.model.*
 import com.charmnight.linkgraph.settings.*
 
-import com.charmnight.linkgraph.testing.*
-
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
-import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.workbench.StepGranularity
 import com.charmnight.linkgraph.workbench.StepKind
 import kotlin.test.Test
@@ -103,6 +100,144 @@ class GraphBeautificationServiceTest {
         })
         assertEquals(listOf("method:build-principal-collection"), result.steps[1].downstreamTargets)
         assertTrue(result.warnings.any { it.contains("不等于完整源码真值") })
+    }
+
+    @Test
+    fun remoteBeautificationStripsSourceSnippetsByDefaultAndWarns() {
+        val requests = mutableListOf<LlmRequest>()
+        val service = DefaultGraphBeautificationService(
+            gateway = object : LlmGateway {
+                override fun generate(request: LlmRequest): LlmResponse {
+                    requests += request
+                    return LlmResponse(
+                        content = """
+                            {
+                              "steps": [
+                                {
+                                  "stepId": "step-run-as",
+                                  "title": "切换 principal",
+                                  "description": "基于图节点解释 runAs 调用。",
+                                  "evidence": [
+                                    {
+                                      "id": "remote-graph",
+                                      "claim": "远程只收到图节点证据。",
+                                      "evidenceLevel": "DIRECT_GRAPH",
+                                      "references": [
+                                        { "nodeId": "flow-action:run-as" }
+                                      ]
+                                    }
+                                  ],
+                                  "followUpQuestions": [],
+                                  "downstreamTargets": []
+                                }
+                              ],
+                              "warnings": []
+                            }
+                        """.trimIndent(),
+                        model = request.model,
+                    )
+                }
+            },
+        )
+
+        val result = service.beautify(
+            context = beautificationContext().copy(
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "flow-action:run-as",
+                        filePath = "/tmp/ShiroUtils.java",
+                        startLine = 12,
+                        endLine = 12,
+                        snippet = "String beautificationRemoteSecret = \"beautification-secret\";",
+                    ),
+                ),
+            ),
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://api.example.com/v1",
+                apiKey = "token",
+                model = "gpt-test",
+            ),
+        )
+
+        assertEquals(1, requests.size)
+        assertFalse(requests.single().userPrompt.contains("beautificationRemoteSecret"))
+        assertFalse(requests.single().userPrompt.contains("beautification-secret"))
+        assertTrue(result.warnings.any { it.contains("源码片段外发未授权") })
+    }
+
+    @Test
+    fun remoteBeautificationStripsStepSourceContextFromPromptEvidenceByDefaultAndWarns() {
+        val requests = mutableListOf<LlmRequest>()
+        val service = DefaultGraphBeautificationService(
+            gateway = object : LlmGateway {
+                override fun generate(request: LlmRequest): LlmResponse {
+                    requests += request
+                    return LlmResponse(
+                        content = """
+                            {
+                              "steps": [
+                                {
+                                  "stepId": "step-run-as",
+                                  "title": "切换 principal",
+                                  "description": "基于图节点解释 runAs 调用。",
+                                  "evidence": [
+                                    {
+                                      "id": "remote-graph",
+                                      "claim": "远程只收到图节点证据。",
+                                      "evidenceLevel": "DIRECT_GRAPH",
+                                      "references": [
+                                        { "nodeId": "flow-action:run-as" }
+                                      ]
+                                    }
+                                  ],
+                                  "followUpQuestions": [],
+                                  "downstreamTargets": []
+                                }
+                              ],
+                              "warnings": []
+                            }
+                        """.trimIndent(),
+                        model = request.model,
+                    )
+                }
+            },
+        )
+        val baseContext = beautificationContext()
+
+        val result = service.beautify(
+            context = baseContext.copy(
+                presentationContext = baseContext.presentationContext.copy(
+                    anchorNodeId = "flow-action:run-as",
+                    selectedNodeIds = listOf("flow-action:run-as"),
+                ),
+                sourceContext = emptyList(),
+                stepSourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "flow-action:run-as",
+                        filePath = "/tmp/ShiroUtils.java",
+                        startLine = 12,
+                        endLine = 12,
+                        snippet = "String stepRemoteSecret = \"step-secret\";",
+                    ),
+                ),
+            ),
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://api.example.com/v1",
+                apiKey = "token",
+                model = "gpt-test",
+            ),
+        )
+
+        val prompt = requests.single().userPrompt
+        assertFalse(prompt.contains("stepRemoteSecret"))
+        assertFalse(prompt.contains("step-secret"))
+        assertTrue(prompt.contains("具备源码证据：false"))
+        assertTrue(result.warnings.any { it.contains("源码片段外发未授权") })
+        assertEquals("String stepRemoteSecret = \"step-secret\";", result.steps.single().codeSnippet)
     }
 
     @Test
@@ -247,7 +382,7 @@ class GraphBeautificationServiceTest {
             id = "class:quota-manager",
             type = NodeType.CLASS,
             title = "ClientRequestQuotaManager",
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
         )
 
         val result = service.beautify(
@@ -326,14 +461,14 @@ class GraphBeautificationServiceTest {
                 "architecture.node.kind" to "PACKAGE",
                 "indexed.memberClassCount" to "19",
             ),
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
         )
         val componentNode = GraphNode(
             id = "arch:component:kafka-server",
             type = NodeType.COMPONENT,
             title = "kafka.server",
             metadata = mapOf("architecture.node.kind" to "COMPONENT"),
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
         )
         val context = GraphBeautificationContext(
             presentationContext = GraphPresentationContext(
@@ -399,7 +534,7 @@ class GraphBeautificationServiceTest {
             type = NodeType.PACKAGE,
             title = "kafka.cluster",
             metadata = mapOf("indexed.memberClassCount" to "19"),
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
         )
         val result = service.beautify(
             context = GraphBeautificationContext(
@@ -431,7 +566,7 @@ class GraphBeautificationServiceTest {
             type = NodeType.METHOD,
             title = "ShiroUtils.setSysUser",
             signature = methodSignature,
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
         )
         val getSubjectNode = GraphNode(
             id = "flow-action:get-subject",
@@ -443,7 +578,7 @@ class GraphBeautificationServiceTest {
                 "workbench.businessStepTitle" to "读取当前 subject",
                 "source.startLine" to "11",
             ),
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
         )
         val actionNode = GraphNode(
             id = "flow-action:run-as",
@@ -455,7 +590,7 @@ class GraphBeautificationServiceTest {
                 "workbench.businessStepTitle" to "切换 principal",
                 "source.startLine" to "12",
             ),
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
         )
         val returnNode = GraphNode(
             id = "flow-terminal:return",
@@ -466,7 +601,7 @@ class GraphBeautificationServiceTest {
                 "workbench.businessStepTitle" to "返回调用结果",
                 "source.startLine" to "13",
             ),
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
         )
         return GraphBeautificationContext(
             presentationContext = GraphPresentationContext(

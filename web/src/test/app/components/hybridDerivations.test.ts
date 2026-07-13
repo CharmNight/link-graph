@@ -22,9 +22,9 @@ const methodNode: LinkGraphNode = {
   signature: "submit():void",
   inputs: [],
   outputs: [],
-  certainty: "PROVEN",
-  bindingStatus: "BOUND",
-  sourceTag: "FACT",
+  confidence: "VERIFIED",
+  binding: "CODE_BOUND",
+  provenance: "CODE_ANALYSIS",
 };
 
 const resourceNode: LinkGraphNode = {
@@ -33,9 +33,9 @@ const resourceNode: LinkGraphNode = {
   title: "OrderMapper.xml",
   inputs: [],
   outputs: [],
-  certainty: "RULE_INFERRED",
-  bindingStatus: "BOUND",
-  sourceTag: "FACT",
+  confidence: "INFERRED",
+  binding: "CODE_BOUND",
+  provenance: "CODE_ANALYSIS",
 };
 
 const graph: LinkGraphDocument = {
@@ -247,7 +247,7 @@ describe("hybridDerivations", () => {
             target: resourceNode.id,
             metadata: {
               "jvm.relation.kind": "REFLECTS_TO",
-              "jvm.relation.confidence": "PROVEN",
+              "jvm.relation.confidence": "VERIFIED",
               "jvm.relation.source": "PSI",
               "relation.resolverId": "jvm.reflection",
             },
@@ -261,7 +261,7 @@ describe("hybridDerivations", () => {
     expect(evidence.selectedNodeEvidence.map((item) => item.label)).toContain("源码直接命中入口。");
     expect(evidence.selectedNodeEvidence.map((item) => item.label)).toContain("讲解也命中入口源码。");
     expect(evidence.relationEvidence.map((item) => item.label)).toContain("反射：OrderController.submit -> OrderMapper.xml");
-    expect(evidence.relationEvidence[0]?.confidence).toBe("PROVEN");
+    expect(evidence.relationEvidence[0]?.confidence).toBe("VERIFIED");
     expect(evidence.relationEvidence[0]?.resolverId).toBe("jvm.reflection");
     expect(evidence.evidenceGaps).toHaveLength(1);
     expect(evidence.sourceSnippets).toHaveLength(1);

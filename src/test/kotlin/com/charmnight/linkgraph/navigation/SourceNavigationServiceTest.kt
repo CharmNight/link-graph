@@ -2,8 +2,8 @@ package com.charmnight.linkgraph.navigation
 
 import com.charmnight.linkgraph.testing.*
 
-import com.charmnight.linkgraph.model.BindingStatus
-import com.charmnight.linkgraph.model.Certainty
+import com.charmnight.linkgraph.model.GraphBinding
+import com.charmnight.linkgraph.model.GraphConfidence
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.model.SourceNavigationAnchors
@@ -58,8 +58,8 @@ class SourceNavigationServiceTest : BasePlatformTestCase() {
                 type = NodeType.CLASS,
                 title = "VirtualUrlTarget",
                 signature = "com.example.VirtualUrlTarget",
-                bindingStatus = BindingStatus.BOUND,
-                certainty = Certainty.PROVEN,
+                binding = GraphBinding.CODE_BOUND,
+                confidence = GraphConfidence.VERIFIED,
                 metadata = mapOf(
                     "source.filePath" to "display/VirtualUrlTarget.java",
                     "source.virtualFileUrl" to virtualFile.url,
@@ -85,8 +85,8 @@ class SourceNavigationServiceTest : BasePlatformTestCase() {
                 id = "component:orders",
                 type = NodeType.COMPONENT,
                 title = "orders",
-                bindingStatus = BindingStatus.BOUND,
-                certainty = Certainty.PROVEN,
+                binding = GraphBinding.CODE_BOUND,
+                confidence = GraphConfidence.VERIFIED,
                 metadata = SourceNavigationAnchors.metadata(
                     nodeId = "class:com.example.orders.OrderService",
                     filePath = "display/OrderService.java",
@@ -116,8 +116,8 @@ class SourceNavigationServiceTest : BasePlatformTestCase() {
                 type = NodeType.INTERFACE,
                 title = "Api",
                 signature = "com.example.Api",
-                bindingStatus = BindingStatus.BOUND,
-                certainty = Certainty.PROVEN,
+                binding = GraphBinding.CODE_BOUND,
+                confidence = GraphConfidence.VERIFIED,
             ),
         )
 

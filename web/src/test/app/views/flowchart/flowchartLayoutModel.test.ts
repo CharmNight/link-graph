@@ -9,8 +9,8 @@ function node(id: string, type: LinkGraphNode["type"] = "FLOW_ACTION", metadata:
     title: id,
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
     metadata,
   };
 }

@@ -3,6 +3,7 @@ import org.gradle.api.tasks.testing.Test
 import org.gradle.api.tasks.Sync
 import org.gradle.testing.jacoco.plugins.JacocoTaskExtension
 import org.gradle.testing.jacoco.tasks.JacocoReport
+import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
 import java.io.ByteArrayOutputStream
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
@@ -71,6 +72,25 @@ tasks.named<JacocoReport>("jacocoTestReport") {
     executionData.setFrom(layout.buildDirectory.file("jacoco/test.exec"))
 }
 
+tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
+    dependsOn(tasks.named("test"))
+    sourceDirectories.setFrom(sourceSets["main"].allSource.srcDirs)
+    classDirectories.setFrom(layout.buildDirectory.dir("instrumented/instrumentCode"))
+    executionData.setFrom(layout.buildDirectory.file("jacoco/test.exec"))
+    violationRules {
+        rule {
+            limit {
+                counter = "LINE"
+                value = "COVEREDRATIO"
+                minimum = providers.gradleProperty("minimumLineCoverage")
+                    .orElse("0.20")
+                    .get()
+                    .toBigDecimal()
+            }
+        }
+    }
+}
+
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
     java.srcDir("src/integrationTest/kotlin")
     resources.srcDir("src/integrationTest/resources")
@@ -102,7 +122,7 @@ intellijPlatform {
         description = "Link Graph is an IntelliJ Platform plugin for exploring source relationships, project architecture, class diagrams, and review impact graphs inside a project. It provides a JCEF-based graph workbench with Mermaid import/export, source navigation, local fallback workflows, and optional remote LLM-assisted question answering, implementation suggestions, and code diff workflows."
         ideaVersion {
             sinceBuild = providers.gradleProperty("platformSinceBuild")
-            untilBuild = provider { null }
+            untilBuild = providers.gradleProperty("platformUntilBuild")
         }
         vendor {
             name = "CharmNight"
@@ -152,6 +172,7 @@ val webPackageJson = webDir.file("package.json")
 val webPackageLock = webDir.file("package-lock.json")
 val frontendTransportContract = layout.projectDirectory.file("protocol/graph-editor-transport-contract.json")
 val frontendTestMarker = layout.buildDirectory.file("frontend/test/last-success.txt")
+val frontendLintMarker = layout.buildDirectory.file("frontend/lint/last-success.txt")
 val generatedFrontendResourcesDir = layout.buildDirectory.dir("generated/frontend-resources/main")
 
 val frontendInputs = files(
@@ -159,6 +180,8 @@ val frontendInputs = files(
     webPackageLock,
     frontendTransportContract,
     webDir.file("vite.config.ts"),
+    webDir.file("eslint.config.js"),
+    webDir.file("uno.config.ts"),
     webDir.file("tsconfig.json"),
     webDir.file("index.html"),
     fileTree(webDir.dir("src")),
@@ -193,6 +216,24 @@ val frontendTest by tasks.registering {
         val marker = frontendTestMarker.get().asFile
         marker.parentFile.mkdirs()
         marker.writeText("frontend tests passed\n")
+    }
+}
+
+val frontendLint by tasks.registering {
+    group = "verification"
+    description = "Run frontend ESLint with warnings visible."
+    dependsOn(frontendInstall)
+    onlyIf { webPackageJson.asFile.exists() }
+    inputs.files(frontendInputs)
+    outputs.file(frontendLintMarker)
+    doLast {
+        exec {
+            workingDir = webDir.asFile
+            commandLine("npm", "run", "lint:all")
+        }
+        val marker = frontendLintMarker.get().asFile
+        marker.parentFile.mkdirs()
+        marker.writeText("frontend lint passed\n")
     }
 }
 
@@ -580,6 +621,9 @@ tasks {
     check {
         dependsOn(integrationTest)
         dependsOn(frontendTest)
+        dependsOn(frontendLint)
+        dependsOn(frontendBuild)
+        dependsOn("jacocoTestCoverageVerification")
     }
 
     processResources {

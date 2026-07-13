@@ -19,6 +19,11 @@ vi.mock("../../../../app/reactflow/GraphFlowSurface", () => ({
     anchorNodeId?: string | null;
     editable?: boolean;
     viewportMode?: string;
+    invocationExpansionFocus?: {
+      expansionId: string;
+      sourceNodeId: string;
+      rootNodeId: string;
+    } | null;
     header?: ReactNode;
     emptyState?: ReactNode;
     nodes: Array<{ id?: string; className?: string; position?: { x: number; y: number } }>;
@@ -76,6 +81,9 @@ vi.mock("../../../../app/reactflow/GraphFlowSurface", () => ({
         data-anchor={props.anchorNodeId ?? ""}
         data-editable={String(props.editable)}
         data-viewport-mode={props.viewportMode ?? ""}
+        data-invocation-expansion-focus={props.invocationExpansionFocus
+          ? `${props.invocationExpansionFocus.expansionId}:${props.invocationExpansionFocus.sourceNodeId}:${props.invocationExpansionFocus.rootNodeId}`
+          : ""}
         data-node-position={props.nodes[0]?.position ? `${props.nodes[0].position.x}:${props.nodes[0].position.y}` : ""}
         data-node-class-names={props.flowNodes.map((node) => `${node.id ?? ""}=${node.className ?? ""}`).join("|")}
         data-pane-action-ids={paneActions.map((action) => action.id).join("|")}
@@ -105,8 +113,8 @@ const view: FlowchartViewDocument = {
         title: "OrderController.submit",
         inputs: [],
         outputs: [],
-        certainty: "PROVEN",
-        bindingStatus: "BOUND",
+        confidence: "VERIFIED",
+        binding: "CODE_BOUND",
         metadata: {
           "flowchart.kind": "ENTRY",
         },
@@ -117,8 +125,8 @@ const view: FlowchartViewDocument = {
         title: "!FileUtils.checkAllowDownload(fileName)",
         inputs: [],
         outputs: [],
-        certainty: "PROVEN",
-        bindingStatus: "BOUND",
+        confidence: "VERIFIED",
+        binding: "CODE_BOUND",
         metadata: {
           "flowchart.kind": "DECISION",
         },
@@ -160,8 +168,8 @@ const loopSummaryView: FlowchartViewDocument = {
         title: "ScopedCallChain.render",
         inputs: [],
         outputs: [],
-        certainty: "PROVEN",
-        bindingStatus: "BOUND",
+        confidence: "VERIFIED",
+        binding: "CODE_BOUND",
         metadata: {
           "flowchart.kind": "ENTRY",
         },
@@ -172,8 +180,8 @@ const loopSummaryView: FlowchartViewDocument = {
         title: "for (line : lines)",
         inputs: [],
         outputs: [],
-        certainty: "PROVEN",
-        bindingStatus: "BOUND",
+        confidence: "VERIFIED",
+        binding: "CODE_BOUND",
         metadata: {
           "flow.kind": "FOREACH",
           "flowchart.kind": "DECISION",
@@ -411,8 +419,8 @@ describe("FlowchartView", () => {
             title: "Only in selected draft change",
             inputs: [],
             outputs: [],
-            certainty: "LLM_SUGGESTED",
-            bindingStatus: "BOUND",
+            confidence: "SUGGESTED",
+            binding: "CODE_BOUND",
             metadata: {
               "flowchart.kind": "PROCESS",
             },
@@ -712,7 +720,7 @@ describe("FlowchartView", () => {
     expect(screen.getByText("含合成入口")).toBeInTheDocument();
   });
 
-  it("offers invocation expansion and removal actions for invocation nodes and expanded batches", () => {
+  it("offers collapse and removal on an expanded invocation source without duplicating controls on owned nodes", () => {
     const invocationView: FlowchartViewDocument = {
       ...view,
       visibleGraph: {
@@ -723,10 +731,11 @@ describe("FlowchartView", () => {
             type: "FLOW_ACTION",
             title: "systemService.createInfo()",
             signature: "com.example.SystemService.createInfo():void",
+            location: "src/main/java/com/example/OrderController.java:42",
             inputs: [],
             outputs: [],
-            certainty: "PROVEN",
-            bindingStatus: "BOUND",
+            confidence: "VERIFIED",
+            binding: "CODE_BOUND",
             metadata: {
               "flow.kind": "INVOCATION",
               "flowchart.kind": "SUBROUTINE",
@@ -738,8 +747,8 @@ describe("FlowchartView", () => {
             title: "saveInfo()",
             inputs: [],
             outputs: [],
-            certainty: "PROVEN",
-            bindingStatus: "BOUND",
+            confidence: "VERIFIED",
+            binding: "CODE_BOUND",
             metadata: {
               "flow.kind": "ACTION",
               "flowchart.kind": "PROCESS",
@@ -761,6 +770,29 @@ describe("FlowchartView", () => {
             target: "action:expanded-save",
           },
         ],
+      },
+      fullGraph: {
+        nodes: [],
+        edges: [],
+        invocationExpansionRegistry: {
+          entries: [
+            {
+              expansionId: "invocation:expansion-1",
+              sourceInvocationNodeId: "invoke:create-info",
+              rootNodeId: "action:expanded-save",
+              targetSignature: "com.example.SystemService.createInfo():void",
+              createdAt: "2026-07-01T00:00:00Z",
+              parentExpansionId: null,
+              depth: 1,
+              ownedNodeIds: ["action:expanded-save"],
+              borrowedNodeIds: [],
+              callEdgeIds: [],
+              internalEdgeIds: ["control-expanded"],
+              childExpansionIds: [],
+              warnings: [],
+            },
+          ],
+        },
       },
       anchorNodeId: "method:submit-order",
     };
@@ -796,18 +828,15 @@ describe("FlowchartView", () => {
       "data-node-action-ids",
       expect.stringContaining("invoke:create-info:"),
     );
-    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute(
-      "data-node-action-ids",
-      expect.stringContaining("expand-invocation"),
+    const actionIds = screen.getByTestId("graph-flow-surface").getAttribute("data-node-action-ids") ?? "";
+    expect(actionIds).toContain(
+      "invoke:create-info:inspect-node,open-source,beautify-node,qa-node,set-qa-anchor,format-layout,collapse-invocation-expansion,remove-invocation-expansion",
     );
-    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute(
-      "data-node-action-ids",
-      expect.stringContaining("action:expanded-save:"),
-    );
-    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute(
-      "data-node-action-ids",
-      expect.stringContaining("remove-invocation-expansion"),
-    );
+    expect(actionIds).toContain("action:expanded-save:inspect-node");
+    expect(actionIds).not.toContain("expand-invocation");
+    expect(actionIds).not.toContain("open-invocation-expansion");
+    expect(actionIds).not.toMatch(/action:expanded-save:[^|]*(?:collapse|remove)-invocation-expansion/);
+    expect(actionIds).not.toContain("activate-invocation-expansion");
   });
 
   it("offers invocation expansion for readable projected invocation nodes and expands the original invocation", async () => {
@@ -825,8 +854,8 @@ describe("FlowchartView", () => {
             signature: "com.example.FileUtils.writeBytes(java.lang.String,java.lang.String):void",
             inputs: [],
             outputs: [],
-            certainty: "PROVEN",
-            bindingStatus: "BOUND",
+            confidence: "VERIFIED",
+            binding: "CODE_BOUND",
             metadata: {
               "flow.kind": "ACTION",
               "flowchart.kind": "PROCESS",
@@ -852,8 +881,8 @@ describe("FlowchartView", () => {
             title: "FileUtils.writeBytes(filePath, response.toString())",
             inputs: [],
             outputs: [],
-            certainty: "PROVEN",
-            bindingStatus: "BOUND",
+            confidence: "VERIFIED",
+            binding: "CODE_BOUND",
             metadata: {
               "flow.kind": "ACTION",
               "flowchart.kind": "PROCESS",
@@ -866,8 +895,8 @@ describe("FlowchartView", () => {
             signature: "com.example.FileUtils.writeBytes(java.lang.String,java.lang.String):void",
             inputs: [],
             outputs: [],
-            certainty: "PROVEN",
-            bindingStatus: "BOUND",
+            confidence: "VERIFIED",
+            binding: "CODE_BOUND",
             metadata: {
               "flow.kind": "INVOCATION",
               "flowchart.kind": "SUBROUTINE",
@@ -940,8 +969,8 @@ describe("FlowchartView", () => {
             signature: "com.example.SystemService.createInfo():void",
             inputs: [],
             outputs: [],
-            certainty: "PROVEN",
-            bindingStatus: "BOUND",
+            confidence: "VERIFIED",
+            binding: "CODE_BOUND",
             metadata: {
               "flow.kind": "INVOCATION",
               "flowchart.kind": "SUBROUTINE",
@@ -955,8 +984,8 @@ describe("FlowchartView", () => {
             signature: "com.example.SystemService.createInfo():void",
             inputs: [],
             outputs: [],
-            certainty: "PROVEN",
-            bindingStatus: "BOUND",
+            confidence: "VERIFIED",
+            binding: "CODE_BOUND",
             metadata: {
               "flowchart.kind": "ENTRY",
               "flow.ownerMethod": "com.example.SystemService.createInfo():void",
@@ -970,8 +999,8 @@ describe("FlowchartView", () => {
             title: "saveInfo()",
             inputs: [],
             outputs: [],
-            certainty: "PROVEN",
-            bindingStatus: "BOUND",
+            confidence: "VERIFIED",
+            binding: "CODE_BOUND",
             metadata: {
               "flow.kind": "ACTION",
               "flowchart.kind": "PROCESS",
@@ -1063,10 +1092,11 @@ describe("FlowchartView", () => {
         type: "FLOW_ACTION",
         title: "调用 SystemService.createInfo",
         signature: "com.example.SystemService.createInfo():void",
+        location: "src/main/java/com/example/OrderController.java:42",
         inputs: [],
         outputs: [],
-        certainty: "PROVEN",
-        bindingStatus: "BOUND",
+        confidence: "VERIFIED",
+        binding: "CODE_BOUND",
         metadata: {
           "flow.kind": "ACTION",
           "flowchart.kind": "PROCESS",
@@ -1081,8 +1111,8 @@ describe("FlowchartView", () => {
         signature: "com.example.SystemService.createInfo():void",
         inputs: [],
         outputs: [],
-        certainty: "PROVEN",
-        bindingStatus: "BOUND",
+        confidence: "VERIFIED",
+        binding: "CODE_BOUND",
         metadata: {
           "flowchart.kind": "ENTRY",
           "flow.ownerMethod": "com.example.SystemService.createInfo():void",
@@ -1098,8 +1128,8 @@ describe("FlowchartView", () => {
         title: "saveInfo()",
         inputs: [],
         outputs: [],
-        certainty: "PROVEN",
-        bindingStatus: "BOUND",
+        confidence: "VERIFIED",
+        binding: "CODE_BOUND",
         metadata: {
           "flow.kind": "ACTION",
           "flowchart.kind": "PROCESS",
@@ -1212,11 +1242,244 @@ describe("FlowchartView", () => {
       "aria-label",
       "调用展开 调用 SystemService.createInfo 到 SystemService.createInfo",
     );
-    expect(frame).toHaveStyle({ height: "502px" });
+    expect(within(frame).getByTestId("flowchart-invocation-expansion-label-invocation:expansion-1"))
+      .toHaveAttribute("data-compact", "true");
+    expect(frame).toHaveStyle({ height: "476px" });
+    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute(
+      "data-invocation-expansion-focus",
+      "invocation:expansion-1:invoke:create-info:method:create-info",
+    );
     expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute(
       "data-node-class-names",
       expect.stringContaining("action:create-info=flowchart-rf-node kind-process is-invocation-expansion-source"),
     );
+  });
+
+  it("keeps a collapsed invocation expansion on its source node without synthetic layout nodes or call edges", async () => {
+    const user = userEvent.setup();
+    const onOpenInvocationExpansion = vi.fn();
+    const onRemoveInvocationExpansion = vi.fn();
+    const mainNodes: LinkGraphNode[] = [
+      {
+        ...view.visibleGraph.nodes[0]!,
+        signature: "com.example.OrderController.submit(java.lang.String):void",
+        metadata: {
+          "flowchart.kind": "ENTRY",
+          "flow.ownerMethod": "com.example.OrderController.submit(java.lang.String):void",
+        },
+      },
+      {
+        id: "invoke:create-info",
+        type: "FLOW_ACTION",
+        title: "调用 SystemService.createInfo",
+        signature: "com.example.SystemService.createInfo():void",
+        location: "src/main/java/com/example/OrderController.java:42",
+        inputs: [],
+        outputs: [],
+        confidence: "VERIFIED",
+        binding: "CODE_BOUND",
+        metadata: {
+          "flow.kind": "INVOCATION",
+          "flowchart.kind": "SUBROUTINE",
+          "flow.ownerMethod": "com.example.OrderController.submit(java.lang.String):void",
+        },
+      },
+    ];
+    const expansionNodes: LinkGraphNode[] = [
+      {
+        id: "method:create-info",
+        type: "METHOD",
+        title: "SystemService.createInfo",
+        signature: "com.example.SystemService.createInfo():void",
+        inputs: [],
+        outputs: [],
+        confidence: "VERIFIED",
+        binding: "CODE_BOUND",
+        metadata: {
+          "flowchart.kind": "ENTRY",
+          "flow.ownerMethod": "com.example.SystemService.createInfo():void",
+          "linkGraph.expansion.id": "invocation:expansion-1",
+        },
+      },
+      {
+        id: "invoke:audit",
+        type: "FLOW_ACTION",
+        title: "auditService.audit()",
+        signature: "com.example.AuditService.audit():void",
+        inputs: [],
+        outputs: [],
+        confidence: "VERIFIED",
+        binding: "CODE_BOUND",
+        metadata: {
+          "flow.kind": "INVOCATION",
+          "flowchart.kind": "SUBROUTINE",
+          "flow.ownerMethod": "com.example.SystemService.createInfo():void",
+          "linkGraph.expansion.id": "invocation:expansion-1",
+        },
+      },
+      {
+        id: "method:audit",
+        type: "METHOD",
+        title: "AuditService.audit",
+        signature: "com.example.AuditService.audit():void",
+        inputs: [],
+        outputs: [],
+        confidence: "VERIFIED",
+        binding: "CODE_BOUND",
+        metadata: {
+          "flowchart.kind": "ENTRY",
+          "flow.ownerMethod": "com.example.AuditService.audit():void",
+          "linkGraph.expansion.id": "invocation:child",
+        },
+      },
+      {
+        id: "action:audit-log",
+        type: "FLOW_ACTION",
+        title: "writeAuditLog()",
+        inputs: [],
+        outputs: [],
+        confidence: "VERIFIED",
+        binding: "CODE_BOUND",
+        metadata: {
+          "flow.kind": "ACTION",
+          "flowchart.kind": "PROCESS",
+          "flow.ownerMethod": "com.example.AuditService.audit():void",
+          "linkGraph.expansion.id": "invocation:child",
+        },
+      },
+    ];
+    const mainEdge: LinkGraphEdge = {
+      id: "control-current",
+      type: "CONTROL_FLOW",
+      source: "method:submit-order",
+      target: "invoke:create-info",
+    };
+    const expansionEdges: LinkGraphEdge[] = [
+      {
+        id: "call-expanded",
+        type: "CALL",
+        source: "invoke:create-info",
+        target: "method:create-info",
+        metadata: { "linkGraph.expansion.id": "invocation:expansion-1" },
+      },
+      {
+        id: "control-expanded",
+        type: "CONTROL_FLOW",
+        source: "method:create-info",
+        target: "invoke:audit",
+        metadata: { "linkGraph.expansion.id": "invocation:expansion-1" },
+      },
+      {
+        id: "call-child",
+        type: "CALL",
+        source: "invoke:audit",
+        target: "method:audit",
+        metadata: { "linkGraph.expansion.id": "invocation:child" },
+      },
+      {
+        id: "control-child",
+        type: "CONTROL_FLOW",
+        source: "method:audit",
+        target: "action:audit-log",
+        metadata: { "linkGraph.expansion.id": "invocation:child" },
+      },
+    ];
+    const collapsedView: FlowchartViewDocument = {
+      ...view,
+      visibleGraph: { nodes: mainNodes, edges: [mainEdge] },
+      fullGraph: {
+        nodes: [...mainNodes, ...expansionNodes],
+        edges: [mainEdge, ...expansionEdges],
+        invocationExpansionRegistry: {
+          entries: [
+            {
+              expansionId: "invocation:expansion-1",
+              sourceInvocationNodeId: "invoke:create-info",
+              rootNodeId: "method:create-info",
+              targetSignature: "com.example.SystemService.createInfo():void",
+              createdAt: "2026-07-01T00:00:00Z",
+              parentExpansionId: null,
+              depth: 1,
+              ownedNodeIds: ["method:create-info", "invoke:audit"],
+              borrowedNodeIds: [],
+              callEdgeIds: ["call-expanded"],
+              internalEdgeIds: ["control-expanded"],
+              childExpansionIds: ["invocation:child"],
+              warnings: [],
+            },
+            {
+              expansionId: "invocation:child",
+              sourceInvocationNodeId: "invoke:audit",
+              rootNodeId: "method:audit",
+              targetSignature: "com.example.AuditService.audit():void",
+              createdAt: "2026-07-01T00:01:00Z",
+              parentExpansionId: "invocation:expansion-1",
+              depth: 2,
+              ownedNodeIds: ["method:audit", "action:audit-log"],
+              borrowedNodeIds: [],
+              callEdgeIds: ["call-child"],
+              internalEdgeIds: ["control-child"],
+              childExpansionIds: [],
+              warnings: [],
+            },
+          ],
+        },
+      },
+      anchorNodeId: "method:submit-order",
+    };
+    useMeasuredLayoutMock.mockImplementation(({ graph }: { graph: FlowchartViewDocument["visibleGraph"] }) => ({
+      nodes: graph.nodes.map((node, index) => ({ ...node, position: { x: 240, y: 144 + index * 160 } })),
+      edges: graph.edges,
+      layoutPending: false,
+      sizeSnapshot: new Map(),
+      requestRelayout: vi.fn(),
+    }));
+
+    render(
+      <FlowchartView
+        view={collapsedView}
+        selectedNodeId="invoke:create-info"
+        invocationExpansionState={{
+          activeExpansionId: null,
+          activeExpansionPath: [],
+          collapsedExpansionIds: ["invocation:expansion-1"],
+          activeSiblingByParentContext: {},
+          contextMode: "ACTIVE_CHAIN",
+        }}
+        onAddNode={noop}
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onDeleteNode={noop}
+        onCreateEdge={noop}
+        onDeleteEdge={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        onImportMermaid={noop}
+        onOpenInvocationExpansion={onOpenInvocationExpansion}
+        onRemoveInvocationExpansion={onRemoveInvocationExpansion}
+      />,
+    );
+
+    const surface = screen.getByTestId("graph-flow-surface");
+    expect(surface).not.toHaveAttribute("data-node-action-ids", expect.stringContaining("expansion-block:"));
+    expect(surface).not.toHaveAttribute("data-node-action-ids", expect.stringContaining("invoke:audit:"));
+    expect(surface).not.toHaveAttribute("data-node-action-ids", expect.stringContaining("method:audit:"));
+    expect(surface).not.toHaveAttribute("data-node-action-ids", expect.stringContaining("action:audit-log:"));
+    expect(surface).not.toHaveAttribute("data-edge-ids", expect.stringContaining("call-expanded"));
+    expect(surface).not.toHaveAttribute("data-edge-ids", expect.stringContaining("call-child"));
+    expect(surface).not.toHaveAttribute("data-edge-ids", expect.stringContaining("control-child"));
+    expect(surface).toHaveAttribute(
+      "data-node-action-ids",
+      expect.stringContaining("invoke:create-info:inspect-node,open-source,beautify-node,qa-node,set-qa-anchor,format-layout,open-invocation-expansion,remove-invocation-expansion"),
+    );
+    expect(surface).not.toHaveAttribute("data-node-action-ids", expect.stringContaining("expand-invocation"));
+    expect(surface).not.toHaveAttribute("data-node-action-ids", expect.stringContaining("collapse-invocation-expansion"));
+
+    await user.click(screen.getByTestId("node-action-invoke:create-info-open-invocation-expansion"));
+    await user.click(screen.getByTestId("node-action-invoke:create-info-remove-invocation-expansion"));
+
+    expect(onOpenInvocationExpansion).toHaveBeenCalledWith("invocation:expansion-1");
+    expect(onRemoveInvocationExpansion).toHaveBeenCalledWith("invocation:expansion-1");
   });
 
   it("shows a loading empty state while a non-empty flowchart is still waiting for stable layout coordinates", () => {

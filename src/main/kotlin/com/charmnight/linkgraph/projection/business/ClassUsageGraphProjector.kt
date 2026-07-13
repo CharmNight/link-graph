@@ -15,8 +15,8 @@ import com.charmnight.linkgraph.usage.ClassUsageSearchResult
 import com.charmnight.linkgraph.usage.ClassUsageTarget
 import com.charmnight.linkgraph.application.model.GraphProjectionNodeMapping
 import com.charmnight.linkgraph.jvm.index.JvmClassKind
-import com.charmnight.linkgraph.model.BindingStatus
-import com.charmnight.linkgraph.model.Certainty
+import com.charmnight.linkgraph.model.GraphBinding
+import com.charmnight.linkgraph.model.GraphConfidence
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
@@ -189,8 +189,8 @@ class ClassUsageGraphProjector : GraphProjector {
             type = NodeType.CLASS,
             title = target.displayName,
             signature = target.qualifiedName,
-            bindingStatus = BindingStatus.BOUND,
-            certainty = Certainty.PROVEN,
+            binding = GraphBinding.CODE_BOUND,
+            confidence = GraphConfidence.VERIFIED,
             metadata = metadata,
         )
     }
@@ -261,8 +261,8 @@ class ClassUsageGraphProjector : GraphProjector {
             location = group.filePath,
             signature = group.qualifiedName,
             doc = "使用 ${group.usages.size} 处",
-            bindingStatus = BindingStatus.BOUND,
-            certainty = Certainty.PROVEN,
+            binding = GraphBinding.CODE_BOUND,
+            confidence = GraphConfidence.VERIFIED,
             metadata = metadata,
         )
     }
@@ -287,8 +287,8 @@ class ClassUsageGraphProjector : GraphProjector {
             fromNodeId = sourceNodeId,
             toNodeId = targetNodeId,
             label = "使用",
-            certainty = Certainty.PROVEN,
-            bindingStatus = BindingStatus.BOUND,
+            confidence = GraphConfidence.VERIFIED,
+            binding = GraphBinding.CODE_BOUND,
             metadata = mapOf(
                 "classDiagram.relation.role" to "CLASS_USAGE",
                 "classDiagram.relation.label" to "usage",

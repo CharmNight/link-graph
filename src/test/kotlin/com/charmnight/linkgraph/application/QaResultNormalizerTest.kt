@@ -11,7 +11,7 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.model.GraphPatchAction
 import com.charmnight.linkgraph.model.GraphPatchOperation
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.workbench.QaConversationSession
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
@@ -344,7 +344,7 @@ class QaResultNormalizerTest {
                         id = "method:new",
                         type = NodeType.METHOD,
                         title = "新增节点",
-                        sourceTag = GraphSourceTag.DRAFT_AI,
+                        provenance = GraphProvenance.AI_DRAFT,
                     ),
                 ),
             ),

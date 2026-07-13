@@ -24,6 +24,7 @@ import {
   buildFlowchartEdges,
   buildFlowchartNodes,
   FLOWCHART_NODE_TYPES,
+  type CollapsedInvocationExpansionDescriptor,
 } from "./flowchartNodes";
 
 /** 流程图视图组件的属性：在可编辑舞台属性之上扩展当前视图文档与可选的布局视图文档。 */
@@ -69,12 +70,6 @@ function resolveInvocationExpansionNodeId(
     }
   }
   return null;
-}
-
-const INVOCATION_EXPANSION_SYNTHETIC_NODE_PREFIX = "expansion-block:";
-
-function invocationExpansionBlockNodeId(expansionId: string): string {
-  return `${INVOCATION_EXPANSION_SYNTHETIC_NODE_PREFIX}${expansionId}`;
 }
 
 /**
@@ -234,35 +229,6 @@ function hasCollapsedAncestor(
   return false;
 }
 
-function invocationExpansionSummaryTitle(entry: FlowchartInvocationExpansionEntry): string {
-  return entry.targetSignature ?? entry.rootNodeId ?? entry.expansionId;
-}
-
-function syntheticInvocationExpansionNode(entry: FlowchartInvocationExpansionEntry): LinkGraphDocument["nodes"][number] {
-  return {
-    id: invocationExpansionBlockNodeId(entry.expansionId),
-    type: "DOC_PAGE",
-    title: invocationExpansionSummaryTitle(entry),
-    inputs: [],
-    outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
-    metadata: {
-      "flowchart.synthetic": "invocation-expansion-summary",
-      "flowchart.kind": "INVOCATION_EXPANSION_SUMMARY",
-      "linkGraph.expansion.id": entry.expansionId,
-      "linkGraph.expansion.sourceInvocationNodeId": entry.sourceInvocationNodeId ?? "",
-      "linkGraph.expansion.rootNodeId": entry.rootNodeId ?? "",
-      "linkGraph.expansion.targetSignature": entry.targetSignature ?? "",
-      "linkGraph.expansion.summary.nodeCount": String(entry.summary.nodeCount),
-      "linkGraph.expansion.summary.branchCount": String(entry.summary.branchCount),
-      "linkGraph.expansion.summary.returnCount": String(entry.summary.returnCount),
-      "linkGraph.expansion.summary.childExpansionCount": String(entry.summary.childExpansionCount),
-      "linkGraph.expansion.summary.hasBorrowedRoot": String(entry.summary.hasBorrowedRoot),
-    },
-  };
-}
-
 function graphWithInvocationExpansionScene(args: {
   scopedGraph: LinkGraphDocument;
   fullGraph: LinkGraphDocument;
@@ -276,56 +242,53 @@ function graphWithInvocationExpansionScene(args: {
   const visibleExpansionEntries = args.registry.entries
     .filter((entry) => reachableExpansionIds.has(entry.expansionId))
     .filter((entry) => !hasCollapsedAncestor(entry, args.registry));
-  const visibleExpansionIds = new Set(visibleExpansionEntries.map((entry) => entry.expansionId));
-  const collapsedVisibleEntries = visibleExpansionEntries.filter((entry) => entry.state === "collapsed");
-  const collapsedVisibleExpansionIds = new Set(collapsedVisibleEntries.map((entry) => entry.expansionId));
+  const visibleExpansionIds = new Set(
+    visibleExpansionEntries
+      .filter((entry) => entry.state === "expanded")
+      .map((entry) => entry.expansionId),
+  );
   const hiddenOwnedNodeIds = new Set(
     args.registry.entries
       .filter((entry) => reachableExpansionIds.has(entry.expansionId))
       .filter((entry) => entry.state === "collapsed" || hasCollapsedAncestor(entry, args.registry))
       .flatMap((entry) => entry.ownedNodeIds),
   );
-  const scopedNodeIds = new Set(args.scopedGraph.nodes.map((node) => node.id));
+  const scopedNodes = args.scopedGraph.nodes.filter((node) => {
+    if (hiddenOwnedNodeIds.has(node.id)) {
+      return false;
+    }
+    const expansionId = node.metadata?.["linkGraph.expansion.id"]?.trim();
+    return !expansionId || visibleExpansionIds.has(expansionId);
+  });
+  const scopedNodeIds = new Set(scopedNodes.map((node) => node.id));
   const expansionNodes = args.fullGraph.nodes.filter((node) => {
     const expansionId = node.metadata?.["linkGraph.expansion.id"]?.trim();
     return Boolean(expansionId && visibleExpansionIds.has(expansionId) && !hiddenOwnedNodeIds.has(node.id));
   });
   const nodesById = new Map(
     [
-      ...args.scopedGraph.nodes,
+      ...scopedNodes,
       ...expansionNodes,
-      ...collapsedVisibleEntries.map(syntheticInvocationExpansionNode),
     ].map((node) => [node.id, node]),
   );
 
-  const callEdgeTargetById = new Map<string, string>();
-  collapsedVisibleEntries.forEach((entry) => {
-    entry.callEdgeIds.forEach((edgeId) => {
-      callEdgeTargetById.set(edgeId, invocationExpansionBlockNodeId(entry.expansionId));
-    });
-  });
   const candidateEdges = [...args.scopedGraph.edges, ...args.fullGraph.edges.filter((edge) => {
     const expansionId = edge.metadata?.["linkGraph.expansion.id"]?.trim();
     return Boolean(expansionId && visibleExpansionIds.has(expansionId));
   })];
   const edgesById = new Map<string, LinkGraphEdge>();
   candidateEdges.forEach((edge) => {
-    const targetOverride = callEdgeTargetById.get(edge.id);
-    const nextEdge = targetOverride ? { ...edge, target: targetOverride } : edge;
     const expansionId = edge.metadata?.["linkGraph.expansion.id"]?.trim();
     if (expansionId && !visibleExpansionIds.has(expansionId)) {
       return;
     }
-    if (expansionId && collapsedVisibleExpansionIds.has(expansionId) && edge.type !== "CALL") {
+    if (!nodesById.has(edge.source) || !nodesById.has(edge.target)) {
       return;
     }
-    if (!nodesById.has(nextEdge.source) || !nodesById.has(nextEdge.target)) {
+    if (hiddenOwnedNodeIds.has(edge.source) || hiddenOwnedNodeIds.has(edge.target)) {
       return;
     }
-    if (hiddenOwnedNodeIds.has(nextEdge.source) || hiddenOwnedNodeIds.has(nextEdge.target)) {
-      return;
-    }
-    edgesById.set(nextEdge.id, nextEdge);
+    edgesById.set(edge.id, edge);
   });
 
   if (nodesById.size === scopedNodeIds.size && edgesById.size === args.scopedGraph.edges.length) {
@@ -377,6 +340,7 @@ function flowchartNodeActions(args: {
   invocationExpansionActionLabel?: string | null;
   invocationExpansionNodeId?: string | null;
   expansionId?: string | null;
+  expansionState?: FlowchartInvocationExpansionEntry["state"] | null;
   canDeleteNode: boolean;
   onInspectNode: (nodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
@@ -388,7 +352,6 @@ function flowchartNodeActions(args: {
   onRemoveInvocationExpansion: (expansionId: string) => void;
   onCollapseInvocationExpansion: (expansionId: string) => void;
   onOpenInvocationExpansion: (expansionId: string) => void;
-  onActivateInvocationExpansion: (expansionId: string) => void;
   onFormatLayout: () => void;
   onClose: () => void;
 }) {
@@ -457,35 +420,33 @@ function flowchartNodeActions(args: {
       },
     },
   );
-  if (args.expansionId) {
+  if (args.expansionId && args.expansionState === "collapsed") {
     const expansionId = args.expansionId;
     actions.push({
-      id: "activate-invocation-expansion",
-      label: "激活此展开",
-      onSelect: () => {
-        args.onActivateInvocationExpansion(expansionId);
-        args.onClose();
-      },
-    });
-    actions.push({
       id: "open-invocation-expansion",
-      label: "打开此展开",
+      label: "重新打开被调方法",
       onSelect: () => {
         args.onOpenInvocationExpansion(expansionId);
         args.onClose();
       },
     });
+  }
+  if (args.expansionId && args.expansionState === "expanded") {
+    const expansionId = args.expansionId;
     actions.push({
       id: "collapse-invocation-expansion",
-      label: "折叠此展开",
+      label: "收起被调方法",
       onSelect: () => {
         args.onCollapseInvocationExpansion(expansionId);
         args.onClose();
       },
     });
+  }
+  if (args.expansionId) {
+    const expansionId = args.expansionId;
     actions.push({
       id: "remove-invocation-expansion",
-      label: "移除此展开",
+      label: "移除展开数据",
       onSelect: () => {
         args.onRemoveInvocationExpansion(expansionId);
         args.onClose();
@@ -540,7 +501,6 @@ export function FlowchartView({
   invocationExpansionState = null,
   onCollapseInvocationExpansion = () => undefined,
   onOpenInvocationExpansion = () => undefined,
-  onActivateInvocationExpansion = () => undefined,
 }: FlowchartViewProps) {
   const nodeSizeRegistry = useMemo(() => createNodeSizeRegistry(), []);
   const presentedGraph = draftCompareProjection?.compareGraph ?? view.visibleGraph;
@@ -645,6 +605,39 @@ export function FlowchartView({
     () => new Map(view.fullGraph.nodes.map((node) => [node.id, node])),
     [view.fullGraph.nodes],
   );
+  const invocationExpansionEntriesByVisibleSourceNodeId = useMemo(() => {
+    const entriesByVisibleSourceNodeId = new Map<string, FlowchartInvocationExpansionEntry[]>();
+    invocationExpansionRegistry.entries.forEach((entry) => {
+      const sourceInvocationNodeId = entry.sourceInvocationNodeId;
+      if (!sourceInvocationNodeId) {
+        return;
+      }
+      const visibleSourceNode = visibleNodes.find((node) =>
+        node.id === sourceInvocationNodeId
+        || projectedAliasNodeIds(node).includes(sourceInvocationNodeId),
+      );
+      if (visibleSourceNode) {
+        const entries = entriesByVisibleSourceNodeId.get(visibleSourceNode.id) ?? [];
+        entriesByVisibleSourceNodeId.set(visibleSourceNode.id, [...entries, entry]);
+      }
+    });
+    return entriesByVisibleSourceNodeId;
+  }, [invocationExpansionRegistry.entries, visibleNodes]);
+  const collapsedInvocationExpansionsByNodeId = useMemo(() => {
+    const descriptors: Record<string, CollapsedInvocationExpansionDescriptor[]> = {};
+    invocationExpansionEntriesByVisibleSourceNodeId.forEach((entries, visibleSourceNodeId) => {
+      descriptors[visibleSourceNodeId] = entries
+        .filter((entry) => entry.state === "collapsed")
+        .map((entry) => ({
+          expansionId: entry.expansionId,
+          nodeCount: entry.summary.nodeCount,
+          targetTitle: (entry.rootNodeId ? fullGraphNodeIndex.get(entry.rootNodeId)?.title : null)
+            ?? entry.targetSignature
+            ?? "被调方法",
+        }));
+    });
+    return descriptors;
+  }, [fullGraphNodeIndex, invocationExpansionEntriesByVisibleSourceNodeId]);
   const expandedInvocationSourceNodeIds = useMemo(
     () => invocationExpansionRegistry.entries
       .filter((entry) => entry.state === "expanded")
@@ -652,6 +645,20 @@ export function FlowchartView({
       .filter((nodeId): nodeId is string => Boolean(nodeId)),
     [invocationExpansionRegistry.entries],
   );
+  const invocationExpansionFocus = useMemo(() => {
+    const activeExpansionId = invocationExpansionRegistry.sceneState.activeExpansionId;
+    const activeEntry = activeExpansionId
+      ? invocationExpansionRegistry.entriesById[activeExpansionId]
+      : null;
+    if (!activeEntry?.sourceInvocationNodeId || !activeEntry.rootNodeId) {
+      return null;
+    }
+    return {
+      expansionId: activeEntry.expansionId,
+      sourceNodeId: activeEntry.sourceInvocationNodeId,
+      rootNodeId: activeEntry.rootNodeId,
+    };
+  }, [invocationExpansionRegistry.entriesById, invocationExpansionRegistry.sceneState.activeExpansionId]);
   const anchorNode = useMemo(
     () => visibleNodes.find((node) => node.id === view.anchorNodeId) ?? null,
     [view.anchorNodeId, visibleNodes],
@@ -677,6 +684,8 @@ export function FlowchartView({
       draftChangedNodeIds,
       activeExpansionIds: invocationExpansionRegistry.sceneState.activeExpansionPath,
       expandedInvocationSourceNodeIds,
+      collapsedInvocationExpansionsByNodeId,
+      onOpenInvocationExpansion,
       draftCompareNodeStatuses: draftCompareProjection?.nodeStatuses,
       projectionIndex: view.projectionIndex ?? null,
       nodeSizeRegistry,
@@ -688,6 +697,8 @@ export function FlowchartView({
       explanationFocusNodeId,
       draftChangedNodeIds,
       expandedInvocationSourceNodeIds,
+      collapsedInvocationExpansionsByNodeId,
+      onOpenInvocationExpansion,
       invocationExpansionRegistry.sceneState.activeExpansionPath,
       draftCompareProjection?.nodeStatuses,
       view.projectionIndex,
@@ -798,6 +809,7 @@ export function FlowchartView({
         flowEdges={flowEdges}
         nodeTypes={FLOWCHART_NODE_TYPES}
         viewportMode="FLOWCHART"
+        invocationExpansionFocus={invocationExpansionFocus}
         anchorNodeId={view.anchorNodeId ?? null}
         selectedNodeId={selectedNodeId}
         focusNodeRequest={focusNodeRequest}
@@ -831,14 +843,19 @@ export function FlowchartView({
           {
             const node = nodeIndex.get(nodeId);
             const invocationExpansionNodeId = resolveInvocationExpansionNodeId(node, fullGraphNodeIndex);
+            const invocationExpansionEntries = invocationExpansionEntriesByVisibleSourceNodeId.get(nodeId) ?? [];
+            const invocationExpansionEntry = invocationExpansionEntries.find((entry) => entry.state === "expanded")
+              ?? invocationExpansionEntries[0]
+              ?? null;
             return flowchartNodeActions({
               nodeId,
               canOpenSource: canNavigateToSource(node ?? fallbackSourceNode()),
               editable: true,
               canDeleteNode: canEditProjectedNode(view.projectionIndex, nodeId, "DELETE_NODE"),
-              invocationExpansionActionLabel: invocationExpansionNodeId ? "展开被调方法" : null,
+              invocationExpansionActionLabel: invocationExpansionNodeId && !invocationExpansionEntry ? "查看被调方法" : null,
               invocationExpansionNodeId,
-              expansionId: node?.metadata?.["linkGraph.expansion.id"] ?? null,
+              expansionId: invocationExpansionEntry?.expansionId ?? null,
+              expansionState: invocationExpansionEntry?.state ?? null,
               onInspectNode,
               onDeleteNode,
               onRequestSourceNavigation,
@@ -849,7 +866,6 @@ export function FlowchartView({
               onRemoveInvocationExpansion,
               onCollapseInvocationExpansion,
               onOpenInvocationExpansion,
-              onActivateInvocationExpansion,
               onFormatLayout: layoutState.requestRelayout,
               onClose: close,
             });

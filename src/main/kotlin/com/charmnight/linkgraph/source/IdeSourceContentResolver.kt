@@ -30,55 +30,55 @@ class IdeSourceContentResolver(
         private set
 
     /** 按虚拟文件 URL 读取源码内容，统一在读操作中执行并清空失败原因。 */
-    override fun readByVirtualFileUrl(url: String): SourceContent? =
-        ReadAction.compute<SourceContent?, RuntimeException> {
+    override fun readByVirtualFileUrl(url: String): BoundedSourceContent? =
+        ReadAction.compute<BoundedSourceContent?, RuntimeException> {
             lastUnavailableReason = null
             readByVirtualFileUrlInReadAction(url)
         }
 
     /** 按路径读取完整源码内容，支持项目内、绝对路径、相对路径等多种形式。 */
-    override fun readByPath(path: String): SourceContent? =
-        ReadAction.compute<SourceContent?, RuntimeException> {
+    override fun readByPath(path: String): BoundedSourceContent? =
+        ReadAction.compute<BoundedSourceContent?, RuntimeException> {
             lastUnavailableReason = null
             readByPathInReadAction(path)
         }
 
     /** 读取指定路径下的代码片段，按起止行号裁切；缺省行号时返回整篇内容。 */
-    override fun readSnippetByPath(path: String, startLine: Int?, endLine: Int?): SourceContent? =
-        ReadAction.compute<SourceContent?, RuntimeException> {
+    override fun readSnippetByPath(path: String, startLine: Int?, endLine: Int?): BoundedSourceContent? =
+        ReadAction.compute<BoundedSourceContent?, RuntimeException> {
             lastUnavailableReason = null
             readSnippetByPathInReadAction(path, startLine, endLine)
         }
 
     /** 按类的全限定名定位源码或反编译产物，受访问策略限制是否允许读取 JDK 类。 */
-    override fun readClassByQualifiedName(qualifiedName: String): SourceContent? =
-        ReadAction.compute<SourceContent?, RuntimeException> {
+    override fun readClassByQualifiedName(qualifiedName: String): BoundedSourceContent? =
+        ReadAction.compute<BoundedSourceContent?, RuntimeException> {
             lastUnavailableReason = null
             readClassByQualifiedNameInReadAction(qualifiedName)
         }
 
     /** 按资源相对路径在内容根下递归查找资源文件并返回其内容，找不到时再走通用路径解析。 */
-    override fun readResourceByPath(resourcePath: String): SourceContent? =
-        ReadAction.compute<SourceContent?, RuntimeException> {
+    override fun readResourceByPath(resourcePath: String): BoundedSourceContent? =
+        ReadAction.compute<BoundedSourceContent?, RuntimeException> {
             lastUnavailableReason = null
             readResourceByPathInReadAction(resourcePath)
         }
 
     /** 读操作内部实现：通过虚拟文件管理器解析 URL 并读取文件。 */
-    private fun readByVirtualFileUrlInReadAction(url: String): SourceContent? {
+    private fun readByVirtualFileUrlInReadAction(url: String): BoundedSourceContent? {
         val file = VirtualFileManager.getInstance().findFileByUrl(url)
             ?: return null
         return readVirtualFile(file)
     }
 
     /** 读操作内部实现：把输入路径解析为虚拟文件后读取内容。 */
-    private fun readByPathInReadAction(path: String): SourceContent? {
+    private fun readByPathInReadAction(path: String): BoundedSourceContent? {
         val file = resolveVirtualFile(path) ?: return null
         return readVirtualFile(file)
     }
 
     /** 读操作内部实现：基于完整内容按行切片，越界或反向区间直接返回 null。 */
-    private fun readSnippetByPathInReadAction(path: String, startLine: Int?, endLine: Int?): SourceContent? {
+    private fun readSnippetByPathInReadAction(path: String, startLine: Int?, endLine: Int?): BoundedSourceContent? {
         val full = readByPathInReadAction(path) ?: return null
         if (startLine == null || endLine == null) {
             return full
@@ -90,7 +90,7 @@ class IdeSourceContentResolver(
         if (fromIndex >= toIndex) {
             return null
         }
-        return full.copy(
+        return full.withText(
             text = lines.subList(fromIndex, toIndex).joinToString("\n"),
             startLine = startLine,
             endLine = endLine,
@@ -98,7 +98,7 @@ class IdeSourceContentResolver(
     }
 
     /** 读操作内部实现：通过 PSI 定位类元素并计算其在文件中的行范围；JDK 类走兜底逻辑。 */
-    private fun readClassByQualifiedNameInReadAction(qualifiedName: String): SourceContent? {
+    private fun readClassByQualifiedNameInReadAction(qualifiedName: String): BoundedSourceContent? {
         if (isJdkQualifiedName(qualifiedName) && !accessPolicy.allowJdk) {
             return null
         }
@@ -119,7 +119,7 @@ class IdeSourceContentResolver(
     }
 
     /** 读操作内部实现：在内容根下逐个尝试匹配资源文件，命中后委托通用文件读取。 */
-    private fun readResourceByPathInReadAction(resourcePath: String): SourceContent? {
+    private fun readResourceByPathInReadAction(resourcePath: String): BoundedSourceContent? {
         // 统一使用正斜杠并去掉前导斜杠，避免在 VFS 下出现绝对路径误判
         val normalized = resourcePath.trim().replace('\\', '/').removePrefix("/")
         val roots = com.intellij.openapi.roots.ProjectRootManager.getInstance(project).contentRoots
@@ -169,8 +169,18 @@ class IdeSourceContentResolver(
     }
 
     /** 实际读取虚拟文件内容，处理目录过滤、来源策略、文档/反编译/原始字节三种文本获取方式。 */
-    private fun readVirtualFile(file: VirtualFile): SourceContent? {
+    private fun readVirtualFile(file: VirtualFile): BoundedSourceContent? {
         if (file.isDirectory || !isReadableProjectFile(file)) {
+            return null
+        }
+        val isClassFile = file.extension?.equals("class", ignoreCase = true) == true
+        val maxBytes = if (isClassFile) {
+            SourceArchiveReadLimits.MAX_CLASS_ENTRY_BYTES
+        } else {
+            SourceArchiveReadLimits.MAX_TEXT_ENTRY_BYTES
+        }
+        if (file.length > maxBytes) {
+            lastUnavailableReason = "SOURCE_FILE_TOO_LARGE"
             return null
         }
         val document = FileDocumentManager.getInstance().getDocument(file)
@@ -181,11 +191,11 @@ class IdeSourceContentResolver(
         val rawText = runCatching {
             when {
                 document != null -> document.text
-                file.extension?.equals("class", ignoreCase = true) == true -> decompiledText(file) ?: return null
+                isClassFile -> decompiledText(file) ?: return null
                 else -> String(file.contentsToByteArray(), file.charset)
             }
         }.getOrNull() ?: return null
-        return SourceContent(
+        return BoundedSourceContent.create(
             text = rawText,
             displayPath = displayPath(file),
             virtualFileUrl = file.url,
@@ -266,7 +276,7 @@ class IdeSourceContentResolver(
     }
 
     /** 当 PSI 找不到 JDK 类时的兜底：先尝试读取 src.zip 中的源码，再回退到 jrt 协议读取 class。 */
-    private fun readJdkClassFallback(qualifiedName: String): SourceContent? {
+    private fun readJdkClassFallback(qualifiedName: String): BoundedSourceContent? {
         if (!accessPolicy.allowJdk || !isJdkQualifiedName(qualifiedName)) {
             return null
         }
@@ -279,15 +289,19 @@ class IdeSourceContentResolver(
     }
 
     /** 从 JDK 源码 zip 中读取指定条目并构造源码内容；文件不存在或读取失败时返回 null。 */
-    private fun readJdkSourceZip(srcZip: Path, entryName: String): SourceContent? {
+    private fun readJdkSourceZip(srcZip: Path, entryName: String): BoundedSourceContent? {
         if (!java.nio.file.Files.isRegularFile(srcZip)) {
             return null
         }
         return runCatching {
             JarFile(srcZip.toFile()).use { jar ->
                 val entry = jar.getJarEntry(entryName) ?: return null
-                val text = jar.getInputStream(entry).bufferedReader(Charsets.UTF_8).use { reader -> reader.readText() }
-                SourceContent(
+                val text = jar.readEntryTextBounded(entry, SourceArchiveReadLimits.MAX_TEXT_ENTRY_BYTES)
+                    ?: run {
+                        lastUnavailableReason = "JAR_ENTRY_TOO_LARGE"
+                        return null
+                    }
+                BoundedSourceContent.create(
                     text = text,
                     displayPath = "$srcZip!/$entryName",
                     virtualFileUrl = "jar://$srcZip!/$entryName",

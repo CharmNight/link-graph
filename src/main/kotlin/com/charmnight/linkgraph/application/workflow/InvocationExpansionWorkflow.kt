@@ -153,7 +153,26 @@ internal class InvocationExpansionWorkflow(
             var analysisFailed = false
             var workingGraph = snapshot.workspaceGraph
             val missingSignatures = mutableListOf<String>()
+            val openedExpansionIds = mutableListOf<String>()
             targetSignatures.forEach { targetSignature ->
+                val existingExpansion = timing.measureLinkPhase(
+                    phase = "reuse",
+                    details = { result ->
+                        "targetSignature=$targetSignature, reused=${result != null}, " +
+                            "expansionId=${result?.expansionId.orEmpty()}"
+                    },
+                ) {
+                    useCase.reuseEquivalentExpansion(
+                        workspace = workingGraph,
+                        sourceInvocationNodeId = node.id,
+                        targetSignature = targetSignature,
+                    )
+                }
+                if (existingExpansion != null) {
+                    workingGraph = existingExpansion.graph
+                    openedExpansionIds += existingExpansion.expansionId
+                    return@forEach
+                }
                 val handle = timing.measureLinkPhase(
                     phase = "subject",
                     details = { resolvedHandle ->
@@ -225,8 +244,42 @@ internal class InvocationExpansionWorkflow(
                     workingGraph = mergeResult.graph
                     workspaceNodesAfter = workingGraph.nodes.size
                     workspaceEdgesAfter = workingGraph.edges.size
-                    mergedCount += 1
+                    openedExpansionIds += mergeResult.expansionId
+                    if (!mergeResult.reused) {
+                        mergedCount += 1
+                    }
                 }
+            }
+
+            if (mergedCount == 0 && openedExpansionIds.isNotEmpty()) {
+                val graphChanged = workingGraph != snapshot.workspaceGraph
+                if (graphChanged) {
+                    committed = timing.measurePhase(
+                        phase = "commitDeduplicatedExpansion",
+                        details = { result -> "committed=$result" },
+                    ) {
+                        workspaceGraphCommitter.commitWorkspaceGraph(
+                            expectedSnapshotRevision = snapshot.snapshotRevision,
+                            graph = workingGraph,
+                            selectedMethodSignature = snapshot.selectedMethodSignature,
+                            preserveDraftPatchUndo = true,
+                            workingGraphDirty = true,
+                            syncBrowser = true,
+                        )
+                    }
+                    if (committed != true) {
+                        outcome = "staleSnapshot"
+                        emitFeedback(ApplicationFeedbackLevel.WARNING, "当前图已变化，请重新选择调用节点后再展开。")
+                        return
+                    }
+                }
+                workspaceNodesAfter = workingGraph.nodes.size
+                workspaceEdgesAfter = workingGraph.edges.size
+                val openedExpansionId = openedExpansionIds.last()
+                eventSink.emit(GraphEditorApplicationEvent.InvocationExpansionOpened(openedExpansionId))
+                outcome = if (graphChanged) "reusedAndDeduplicated" else "reused"
+                emitFeedback(ApplicationFeedbackLevel.SUCCESS, "已重新打开已有调用展开：${node.title}")
+                return
             }
 
             if (mergedCount == 0) {
@@ -270,6 +323,9 @@ internal class InvocationExpansionWorkflow(
             workspaceEdgesAfter = workingGraph.edges.size
             if (committed == true) {
                 outcome = "committed"
+                openedExpansionIds.lastOrNull()?.let { expansionId ->
+                    eventSink.emit(GraphEditorApplicationEvent.InvocationExpansionOpened(expansionId))
+                }
                 emitFeedback(ApplicationFeedbackLevel.SUCCESS, "已展开调用方法：${node.title}")
             } else {
                 outcome = "staleSnapshot"

@@ -4,8 +4,6 @@ import com.charmnight.linkgraph.application.model.ApplicationSnapshot
 import com.charmnight.linkgraph.application.model.ApplicationGraphView
 import com.charmnight.linkgraph.application.model.DraftPatchUndo
 import com.charmnight.linkgraph.application.model.WorkflowEditorSnapshot
-import com.charmnight.linkgraph.agent.model.ChildInvocationExpansionState as AgentChildInvocationExpansionState
-import com.charmnight.linkgraph.agent.model.InvocationExpansionBlockPosition
 import com.charmnight.linkgraph.agent.model.InvocationExpansionContextMode as AgentInvocationExpansionContextMode
 import com.charmnight.linkgraph.agent.model.InvocationExpansionSceneState as AgentInvocationExpansionSceneState
 
@@ -133,17 +131,6 @@ private fun InvocationExpansionSceneState.toAgentInvocationExpansionSceneState()
         activeExpansionPath = activeExpansionPath,
         collapsedExpansionIds = collapsedExpansionIds,
         activeSiblingByParentContext = activeSiblingByParentContext,
-        blockPositions = blockPositions.mapValues { (_, position) ->
-            InvocationExpansionBlockPosition(x = position.x, y = position.y)
-        },
-        lastChildStateByExpansionId = lastChildStateByExpansionId.mapValues { (_, childState) ->
-            AgentChildInvocationExpansionState(
-                activeExpansionId = childState.activeExpansionId,
-                activeExpansionPath = childState.activeExpansionPath,
-                collapsedExpansionIds = childState.collapsedExpansionIds,
-                activeSiblingByParentContext = childState.activeSiblingByParentContext,
-            )
-        },
         contextMode = when (contextMode) {
             InvocationExpansionContextMode.ACTIVE_CHAIN -> AgentInvocationExpansionContextMode.ACTIVE_CHAIN
         },

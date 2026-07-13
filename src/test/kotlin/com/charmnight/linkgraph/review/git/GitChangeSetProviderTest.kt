@@ -4,7 +4,10 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.measureTime
 
 class GitChangeSetProviderTest {
     @Test
@@ -66,6 +69,86 @@ class GitChangeSetProviderTest {
                 file.hunks.single().newStart == 1
         })
         assertEquals(listOf("src/main/java/com/example/Staged.java"), GitChangeSetProvider(repo.toString()).stagedChangeSet().mapNotNull(GitChangedFile::newPath))
+    }
+
+    @Test
+    fun runGitReturnsNullWhenOutputExceedsConfiguredCap() {
+        val repo = Files.createTempDirectory("link-graph-review-git-output-cap")
+        val fakeGit = fakeGit(repo, "printf 'diff --git a/A.java b/A.java\\n'; head -c 200 /dev/zero | tr '\\0' 'x'")
+
+        val diff = GitChangeSetProvider(
+            projectBasePath = repo.toString(),
+            gitExecutable = fakeGit.toString(),
+            maxGitOutputChars = 64,
+        ).unifiedDiff()
+
+        assertNull(diff)
+    }
+
+    @Test
+    fun runGitTimesOutSlowProcess() {
+        val repo = Files.createTempDirectory("link-graph-review-git-timeout")
+        val fakeGit = fakeGit(repo, "sleep 2; printf 'diff --git a/A.java b/A.java\\n'")
+
+        val elapsed = measureTime {
+            val diff = GitChangeSetProvider(
+                projectBasePath = repo.toString(),
+                gitExecutable = fakeGit.toString(),
+                gitTimeoutMillis = 50,
+            ).unifiedDiff()
+            assertNull(diff)
+        }
+
+        assertTrue(elapsed < 1.seconds, "git timeout should not wait for the full fake process sleep: $elapsed")
+    }
+
+    @Test
+    fun untrackedChangeSetSkipsFilesOverConfiguredCap() {
+        val repo = Files.createTempDirectory("link-graph-review-git-untracked-cap")
+        runGit(repo, "init")
+        Files.writeString(repo.resolve("Huge.java"), "x".repeat(32))
+
+        val files = GitChangeSetProvider(
+            projectBasePath = repo.toString(),
+            maxUntrackedFileChars = 8,
+        ).workingTreeChangeSet()
+
+        assertTrue(files.none { file -> file.newPath == "Huge.java" })
+    }
+
+    @Test
+    fun untrackedChangeSetSkipsSymlinksToFilesOutsideRepository() {
+        val repo = Files.createTempDirectory("link-graph-review-git-untracked-symlink")
+        val externalSecret = Files.createTempFile("link-graph-review-secret", ".txt")
+        runGit(repo, "init")
+        Files.writeString(externalSecret, "leaked-secret-value\n")
+        val symlink = repo.resolve("leaked.txt")
+        val symlinkCreated = runCatching {
+            Files.createSymbolicLink(symlink, externalSecret)
+        }.isSuccess
+        if (!symlinkCreated) {
+            return
+        }
+
+        val files = GitChangeSetProvider(projectBasePath = repo.toString()).workingTreeChangeSet()
+
+        assertTrue(files.none { file -> file.newPath == "leaked.txt" })
+        assertTrue(files.flatMap(GitChangedFile::hunks).flatMap(GitHunk::lines).none { line ->
+            line.contains("leaked-secret-value")
+        })
+    }
+
+    private fun fakeGit(repo: Path, scriptBody: String): Path {
+        val script = repo.resolve("fake-git.sh")
+        Files.writeString(
+            script,
+            """
+            #!/bin/sh
+            $scriptBody
+            """.trimIndent(),
+        )
+        script.toFile().setExecutable(true)
+        return script
     }
 
     private fun runGit(

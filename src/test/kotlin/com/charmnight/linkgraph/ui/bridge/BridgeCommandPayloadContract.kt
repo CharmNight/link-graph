@@ -48,6 +48,5 @@ object BridgeCommandPayloadContract {
         "requestRemoveInvocationExpansion" to setOf("expansionId"),
         "collapseInvocationExpansion" to setOf("expansionId"),
         "openInvocationExpansion" to setOf("expansionId"),
-        "activateInvocationExpansion" to setOf("expansionId"),
     )
 }

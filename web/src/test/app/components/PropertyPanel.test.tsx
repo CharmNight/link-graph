@@ -14,8 +14,8 @@ const node: LinkGraphNode = {
   inputs: ["java.lang.String"],
   outputs: ["com.example.OrderResult"],
   doc: "Places an order.",
-  certainty: "PROVEN",
-  bindingStatus: "BOUND",
+  confidence: "VERIFIED",
+  binding: "CODE_BOUND",
 };
 
 describe("PropertyPanel", () => {
@@ -40,8 +40,8 @@ describe("PropertyPanel", () => {
     expect(screen.getByText("代码状态：已绑定")).toBeInTheDocument();
     expect(screen.getByText("证据：已确认")).toBeInTheDocument();
     expect(screen.queryByText("METHOD")).not.toBeInTheDocument();
-    expect(screen.queryByText("BOUND")).not.toBeInTheDocument();
-    expect(screen.queryByText("PROVEN")).not.toBeInTheDocument();
+    expect(screen.queryByText("CODE_BOUND")).not.toBeInTheDocument();
+    expect(screen.queryByText("VERIFIED")).not.toBeInTheDocument();
     expect(screen.getByText("源码位置")).toBeInTheDocument();
     expect(screen.getByText("符号签名")).toBeInTheDocument();
     expect(screen.queryByLabelText("位置")).not.toBeInTheDocument();
@@ -76,8 +76,8 @@ describe("PropertyPanel", () => {
           signature: undefined,
           inputs: [],
           outputs: [],
-          bindingStatus: "DESIGN_ONLY",
-          certainty: "LLM_SUGGESTED",
+          binding: "DESIGN_ONLY",
+          confidence: "SUGGESTED",
         }}
         onUpdateNode={() => undefined}
         onDeleteNode={() => undefined}
@@ -166,8 +166,8 @@ describe("PropertyPanel", () => {
           inputs: [],
           outputs: [],
           doc: "遍历订单行并过滤有效条目。",
-          certainty: "PROVEN",
-          bindingStatus: "BOUND",
+          confidence: "VERIFIED",
+          binding: "CODE_BOUND",
           metadata: {
             "flow.kind": "LAMBDA",
           },
@@ -199,8 +199,8 @@ describe("PropertyPanel", () => {
           inputs: [],
           outputs: ["org.apache.shiro.subject.Subject"],
           doc: "当前方法关键动作",
-          certainty: "PROVEN",
-          bindingStatus: "BOUND",
+          confidence: "VERIFIED",
+          binding: "CODE_BOUND",
           metadata: {
             "flow.anchorMethod": "com.example.ShiroUtils.setSysUser(com.example.User):void",
           },

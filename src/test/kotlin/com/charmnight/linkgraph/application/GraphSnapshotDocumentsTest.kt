@@ -6,7 +6,7 @@ import com.charmnight.linkgraph.application.model.currentWorkingGraphSource
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.ui.GraphEditorStateSnapshot
@@ -114,7 +114,7 @@ class GraphSnapshotDocumentsTest {
                     id = "draft-entry:change-submit-order",
                     type = NodeType.DOC_PAGE,
                     title = "draft projection",
-                    sourceTag = GraphSourceTag.DRAFT_MANUAL,
+                    provenance = GraphProvenance.USER_DRAFT,
                     metadata = mapOf("draft.entryId" to "change-submit-order"),
                 ),
             ),
@@ -124,7 +124,7 @@ class GraphSnapshotDocumentsTest {
                     type = com.charmnight.linkgraph.model.EdgeType.LINKS_DOC,
                     fromNodeId = "method:submit-order",
                     toNodeId = "draft-entry:change-submit-order",
-                    sourceTag = GraphSourceTag.DRAFT_MANUAL,
+                    provenance = GraphProvenance.USER_DRAFT,
                     metadata = mapOf("draft.entryId" to "change-submit-order"),
                 ),
             ),

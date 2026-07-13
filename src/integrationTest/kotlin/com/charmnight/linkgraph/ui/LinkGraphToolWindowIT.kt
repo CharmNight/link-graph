@@ -11,7 +11,7 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.model.GraphPatchAction
 import com.charmnight.linkgraph.model.GraphPatchOperation
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.agent.model.EditScope
 import com.charmnight.linkgraph.agent.model.GraphPatchResult
@@ -664,7 +664,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
                     id = "method:order-service-place",
                     type = NodeType.METHOD,
                     title = "OrderService.place",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -681,7 +681,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
                         type = NodeType.DOC_PAGE,
                         title = "默认兜底说明",
                         doc = "AI 建议补充默认兜底逻辑说明。",
-                        sourceTag = GraphSourceTag.DRAFT_AI,
+                        provenance = GraphProvenance.AI_DRAFT,
                     ),
                 ),
             ),
@@ -696,7 +696,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         assertEquals(1, snapshot.semanticFactGraph.nodes.size)
         assertEquals(2, snapshot.workspaceGraph.nodes.size)
         assertEquals(2, currentVisibleGraph(snapshot).nodes.size)
-        assertTrue(snapshot.workspaceGraph.nodes.any { it.id == "doc:default-fallback-note" && it.sourceTag == GraphSourceTag.DRAFT_AI })
+        assertTrue(snapshot.workspaceGraph.nodes.any { it.id == "doc:default-fallback-note" && it.provenance == GraphProvenance.AI_DRAFT })
         assertEquals(null, snapshot.draftPatchPreview)
     }
 
@@ -709,13 +709,13 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
                         id = "method:order-service-place",
                         type = NodeType.METHOD,
                         title = "OrderService.place",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                     GraphNode(
                         id = "uncertain:channel-router",
                         type = NodeType.UNCERTAIN_LINK,
                         title = "ChannelStrategyRouter.resolve",
-                        sourceTag = GraphSourceTag.UNCERTAIN_FACT,
+                        provenance = GraphProvenance.DERIVED,
                     ),
                 ),
             ),
@@ -750,7 +750,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
                     type = NodeType.METHOD,
                     title = "OrderService.place",
                     signature = "com.example.OrderService.place(java.lang.String):void",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -790,7 +790,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
                         id = "uncertain:channel-router",
                         type = NodeType.UNCERTAIN_LINK,
                         title = "ChannelStrategyRouter.resolve",
-                        sourceTag = GraphSourceTag.UNCERTAIN_FACT,
+                        provenance = GraphProvenance.DERIVED,
                     ),
                 ),
             ),
@@ -821,7 +821,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
                     id = "method:order-service-place",
                     type = NodeType.METHOD,
                     title = "OrderService.place",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -838,7 +838,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
                         type = NodeType.DOC_PAGE,
                         title = "默认兜底说明",
                         doc = "AI 建议补充默认兜底逻辑说明。",
-                        sourceTag = GraphSourceTag.DRAFT_AI,
+                        provenance = GraphProvenance.AI_DRAFT,
                     ),
                 ),
             ),
@@ -1261,7 +1261,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
                     id = "flow-scope:order-service-place-guard",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (a > 10)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("flowchart.kind" to "DECISION"),
                 ),
             ),
@@ -1332,13 +1332,13 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
                     type = NodeType.METHOD,
                     title = "CommonController.fileDownload",
                     signature = "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 GraphNode(
                     id = "scope:file-download-try",
                     type = NodeType.FLOW_SCOPE,
                     title = "try",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "SCOPE",
                         "flow.ownerMethod" to "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
@@ -1348,7 +1348,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
                     id = "scope:file-download-if",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (delete)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "DECISION",
                         "flow.ownerMethod" to "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
@@ -1389,7 +1389,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
                                         id = "scope:file-download-try",
                                         type = NodeType.FLOW_SCOPE,
                                         title = "try",
-                                        sourceTag = GraphSourceTag.DRAFT_AI,
+                                        provenance = GraphProvenance.AI_DRAFT,
                                         metadata = mapOf("draft.claimType" to "STRUCTURAL_SUGGESTION"),
                                     ),
                                     metadata = mapOf("draft.claimType" to "STRUCTURAL_SUGGESTION"),
@@ -1432,7 +1432,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
                     id = "uncertain:channel-router",
                     type = NodeType.UNCERTAIN_LINK,
                     title = "ChannelStrategyRouter.resolve",
-                    sourceTag = GraphSourceTag.UNCERTAIN_FACT,
+                    provenance = GraphProvenance.DERIVED,
                 ),
             ),
         )
@@ -1646,7 +1646,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
                 }
             """.trimIndent(),
         )
-        val draft = GeneratedCodeDraft(
+        val draft = GeneratedCodeDraft.patchExistingFile(
             id = "draft-java-upload-file",
             sourceNodeId = "method:upload-file",
             title = "CommonController.java",
@@ -1718,7 +1718,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
                 }
             """.trimIndent(),
         )
-        val draft = GeneratedCodeDraft(
+        val draft = GeneratedCodeDraft.patchExistingFile(
             id = "draft-kotlin-upload-file",
             sourceNodeId = "method:upload-file-kt",
             title = "CommonController.kt",
@@ -1786,7 +1786,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             }
         """.trimIndent()
         Files.writeString(writtenPath, before)
-        val draft = GeneratedCodeDraft(
+        val draft = GeneratedCodeDraft.patchExistingFile(
             id = "draft-java-overreach",
             sourceNodeId = "method:upload-file",
             title = "CommonController.java",

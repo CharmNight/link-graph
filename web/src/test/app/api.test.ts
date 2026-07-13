@@ -30,9 +30,9 @@ function methodNode(id: string, title: string): LinkGraphNode {
     signature: `com.example.${title}():void`,
     inputs: [],
     outputs: ["void"],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
-    sourceTag: "FACT",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
+    provenance: "CODE_ANALYSIS",
   };
 }
 

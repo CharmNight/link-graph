@@ -70,8 +70,6 @@ export interface BaseStageProps {
   onCollapseInvocationExpansion?: (expansionId: string) => void;
   /** 打开某个折叠的调用展开块。 */
   onOpenInvocationExpansion?: (expansionId: string) => void;
-  /** 激活某个调用展开阅读路径。 */
-  onActivateInvocationExpansion?: (expansionId: string) => void;
 }
 
 /**

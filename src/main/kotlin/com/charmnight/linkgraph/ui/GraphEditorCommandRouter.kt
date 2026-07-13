@@ -80,7 +80,6 @@ class GraphEditorCommandRouter(
             is GraphEditorMessage.NodeSelected,
             is GraphEditorMessage.CollapseInvocationExpansion,
             is GraphEditorMessage.OpenInvocationExpansion,
-            is GraphEditorMessage.ActivateInvocationExpansion,
             is GraphEditorMessage.GraphBeautificationResult,
             -> error("GraphEditorCommandRouter 不处理前端生命周期或纯状态回写消息: ${current::class.simpleName}")
         }

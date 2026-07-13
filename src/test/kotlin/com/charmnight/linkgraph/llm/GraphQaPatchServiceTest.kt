@@ -9,7 +9,7 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphPatchAction
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.GraphUncertainty
 import com.charmnight.linkgraph.model.GraphDiffElementKind
 import com.charmnight.linkgraph.model.NodeType
@@ -26,6 +26,7 @@ import com.charmnight.linkgraph.workbench.QaMode
 import java.net.http.HttpTimeoutException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -96,7 +97,7 @@ class GraphQaPatchServiceTest {
                             id = "method:scheduled-task",
                             type = NodeType.METHOD,
                             title = "Task.run",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -196,7 +197,7 @@ class GraphQaPatchServiceTest {
                             id = "method:review-target",
                             type = NodeType.METHOD,
                             title = "ReviewTarget.handle",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -301,7 +302,7 @@ class GraphQaPatchServiceTest {
                             type = NodeType.METHOD,
                             title = "ChangeTarget.handle",
                             signature = "com.example.ChangeTarget.handle():void",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                             metadata = mapOf(
                                 "source.filePath" to "src/main/java/com/example/ChangeTarget.java",
                                 "source.startLine" to "8",
@@ -312,7 +313,7 @@ class GraphQaPatchServiceTest {
                             id = "method:risk-target",
                             type = NodeType.METHOD,
                             title = "RiskTarget.handle",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -358,14 +359,14 @@ class GraphQaPatchServiceTest {
                             id = "method:order-service-place",
                             type = NodeType.METHOD,
                             title = "OrderService.place",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                         GraphNode(
                             id = "uncertain:channel-router",
                             type = NodeType.UNCERTAIN_LINK,
                             title = "ChannelStrategyRouter.resolve",
                             uncertainty = GraphUncertainty(reason = "运行时字符串路由"),
-                            sourceTag = GraphSourceTag.UNCERTAIN_FACT,
+                            provenance = GraphProvenance.DERIVED,
                         ),
                     ),
                 ),
@@ -423,13 +424,13 @@ class GraphQaPatchServiceTest {
                             id = "method:upload-file",
                             type = NodeType.METHOD,
                             title = "CommonController.uploadFile",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                         GraphNode(
                             id = "flow-action:transfer-to-upload-utils",
                             type = NodeType.FLOW_ACTION,
                             title = "FileUploadUtils.upload",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                     edges = listOf(
@@ -468,7 +469,7 @@ class GraphQaPatchServiceTest {
                             type = NodeType.METHOD,
                             title = "CommonController.fileDownload",
                             signature = "com.example.CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                             metadata = mapOf(
                                 "source.filePath" to "src/main/java/com/example/CommonController.java",
                                 "source.startLine" to "42",
@@ -537,7 +538,7 @@ class GraphQaPatchServiceTest {
                             type = NodeType.METHOD,
                             title = "CommonController.fileDownload",
                             signature = "com.example.CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                             metadata = mapOf(
                                 "source.filePath" to "src/main/java/com/example/CommonController.java",
                                 "source.startLine" to "42",
@@ -591,7 +592,7 @@ class GraphQaPatchServiceTest {
                             type = NodeType.METHOD,
                             title = "CommonController.fileDownload",
                             signature = "com.example.CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                             metadata = mapOf(
                                 "source.filePath" to "src/main/java/com/example/CommonController.java",
                                 "source.startLine" to "42",
@@ -682,7 +683,7 @@ class GraphQaPatchServiceTest {
                             id = "method:order-service-place",
                             type = NodeType.METHOD,
                             title = "OrderService.place",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -713,6 +714,69 @@ class GraphQaPatchServiceTest {
             ResultEvidenceLevel.NOT_OBSERVED,
             result.investigationThreads.firstOrNull()?.evidence?.firstOrNull()?.evidenceLevel,
         )
+    }
+
+    @Test
+    fun remoteQaStripsSourceSnippetsByDefaultAndWarns() {
+        val requests = mutableListOf<LlmRequest>()
+        val gateway = object : LlmGateway {
+            override fun generate(request: LlmRequest): LlmResponse {
+                requests += request
+                return LlmResponse(
+                    content = """
+                        {
+                          "answer": "远程问答只基于图上下文回答。",
+                          "findings": [],
+                          "candidateChanges": [],
+                          "investigationThreads": [],
+                          "warnings": [],
+                          "patch": null
+                        }
+                    """.trimIndent(),
+                    model = request.model,
+                )
+            }
+        }
+
+        val result = GraphQaPatchService(gateway = gateway).answer(
+            context = GraphQaContext(
+                factGraph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:qa-target",
+                            type = NodeType.METHOD,
+                            title = "QaTarget.handle",
+                            provenance = GraphProvenance.CODE_ANALYSIS,
+                        ),
+                    ),
+                ),
+                selectedNodeIds = listOf("method:qa-target"),
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "method:qa-target",
+                        filePath = "src/main/java/com/example/QaTarget.java",
+                        startLine = 3,
+                        endLine = 5,
+                        snippet = "String qaRemoteSecret = \"qa-secret\";",
+                    ),
+                ),
+            ),
+            question = "解释这段逻辑。",
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://api.example.com/v1",
+                apiKey = "token",
+                model = "gpt-test",
+            ),
+        )
+
+        assertEquals(1, requests.size)
+        assertFalse(requests.single().userPrompt.contains("qaRemoteSecret"))
+        assertFalse(requests.single().userPrompt.contains("qa-secret"))
+        assertTrue(result.warnings.any { warning ->
+            warning.startsWith("RUNTIME:") && warning.contains("源码片段外发未授权")
+        })
     }
 
     @Test
@@ -761,7 +825,7 @@ class GraphQaPatchServiceTest {
                                       "type": "DOC_PAGE",
                                       "title": "上传路径改为 /data/upload",
                                       "doc": "原路径已废弃，固定改为 /data/upload。",
-                                      "sourceTag": "DRAFT_AI"
+                                      "provenance": "AI_DRAFT"
                                     }
                                   }
                                 ],
@@ -786,7 +850,7 @@ class GraphQaPatchServiceTest {
                             id = "flow-action:upload-condition",
                             type = NodeType.FLOW_ACTION,
                             title = "上传条件判断",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -869,20 +933,20 @@ class GraphQaPatchServiceTest {
                             id = "method:file-download",
                             type = NodeType.METHOD,
                             title = "CommonController.fileDownload",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                         GraphNode(
                             id = "action:delete-file",
                             type = NodeType.FLOW_ACTION,
                             title = "FileUtils.deleteFile(filePath)",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                             metadata = mapOf("flowchart.kind" to "PROCESS"),
                         ),
                         GraphNode(
                             id = "terminal:return",
                             type = NodeType.TERMINAL,
                             title = "return",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                             metadata = mapOf("flowchart.kind" to "TERMINAL"),
                         ),
                     ),
@@ -892,7 +956,7 @@ class GraphQaPatchServiceTest {
                             type = EdgeType.CONTROL_FLOW,
                             fromNodeId = "method:file-download",
                             toNodeId = "action:delete-file",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -966,7 +1030,7 @@ class GraphQaPatchServiceTest {
                             id = "flow-action:upload",
                             type = NodeType.FLOW_ACTION,
                             title = "FileUploadUtils.upload",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                     edges = listOf(
@@ -1094,7 +1158,7 @@ class GraphQaPatchServiceTest {
                             type = NodeType.METHOD,
                             title = "CommonController.fileDownload",
                             signature = "com.example.CommonController.fileDownload(java.lang.String):void",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                             metadata = mapOf(
                                 "source.filePath" to "src/main/java/com/example/CommonController.java",
                                 "source.startOffset" to "1200",
@@ -1186,7 +1250,7 @@ class GraphQaPatchServiceTest {
                             id = "method:upload-file",
                             type = NodeType.METHOD,
                             title = "CommonController.uploadFile",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -1258,7 +1322,7 @@ class GraphQaPatchServiceTest {
                             id = "flow-action:upload-condition",
                             type = NodeType.FLOW_ACTION,
                             title = "上传条件判断",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -1328,7 +1392,7 @@ class GraphQaPatchServiceTest {
                                       "type": "FLOW_SCOPE",
                                       "title": "try",
                                       "doc": "删除分支逻辑更新为更严格的条件。",
-                                      "sourceTag": "DRAFT_AI"
+                                      "provenance": "AI_DRAFT"
                                     }
                                   }
                                 ]
@@ -1353,13 +1417,13 @@ class GraphQaPatchServiceTest {
                             type = NodeType.METHOD,
                             title = "CommonController.fileDownload",
                             signature = "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                         GraphNode(
                             id = "scope:file-download-try",
                             type = NodeType.FLOW_SCOPE,
                             title = "try",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                             metadata = mapOf(
                                 "flowchart.kind" to "SCOPE",
                                 "flow.ownerMethod" to "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
@@ -1369,7 +1433,7 @@ class GraphQaPatchServiceTest {
                             id = "scope:file-download-if",
                             type = NodeType.FLOW_SCOPE,
                             title = "if (delete)",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                             metadata = mapOf(
                                 "flowchart.kind" to "DECISION",
                                 "flow.ownerMethod" to "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
@@ -1453,7 +1517,7 @@ class GraphQaPatchServiceTest {
                             type = NodeType.METHOD,
                             title = "CommonController.fileDownload",
                             signature = "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                             metadata = mapOf(
                                 "source.filePath" to "src/main/java/com/example/CommonController.java",
                                 "source.startLine" to "42",
@@ -1464,7 +1528,7 @@ class GraphQaPatchServiceTest {
                             id = "scope:file-download-if",
                             type = NodeType.FLOW_SCOPE,
                             title = "if (delete)",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                             metadata = mapOf(
                                 "flowchart.kind" to "DECISION",
                                 "flow.ownerMethod" to "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
@@ -1551,7 +1615,7 @@ class GraphQaPatchServiceTest {
                                       "type": "DOC_PAGE",
                                       "title": "默认兜底说明",
                                       "doc": "远程 LLM 建议补齐默认兜底逻辑。",
-                                      "sourceTag": "DRAFT_AI"
+                                      "provenance": "AI_DRAFT"
                                     }
                                   }
                                 ],
@@ -1576,7 +1640,7 @@ class GraphQaPatchServiceTest {
                             id = "method:order-service-place",
                             type = NodeType.METHOD,
                             title = "OrderService.place",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -1637,7 +1701,7 @@ class GraphQaPatchServiceTest {
                                   "type": "DOC_PAGE",
                                   "title": "下载路径说明",
                                   "doc": "需要补充下载路径处理说明。",
-                                  "sourceTag": "DRAFT_AI"
+                                  "provenance": "AI_DRAFT"
                                 }
                               }
                             ],
@@ -1661,7 +1725,7 @@ class GraphQaPatchServiceTest {
                             id = "method:file-download",
                             type = NodeType.METHOD,
                             title = "CommonController.fileDownload",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -1710,7 +1774,7 @@ class GraphQaPatchServiceTest {
                                       "type": "DOC_PAGE",
                                       "title": "默认兜底说明",
                                       "doc": "远程 LLM 建议补齐默认兜底逻辑。",
-                                      "sourceTag": "DRAFT_AI"
+                                      "provenance": "AI_DRAFT"
                                     }
                                   }
                                 ],
@@ -1733,7 +1797,7 @@ class GraphQaPatchServiceTest {
                             id = "method:order-service-place",
                             type = NodeType.METHOD,
                             title = "OrderService.place",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -1772,7 +1836,7 @@ class GraphQaPatchServiceTest {
                             id = "method:order-service-place",
                             type = NodeType.METHOD,
                             title = "OrderService.place",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -1813,7 +1877,7 @@ class GraphQaPatchServiceTest {
                             id = "method:order-service-place",
                             type = NodeType.METHOD,
                             title = "OrderService.place",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -1843,7 +1907,7 @@ class GraphQaPatchServiceTest {
                             id = "method:order-service-place",
                             type = NodeType.METHOD,
                             title = "OrderService.place",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -1872,13 +1936,13 @@ class GraphQaPatchServiceTest {
             type = NodeType.DOC_PAGE,
             title = "人工测试节点",
             doc = "这是只存在于草稿层的手工说明节点。",
-            sourceTag = GraphSourceTag.DRAFT_MANUAL,
+            provenance = GraphProvenance.USER_DRAFT,
         )
         val factNode = GraphNode(
             id = "method:order-service-place",
             type = NodeType.METHOD,
             title = "OrderService.place",
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
         )
         val result = GraphQaPatchService().answer(
             context = GraphQaContext(
@@ -1891,7 +1955,7 @@ class GraphQaPatchServiceTest {
                             type = EdgeType.LINKS_DOC,
                             fromNodeId = factNode.id,
                             toNodeId = manualNode.id,
-                            sourceTag = GraphSourceTag.DRAFT_MANUAL,
+                            provenance = GraphProvenance.USER_DRAFT,
                         ),
                     ),
                 ),
@@ -1963,7 +2027,7 @@ class GraphQaPatchServiceTest {
                             type = NodeType.METHOD,
                             title = "CommonController.fileDownload",
                             signature = "com.example.CommonController.fileDownload(java.lang.String):void",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                             metadata = mapOf(
                                 "source.filePath" to "src/main/java/com/example/CommonController.java",
                                 "source.startOffset" to "1200",
@@ -2054,7 +2118,7 @@ class GraphQaPatchServiceTest {
                             type = NodeType.METHOD,
                             title = "CommonController.fileDownload",
                             signature = "com.example.CommonController.fileDownload(java.lang.String):void",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),

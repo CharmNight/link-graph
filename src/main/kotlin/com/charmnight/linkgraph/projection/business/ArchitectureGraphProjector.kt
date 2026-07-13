@@ -32,8 +32,8 @@ import com.charmnight.linkgraph.jvm.index.JvmSourceRef
 import com.charmnight.linkgraph.jvm.index.JvmStereotype
 import com.charmnight.linkgraph.jvm.relation.JvmRelationConfidence
 import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
-import com.charmnight.linkgraph.model.BindingStatus
-import com.charmnight.linkgraph.model.Certainty
+import com.charmnight.linkgraph.model.GraphBinding
+import com.charmnight.linkgraph.model.GraphConfidence
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
@@ -245,8 +245,8 @@ class ArchitectureGraphProjector(
                     fromNodeId = edge.fromNodeId,
                     toNodeId = edge.toNodeId,
                     label = edgeLabel(edge.kind),
-                    certainty = edge.confidence.toCertainty(),
-                    bindingStatus = BindingStatus.BOUND,
+                    confidence = edge.confidence.toCertainty(),
+                    binding = GraphBinding.CODE_BOUND,
                     metadata = edge.metadata + mapOf(
                         "linkGraph.view.mode" to viewMode.name,
                         "jvm.relation.kind" to edge.kind.name,
@@ -351,7 +351,7 @@ class ArchitectureGraphProjector(
                     displayRelation = first.metadata["architecture.displayRelation"] ?: first.label ?: first.type.name,
                     relationKinds = sortedEdges.map { edge -> edge.metadata["jvm.relation.kind"] ?: edge.type.name }.distinct(),
                     count = count,
-                    confidence = sortedEdges.map { edge -> edge.metadata["jvm.relation.confidence"] ?: edge.certainty.name }.distinct().joinToString(","),
+                    confidence = sortedEdges.map { edge -> edge.metadata["jvm.relation.confidence"] ?: edge.confidence.name }.distinct().joinToString(","),
                     sourceRelationIds = sourceRelationIds,
                     sampleEvidenceRefs = sourceRelationIds.take(5),
                     defaultVisible = defaultVisible,
@@ -444,8 +444,8 @@ class ArchitectureGraphProjector(
             signature = qualifiedName.takeIf { kind.isTypeLike() },
             doc = metadata["jvm.class.docComment"] ?: docText(),
             sourceKind = resourceKind?.name,
-            bindingStatus = BindingStatus.BOUND,
-            certainty = Certainty.PROVEN,
+            binding = GraphBinding.CODE_BOUND,
+            confidence = GraphConfidence.VERIFIED,
             metadata = metadata + buildMap {
                 put("linkGraph.view.mode", viewMode.name)
                 put("architecture.node.kind", kind.name)
@@ -1025,13 +1025,13 @@ internal fun JvmRelationKind.toEdgeType(): EdgeType =
 /**
  * 把 JVM 关系置信度映射到通用确定性枚举。
  */
-internal fun JvmRelationConfidence.toCertainty(): Certainty =
+internal fun JvmRelationConfidence.toCertainty(): GraphConfidence =
     when (this) {
-        JvmRelationConfidence.PROVEN -> Certainty.PROVEN
+        JvmRelationConfidence.PROVEN -> GraphConfidence.VERIFIED
         JvmRelationConfidence.RULE_INFERRED,
         JvmRelationConfidence.AMBIGUOUS,
         JvmRelationConfidence.RUNTIME_REQUIRED,
-        -> Certainty.RULE_INFERRED
+        -> GraphConfidence.INFERRED
     }
 
 /**

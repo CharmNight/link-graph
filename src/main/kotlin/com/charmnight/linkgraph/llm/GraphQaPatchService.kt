@@ -75,8 +75,9 @@ class GraphQaPatchService(
         val sanitized = settings.sanitized()
         val currentSession = ensureUserQuestion(session ?: emptySession(effectiveContext), question)
         val resolvedEffectiveMode = effectiveMode
+        val sourceContextPolicy = effectiveContext.withRemoteSourceContextPolicy(sanitized)
         val promptPackage = promptFactory.buildQaPromptPackage(
-            effectiveContext,
+            sourceContextPolicy.context,
             question,
             sanitized,
             currentSession,
@@ -117,14 +118,18 @@ class GraphQaPatchService(
                 effectiveMode = resolvedEffectiveMode,
                 runtimeEvidenceTrusted = runtimeEvidenceTrusted,
             ).copy(
-                warnings = listOf(runtimeWarning(sanitized.remoteLlmSetupHint("本地规则问答"))),
+                warnings = sourceContextPolicy.warnings().map(::runtimeWarning) +
+                    runtimeWarning(sanitized.remoteLlmSetupHint("本地规则问答")),
             )
         }
         return runCatching {
             responseSupport.request(
-                remoteConnection.toRequest(
-                    systemPrompt = promptPackage.systemPrompt,
-                    userPrompt = promptPackage.userPrompt,
+                RemoteLlmRequestFactory.create(
+                    connection = remoteConnection,
+                    settings = sanitized,
+                    content = promptPackage.toRemotePromptContent(
+                        sourceContextClassifications(sourceContextPolicy.context.sourceContext),
+                    ),
                 ),
                 scene = "问答",
                 schema = LlmStructuredSchemas.PATCH_RESULT,
@@ -134,7 +139,9 @@ class GraphQaPatchService(
                 RemoteGraphPatchResultParser.parse(content, promptPackage.preview, question)
             }
         }.map { remote ->
-            val remoteResult = remote.value.withPrependedWarnings(remote.warnings.map(::runtimeWarning))
+            val remoteResult = remote.value.withPrependedWarnings(
+                (sourceContextPolicy.warnings() + remote.warnings).map(::runtimeWarning),
+            )
             if (traceEnabled) {
                 logger.warn(
                     "问答结果进入归一化: source=${remoteResult.source}, findings=${remoteResult.findings.size}, " +
@@ -162,7 +169,8 @@ class GraphQaPatchService(
                 effectiveMode = resolvedEffectiveMode,
                 runtimeEvidenceTrusted = false,
             ).copy(
-                warnings = listOf(buildRemoteFallbackWarning("问答", error)),
+                warnings = sourceContextPolicy.warnings().map(::runtimeWarning) +
+                    buildRemoteFallbackWarning("问答", error),
             )
         }
     }

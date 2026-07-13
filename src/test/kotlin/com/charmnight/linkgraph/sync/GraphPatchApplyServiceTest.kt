@@ -10,7 +10,7 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.model.GraphPatchAction
 import com.charmnight.linkgraph.model.GraphPatchOperation
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -25,7 +25,7 @@ class GraphPatchApplyServiceTest {
                     id = "method:order-service-place",
                     type = NodeType.METHOD,
                     title = "OrderService.place",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -34,7 +34,7 @@ class GraphPatchApplyServiceTest {
             type = NodeType.CLASS,
             title = "ManualFallback",
             doc = "待补充业务兜底逻辑。",
-            sourceTag = GraphSourceTag.DRAFT_AI,
+            provenance = GraphProvenance.AI_DRAFT,
         )
         val edge = GraphEdge(
             id = "call:method-order-service-place->note-manual-fallback",
@@ -42,7 +42,7 @@ class GraphPatchApplyServiceTest {
             fromNodeId = "method:order-service-place",
             toNodeId = "note:manual-fallback",
             label = "候选兜底",
-            sourceTag = GraphSourceTag.DRAFT_AI,
+            provenance = GraphProvenance.AI_DRAFT,
         )
         val patch = GraphPatch(
             summary = "apply qa suggestions",
@@ -77,7 +77,7 @@ class GraphPatchApplyServiceTest {
         assertEquals(1, applied.edges.size)
         val updatedNote = applied.nodes.single { it.id == noteNode.id }
         assertEquals("已确认需要人工补充默认兜底逻辑。", updatedNote.doc)
-        assertEquals(GraphSourceTag.DRAFT_AI, updatedNote.sourceTag)
+        assertEquals(GraphProvenance.AI_DRAFT, updatedNote.provenance)
     }
 
     @Test
@@ -86,7 +86,7 @@ class GraphPatchApplyServiceTest {
             id = "note:manual-fallback",
             type = NodeType.CLASS,
             title = "ManualFallback",
-            sourceTag = GraphSourceTag.DRAFT_MANUAL,
+            provenance = GraphProvenance.USER_DRAFT,
         )
         val baseGraph = GraphDocument(
             nodes = listOf(
@@ -94,7 +94,7 @@ class GraphPatchApplyServiceTest {
                     id = "method:order-service-place",
                     type = NodeType.METHOD,
                     title = "OrderService.place",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 noteNode,
             ),
@@ -104,7 +104,7 @@ class GraphPatchApplyServiceTest {
                     type = EdgeType.CALL,
                     fromNodeId = "method:order-service-place",
                     toNodeId = noteNode.id,
-                    sourceTag = GraphSourceTag.DRAFT_MANUAL,
+                    provenance = GraphProvenance.USER_DRAFT,
                 ),
             ),
         )
@@ -134,25 +134,25 @@ class GraphPatchApplyServiceTest {
                     id = "method:file-download",
                     type = NodeType.METHOD,
                     title = "CommonController.fileDownload",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 GraphNode(
                     id = "scope:allow-download",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (!FileUtils.checkAllowDownload(fileName))",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 GraphNode(
                     id = "scope:delete-file",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (delete)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 GraphNode(
                     id = "terminal:return",
                     type = NodeType.TERMINAL,
                     title = "return",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
             edges = listOf(
@@ -161,21 +161,21 @@ class GraphPatchApplyServiceTest {
                     type = EdgeType.CONTROL_FLOW,
                     fromNodeId = "method:file-download",
                     toNodeId = "scope:allow-download",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 GraphEdge(
                     id = "edge:allow-delete",
                     type = EdgeType.CONTROL_FLOW,
                     fromNodeId = "scope:allow-download",
                     toNodeId = "scope:delete-file",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 GraphEdge(
                     id = "edge:delete-return",
                     type = EdgeType.CONTROL_FLOW,
                     fromNodeId = "scope:delete-file",
                     toNodeId = "terminal:return",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -188,7 +188,7 @@ class GraphPatchApplyServiceTest {
                     elementId = "scope:delete-file",
                     node = baseGraph.nodes[2].copy(
                         title = "if (Boolean.TRUE.equals(delete))",
-                        sourceTag = GraphSourceTag.DRAFT_AI,
+                        provenance = GraphProvenance.AI_DRAFT,
                     ),
                 ),
                 GraphPatchOperation(
@@ -200,7 +200,7 @@ class GraphPatchApplyServiceTest {
                         id = "draft:aaa-check",
                         type = NodeType.FLOW_ACTION,
                         title = "Files.exists(Path.of(filePath))",
-                        sourceTag = GraphSourceTag.DRAFT_AI,
+                        provenance = GraphProvenance.AI_DRAFT,
                     ),
                 ),
                 GraphPatchOperation(
@@ -213,7 +213,7 @@ class GraphPatchApplyServiceTest {
                         type = EdgeType.CONTROL_FLOW,
                         fromNodeId = "scope:delete-file",
                         toNodeId = "draft:aaa-check",
-                        sourceTag = GraphSourceTag.DRAFT_AI,
+                        provenance = GraphProvenance.AI_DRAFT,
                     ),
                 ),
                 GraphPatchOperation(
@@ -226,7 +226,7 @@ class GraphPatchApplyServiceTest {
                         type = EdgeType.CONTROL_FLOW,
                         fromNodeId = "draft:aaa-check",
                         toNodeId = "terminal:return",
-                        sourceTag = GraphSourceTag.DRAFT_AI,
+                        provenance = GraphProvenance.AI_DRAFT,
                     ),
                 ),
             ),

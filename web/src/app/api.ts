@@ -82,7 +82,6 @@ export type BridgeCommandType =
   | "requestRemoveInvocationExpansion"
   | "collapseInvocationExpansion"
   | "openInvocationExpansion"
-  | "activateInvocationExpansion"
   | "applyGraphEditScript";
 
 /** 桥接命令信封：固定 schemaVersion + type + 弱类型 payload。 */
@@ -587,11 +586,6 @@ export function openInvocationExpansion(expansionId: string): BridgeInvocationRe
   return invokeBridgeAction("openInvocationExpansion", { expansionId }, { expansionId });
 }
 
-/** 激活某个调用展开阅读路径，仅更新 UI/session 状态。 */
-export function activateInvocationExpansion(expansionId: string): BridgeInvocationResult {
-  return invokeBridgeAction("activateInvocationExpansion", { expansionId }, { expansionId });
-}
-
 /**
  * 提交图编辑脚本。把图编辑请求按桥接协议重新打包为后端可识别的结构，
  * 字段名做相应转换（source→fromNodeId、target→toNodeId 等），
@@ -612,15 +606,10 @@ export function publishGraphEditRequest(request: GraphEditRequest): BridgeInvoca
               id: operation.node.id,
               type: operation.node.type,
               title: operation.node.title,
-              location: operation.node.location,
-              signature: operation.node.signature,
               inputs: operation.node.inputs ?? [],
               outputs: operation.node.outputs ?? [],
               doc: operation.node.doc,
-              certainty: operation.node.certainty,
-              bindingStatus: operation.node.bindingStatus,
               metadata: buildNodeMetadata(operation.node),
-              sourceTag: operation.node.sourceTag,
             },
           };
         case "REMOVE_NODE":
@@ -639,7 +628,6 @@ export function publishGraphEditRequest(request: GraphEditRequest): BridgeInvoca
               toNodeId: operation.edge.target,
               label: operation.edge.label,
               metadata: operation.edge.metadata,
-              sourceTag: operation.edge.sourceTag,
             },
           };
         case "REMOVE_EDGE":
@@ -679,7 +667,7 @@ export function publishLayoutChange(
  * 过滤节点元数据：剔除 ui./layout. 前缀的字段，
  * 因为这些是前端专用字段（如临时高亮、布局缓存），不应进入后端持久化。
  */
-function buildNodeMetadata(node: LinkGraphNode): Record<string, string> {
+function buildNodeMetadata(node: Pick<LinkGraphNode, "metadata">): Record<string, string> {
   return Object.fromEntries(
     Object.entries(node.metadata ?? {}).filter(([key]) => !key.startsWith("ui.") && !key.startsWith("layout.")),
   );

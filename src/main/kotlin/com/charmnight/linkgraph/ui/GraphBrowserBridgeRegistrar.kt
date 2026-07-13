@@ -185,7 +185,6 @@ internal class GraphBrowserBridgeRegistrar(
                 requestRemoveInvocationExpansion: (expansionId) => sendCommand("requestRemoveInvocationExpansion", { expansionId }),
                 collapseInvocationExpansion: (expansionId) => sendCommand("collapseInvocationExpansion", { expansionId }),
                 openInvocationExpansion: (expansionId) => sendCommand("openInvocationExpansion", { expansionId }),
-                activateInvocationExpansion: (expansionId) => sendCommand("activateInvocationExpansion", { expansionId }),
                 applyGraphEditScript: (payload) => sendCommand("applyGraphEditScript", payload || {})
               };
             }

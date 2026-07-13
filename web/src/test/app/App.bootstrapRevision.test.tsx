@@ -146,8 +146,8 @@ const bootstrapState = materializeThreeViewDocuments({
         title: "OrderController.submit",
         inputs: ["java.lang.String"],
         outputs: ["com.example.SubmitResult"],
-        certainty: "PROVEN",
-        bindingStatus: "BOUND",
+        confidence: "VERIFIED",
+        binding: "CODE_BOUND",
         position: { x: 120, y: 96 },
       },
     ],
@@ -161,8 +161,8 @@ const bootstrapState = materializeThreeViewDocuments({
         title: "OrderController.submit",
         inputs: ["java.lang.String"],
         outputs: ["com.example.SubmitResult"],
-        certainty: "PROVEN",
-        bindingStatus: "BOUND",
+        confidence: "VERIFIED",
+        binding: "CODE_BOUND",
         position: { x: 120, y: 96 },
       },
     ],
@@ -189,8 +189,8 @@ const flowchartBootstrapState = materializeThreeViewDocuments({
         title: "entry",
         inputs: [],
         outputs: [],
-        certainty: "PROVEN",
-        bindingStatus: "BOUND",
+        confidence: "VERIFIED",
+        binding: "CODE_BOUND",
         position: { x: 120, y: 96 },
         metadata: {
           "flowchart.kind": "ENTRY",
@@ -202,8 +202,8 @@ const flowchartBootstrapState = materializeThreeViewDocuments({
         title: "decision",
         inputs: [],
         outputs: [],
-        certainty: "PROVEN",
-        bindingStatus: "BOUND",
+        confidence: "VERIFIED",
+        binding: "CODE_BOUND",
         position: { x: 420, y: 280 },
         metadata: {
           "flowchart.kind": "PROCESS",
@@ -236,8 +236,8 @@ const flowchartBootstrapState = materializeThreeViewDocuments({
         title: "entry",
         inputs: [],
         outputs: [],
-        certainty: "PROVEN",
-        bindingStatus: "BOUND",
+        confidence: "VERIFIED",
+        binding: "CODE_BOUND",
         position: { x: 120, y: 96 },
         metadata: {
           "flowchart.kind": "ENTRY",
@@ -249,8 +249,8 @@ const flowchartBootstrapState = materializeThreeViewDocuments({
         title: "decision",
         inputs: [],
         outputs: [],
-        certainty: "PROVEN",
-        bindingStatus: "BOUND",
+        confidence: "VERIFIED",
+        binding: "CODE_BOUND",
         position: { x: 420, y: 280 },
         metadata: {
           "flowchart.kind": "PROCESS",
@@ -425,8 +425,6 @@ describe("App bootstrap revisions", () => {
             activeSiblingByParentContext: {
               "root:flow:entry": "invocation:stripe",
             },
-            blockPositions: {},
-            lastChildStateByExpansionId: {},
             contextMode: "ACTIVE_CHAIN",
           },
         },
@@ -454,8 +452,6 @@ describe("App bootstrap revisions", () => {
               activeSiblingByParentContext: {
                 "root:flow:entry": "invocation:paypal",
               },
-              blockPositions: {},
-              lastChildStateByExpansionId: {},
               contextMode: "ACTIVE_CHAIN",
             },
           },
@@ -520,8 +516,8 @@ describe("App bootstrap revisions", () => {
                 title: "app",
                 inputs: [],
                 outputs: [],
-                certainty: "PROVEN",
-                bindingStatus: "BOUND",
+                confidence: "VERIFIED",
+                binding: "CODE_BOUND",
               },
             ],
             edges: [],
@@ -534,8 +530,8 @@ describe("App bootstrap revisions", () => {
                 title: "app",
                 inputs: [],
                 outputs: [],
-                certainty: "PROVEN",
-                bindingStatus: "BOUND",
+                confidence: "VERIFIED",
+                binding: "CODE_BOUND",
               },
             ],
             edges: [],
@@ -573,8 +569,8 @@ describe("App bootstrap revisions", () => {
       title: "KafkaConfig",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN" as const,
-      bindingStatus: "BOUND" as const,
+      confidence: "VERIFIED" as const,
+      binding: "CODE_BOUND" as const,
     };
     const requestedAnchorNode = {
       id: "class:validator",
@@ -582,8 +578,8 @@ describe("App bootstrap revisions", () => {
       title: "MetadataVersionConfigValidator",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN" as const,
-      bindingStatus: "BOUND" as const,
+      confidence: "VERIFIED" as const,
+      binding: "CODE_BOUND" as const,
     };
     const relatedNode = {
       id: "class:metadata",
@@ -591,8 +587,8 @@ describe("App bootstrap revisions", () => {
       title: "MetadataDelta",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN" as const,
-      bindingStatus: "BOUND" as const,
+      confidence: "VERIFIED" as const,
+      binding: "CODE_BOUND" as const,
     };
     const initialState = materializeThreeViewDocuments({
       ...structuredClone(bootstrapState),
@@ -738,8 +734,8 @@ describe("App bootstrap revisions", () => {
       title: "AbstractNestablePropertyAccessor",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN" as const,
-      bindingStatus: "BOUND" as const,
+      confidence: "VERIFIED" as const,
+      binding: "CODE_BOUND" as const,
     };
     const callerNode = {
       id: "class:bean-wrapper",
@@ -747,8 +743,8 @@ describe("App bootstrap revisions", () => {
       title: "BeanWrapperImpl",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN" as const,
-      bindingStatus: "BOUND" as const,
+      confidence: "VERIFIED" as const,
+      binding: "CODE_BOUND" as const,
     };
     const initialState = materializeThreeViewDocuments({
       ...structuredClone(bootstrapState),
@@ -897,8 +893,8 @@ describe("App bootstrap revisions", () => {
       title: "KafkaConfig",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN" as const,
-      bindingStatus: "BOUND" as const,
+      confidence: "VERIFIED" as const,
+      binding: "CODE_BOUND" as const,
     };
     const requestedAnchorNode = {
       id: "class:validator",
@@ -906,8 +902,8 @@ describe("App bootstrap revisions", () => {
       title: "MetadataVersionConfigValidator",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN" as const,
-      bindingStatus: "BOUND" as const,
+      confidence: "VERIFIED" as const,
+      binding: "CODE_BOUND" as const,
     };
     const initialState = materializeThreeViewDocuments({
       ...structuredClone(bootstrapState),

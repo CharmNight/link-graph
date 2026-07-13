@@ -4,11 +4,11 @@ import rawTransportContract from "../../../protocol/graph-editor-transport-contr
 
 /**
  * 协议契约对象的内部投影。直接读取 JSON 字段并断言其结构，
- * schemaVersion 标识整体协议版本（当前为 1），incrementalTransportTypes
+ * schemaVersion 标识整体协议版本（当前为 2），incrementalTransportTypes
  * 列出所有增量传输消息的类型字符串。
  */
 const transportContract = rawTransportContract as unknown as {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly incrementalTransportTypes: readonly ["ARTIFACT_SLICE", "FEEDBACK_SLICE"];
 };
 

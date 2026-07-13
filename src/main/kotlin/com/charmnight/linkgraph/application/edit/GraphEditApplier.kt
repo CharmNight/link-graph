@@ -25,6 +25,7 @@ import com.charmnight.linkgraph.model.GraphNode
  */
 internal class GraphEditApplier(
     private val frontendGraphMutationSanitizer: FrontendGraphMutationSanitizer = FrontendGraphMutationSanitizer(),
+    private val graphMutationPolicy: GraphMutationPolicy = GraphMutationPolicy(),
 ) {
     /**
      * 应用编辑请求。
@@ -52,9 +53,13 @@ internal class GraphEditApplier(
                     // 把投影 ID 翻译为规范 ID
                     val targetNodeId = resolution.nodeTargetId(operation.node.id)
                     // 消毒：剥离不可信字段，保留前端可写字段
+                    val candidateNode = graphMutationPolicy.newNode(
+                        operation.node.copy(id = targetNodeId),
+                        request.source,
+                    )
                     val sanitizedNodes = frontendGraphMutationSanitizer.sanitize(
                         snapshot,
-                        GraphDocument(nodes = listOf(operation.node.copy(id = targetNodeId))),
+                        GraphDocument(nodes = listOf(candidateNode)),
                     ).nodes
                     if (sanitizedNodes.isEmpty()) {
                         // sanitizer 返回空列表视为拒绝写入该节点：不要 fallback 到原始节点，
@@ -70,8 +75,8 @@ internal class GraphEditApplier(
                     }
                     val sanitizedNode = sanitizedNodes.first()
                     // 若该节点在可信索引中，保留可信字段，只更新前端可改字段
-                    val existingTrustedNode = trustedNodes[targetNodeId]
-                    nodesById[targetNodeId] = existingTrustedNode?.copy(
+                    val existingNode = trustedNodes[targetNodeId] ?: nodesById[targetNodeId]
+                    nodesById[targetNodeId] = existingNode?.copy(
                         title = sanitizedNode.title,
                         inputs = sanitizedNode.inputs,
                         outputs = sanitizedNode.outputs,
@@ -80,7 +85,7 @@ internal class GraphEditApplier(
                         // 永远以前端为非覆盖 —— 即便前端 metadata 携带了这些 key 也忽略，避免不可信字段
                         // 覆盖 PSI/索引得到的可信值（旧实现直接 `trusted + sanitized` 会让前端 signature=evil
                         // 覆盖可信签名）。
-                        metadata = mergeTrustedMetadata(existingTrustedNode.metadata, sanitizedNode.metadata),
+                        metadata = mergeTrustedMetadata(existingNode.metadata, sanitizedNode.metadata),
                     ) ?: sanitizedNode.copy(id = targetNodeId)
                 }
                 is GraphEditOperation.RemoveNode -> {
@@ -93,10 +98,14 @@ internal class GraphEditApplier(
                 is GraphEditOperation.UpsertEdge -> {
                     // 边的端点 ID 同样需要翻译
                     val targetEdgeId = resolution.edgeTargetId(operation.edge.id)
-                    edgesById[targetEdgeId] = operation.edge.copy(
+                    val translatedEdge = operation.edge.copy(
                         id = targetEdgeId,
                         fromNodeId = resolution.nodeTargetId(operation.edge.fromNodeId),
                         toNodeId = resolution.nodeTargetId(operation.edge.toNodeId),
+                    )
+                    edgesById[targetEdgeId] = applyEdgeIntent(
+                        existingEdge = edgesById[targetEdgeId],
+                        candidateEdge = graphMutationPolicy.newEdge(translatedEdge, request.source),
                     )
                 }
                 is GraphEditOperation.RemoveEdge -> {
@@ -155,9 +164,32 @@ private fun mergeTrustedMetadata(
     trusted: Map<String, String>,
     frontend: Map<String, String>,
 ): Map<String, String> {
-    val filtered = frontend.filterKeys { key ->
+    val filtered = filterFrontendWritableMetadata(frontend)
+    return trusted + filtered
+}
+
+/**
+ * 前端新增或更新边时，不能声明可信来源或覆盖后端推导的关系元数据。
+ * 已有边保留可信字段与来源，只允许展示/布局类 metadata 合并；新增边按人工草稿处理。
+ */
+private fun applyEdgeIntent(
+    existingEdge: GraphEdge?,
+    candidateEdge: GraphEdge,
+): GraphEdge {
+    val sanitizedMetadata = existingEdge
+        ?.let { edge -> mergeTrustedMetadata(edge.metadata, candidateEdge.metadata) }
+        ?: filterFrontendWritableMetadata(candidateEdge.metadata)
+    return existingEdge?.copy(
+        type = candidateEdge.type,
+        fromNodeId = candidateEdge.fromNodeId,
+        toNodeId = candidateEdge.toNodeId,
+        label = candidateEdge.label,
+        metadata = sanitizedMetadata,
+    ) ?: candidateEdge.copy(metadata = sanitizedMetadata)
+}
+
+private fun filterFrontendWritableMetadata(frontend: Map<String, String>): Map<String, String> =
+    frontend.filterKeys { key ->
         key !in TRUSTED_METADATA_EXACT_KEYS &&
             TRUSTED_METADATA_PREFIXES.none { prefix -> key.startsWith(prefix) }
     }
-    return trusted + filtered
-}

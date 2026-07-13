@@ -161,6 +161,20 @@ class JvmSymbolIndexBuilderAttachedJarTest : BasePlatformTestCase() {
         )
     }
 
+    fun testProjectSpiServiceFileOverSizeLimitIsNotParsed() {
+        myFixture.addFileToProject(
+            "src/main/resources/META-INF/services/com.example.HugePlugin",
+            "com.example.".padEnd(64 * 1024 + 1, 'A'),
+        )
+
+        val symbolIndex = JvmSymbolIndexBuilder(project).build()
+
+        assertTrue(
+            symbolIndex.serviceProviderIndex.providersFor("com.example.HugePlugin").isEmpty(),
+            "Oversized SPI service files should not be parsed as provider declarations.",
+        )
+    }
+
     fun testProjectBaseFallbackIndexesJavaSourcesWhenIdeContentRootsHaveNoClasses() {
         val sourceRoot = Path.of(project.basePath!!).resolve("spring-beans/src/main/java/org/springframework/beans")
         Files.createDirectories(sourceRoot)

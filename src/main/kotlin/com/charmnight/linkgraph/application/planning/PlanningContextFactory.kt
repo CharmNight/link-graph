@@ -25,6 +25,8 @@ import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.model.sourceLocation
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
+import com.charmnight.linkgraph.source.SourceArchiveReadLimits
+import com.charmnight.linkgraph.source.readFileTextBounded
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewPlanner
 import com.charmnight.linkgraph.workbench.AssistantActionId
@@ -592,6 +594,13 @@ internal class PlanningContextFactory(
         val endOffset = normalizedOffsets.second
         val startLine = sourceLocation.startLine
         val endLine = sourceLocation.endLine
+        val snippet = readSourceSnippet(
+            filePath = filePath,
+            startOffset = startOffset,
+            endOffset = endOffset,
+            startLine = startLine,
+            endLine = endLine,
+        ) ?: return null
         return SourceSnippetContext(
             nodeId = node.id,
             filePath = filePath,
@@ -599,13 +608,7 @@ internal class PlanningContextFactory(
             endOffset = endOffset,
             startLine = startLine,
             endLine = endLine,
-            snippet = readSourceSnippet(
-                filePath = filePath,
-                startOffset = startOffset,
-                endOffset = endOffset,
-                startLine = startLine,
-                endLine = endLine,
-            ),
+            snippet = snippet,
         )
     }
 
@@ -616,18 +619,19 @@ internal class PlanningContextFactory(
             val filePath = node.metadata["$prefix.filePath"]?.takeIf(String::isNotBlank) ?: return@mapNotNull null
             val startLine = node.metadata["$prefix.startLine"]?.toIntOrNull()
             val endLine = node.metadata["$prefix.endLine"]?.toIntOrNull()
+            val snippet = readSourceSnippet(
+                filePath = filePath,
+                startOffset = null,
+                endOffset = null,
+                startLine = startLine,
+                endLine = endLine,
+            ) ?: return@mapNotNull null
             SourceSnippetContext(
                 nodeId = node.metadata["$prefix.nodeId"]?.takeIf(String::isNotBlank) ?: node.id,
                 filePath = filePath,
                 startLine = startLine,
                 endLine = endLine,
-                snippet = readSourceSnippet(
-                    filePath = filePath,
-                    startOffset = null,
-                    endOffset = null,
-                    startLine = startLine,
-                    endLine = endLine,
-                ),
+                snippet = snippet,
                 origin = node.metadata["$prefix.reason"],
                 decompiled = node.metadata["$prefix.decompiled"]?.toBooleanStrictOrNull() ?: false,
                 virtualFileUrl = node.metadata["$prefix.virtualFileUrl"],
@@ -683,7 +687,8 @@ internal class PlanningContextFactory(
             if (!Files.isRegularFile(path)) {
                 return null
             }
-            val content = Files.readString(path)
+            val content = readFileTextBounded(path, SourceArchiveReadLimits.MAX_TEXT_ENTRY_BYTES)
+                ?: return null
             if (content.isBlank()) {
                 return null
             }

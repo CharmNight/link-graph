@@ -43,6 +43,7 @@ class LinkGraphSettingsServiceTest {
         assertEquals(LinkGraphSettingsState.DEFAULT_MODEL, snapshot.model)
         assertEquals(LinkGraphSettingsState.DEFAULT_TIMEOUT_SECONDS, snapshot.effectiveTimeoutSeconds())
         assertEquals(LinkGraphSettingsState.DEFAULT_TEMPERATURE, snapshot.effectiveTemperature())
+        assertFalse(snapshot.allowRemoteSourceContext)
         assertTrue(snapshot.allowClassJarDecompile)
         assertTrue(snapshot.allowExternalLibraryExpansion)
         assertFalse(snapshot.allowJdkLibraryExpansion)
@@ -75,6 +76,7 @@ class LinkGraphSettingsServiceTest {
                 model = " gpt-4.1-mini ",
                 timeoutSeconds = 0,
                 temperature = 1.7,
+                allowRemoteSourceContext = true,
             ),
         )
 
@@ -87,6 +89,7 @@ class LinkGraphSettingsServiceTest {
         assertEquals("gpt-4.1-mini", snapshot.model.trim())
         assertEquals(30, snapshot.effectiveTimeoutSeconds())
         assertEquals(1.0, snapshot.effectiveTemperature())
+        assertTrue(snapshot.allowRemoteSourceContext)
         assertEquals("secret-key", secretStore.storedApiKey)
         assertEquals(
             LinkGraphPersistentSettingsState(
@@ -96,6 +99,7 @@ class LinkGraphSettingsServiceTest {
                 model = "gpt-4.1-mini",
                 timeoutSeconds = 30,
                 temperature = 1.0,
+                allowRemoteSourceContext = true,
             ),
             service.state,
         )
@@ -291,7 +295,18 @@ class LinkGraphSettingsServiceTest {
     fun publishesArchitectureIndexSettingsChangedWhenIndexRelevantSettingsChange() {
         val service = LinkGraphSettingsService(FakeSecretStore())
         val events = mutableListOf<Pair<LinkGraphSettingsState, LinkGraphSettingsState>>()
-        val connection = ApplicationManager.getApplication().messageBus.connect()
+        val application = ApplicationManager.getApplication()
+        if (application == null) {
+            service.update(
+                service.snapshot().copy(
+                    allowJdkLibraryExpansion = true,
+                    attachedJars = listOf(AttachedJarEntry(path = "/tmp/external.jar")),
+                ),
+            )
+            assertTrue(service.snapshot().allowJdkLibraryExpansion)
+            return
+        }
+        val connection = application.messageBus.connect()
         try {
             connection.subscribe(
                 LinkGraphSettingsChangedNotifier.TOPIC,

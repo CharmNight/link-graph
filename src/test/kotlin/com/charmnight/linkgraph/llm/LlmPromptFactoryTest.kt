@@ -14,7 +14,7 @@ import com.charmnight.linkgraph.model.GraphDiffEntry
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.sync.SyncPreviewItem
@@ -38,7 +38,7 @@ class LlmPromptFactoryTest {
                             id = "method:submit-order",
                             type = NodeType.METHOD,
                             title = "OrderController.submit",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -70,7 +70,7 @@ class LlmPromptFactoryTest {
                             id = "method:scheduled-task",
                             type = NodeType.METHOD,
                             title = "Task.run",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -117,7 +117,7 @@ class LlmPromptFactoryTest {
                             id = "method:upload",
                             type = NodeType.METHOD,
                             title = "UploadService.upload",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -158,7 +158,7 @@ class LlmPromptFactoryTest {
                             id = "method:upload",
                             type = NodeType.METHOD,
                             title = "UploadService.upload",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -200,7 +200,7 @@ class LlmPromptFactoryTest {
                             id = "method:upload",
                             type = NodeType.METHOD,
                             title = "UploadService.upload",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -239,7 +239,7 @@ class LlmPromptFactoryTest {
                             id = "method:scheduled-task",
                             type = NodeType.METHOD,
                             title = "Task.run",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -354,13 +354,13 @@ class LlmPromptFactoryTest {
                             type = NodeType.METHOD,
                             title = "OrderService.place",
                             signature = "com.example.OrderService.place(java.lang.String):void",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                         GraphNode(
                             id = "scope:order-service-if",
                             type = NodeType.FLOW_SCOPE,
                             title = "if (channel == null)",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                             metadata = mapOf(
                                 "flowchart.kind" to "DECISION",
                                 "flow.ownerMethod" to "com.example.OrderService.place(java.lang.String):void",
@@ -395,7 +395,7 @@ class LlmPromptFactoryTest {
                             id = "method:order-service-place",
                             type = NodeType.METHOD,
                             title = "OrderService.place",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -405,7 +405,7 @@ class LlmPromptFactoryTest {
                             id = "design:default-fallback",
                             type = NodeType.CLASS,
                             title = "DefaultChannelFallback",
-                            sourceTag = GraphSourceTag.DESIGN_BASELINE,
+                            provenance = GraphProvenance.DESIGN_IMPORT,
                         ),
                     ),
                 ),
@@ -465,7 +465,7 @@ class LlmPromptFactoryTest {
                             id = "method:order-service-place",
                             type = NodeType.METHOD,
                             title = "OrderService.place",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                     edges = listOf(
@@ -500,7 +500,7 @@ class LlmPromptFactoryTest {
                             id = "method:order-service-place",
                             type = NodeType.METHOD,
                             title = "OrderService.place",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -510,7 +510,7 @@ class LlmPromptFactoryTest {
                             id = "design:default-fallback",
                             type = NodeType.CLASS,
                             title = "DefaultChannelFallback",
-                            sourceTag = GraphSourceTag.DESIGN_BASELINE,
+                            provenance = GraphProvenance.DESIGN_IMPORT,
                         ),
                     ),
                 ),
@@ -537,7 +537,7 @@ class LlmPromptFactoryTest {
                             id = "class:order-draft",
                             type = NodeType.CLASS,
                             title = "OrderDraftDto",
-                            sourceTag = GraphSourceTag.DESIGN_BASELINE,
+                            provenance = GraphProvenance.DESIGN_IMPORT,
                         ),
                     ),
                 ),
@@ -601,13 +601,13 @@ class LlmPromptFactoryTest {
             id = "method:file-download",
             type = NodeType.METHOD,
             title = "CommonController.fileDownload",
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
         )
         val editableDecision = GraphNode(
             id = "scope:file-download-if",
             type = NodeType.FLOW_SCOPE,
             title = "if (delete)",
-            sourceTag = GraphSourceTag.DRAFT_MANUAL,
+            provenance = GraphProvenance.USER_DRAFT,
             metadata = mapOf("flowchart.kind" to "DECISION"),
         )
 
@@ -622,7 +622,7 @@ class LlmPromptFactoryTest {
                             type = com.charmnight.linkgraph.model.EdgeType.CONTROL_FLOW,
                             fromNodeId = factMethod.id,
                             toNodeId = editableDecision.id,
-                            sourceTag = GraphSourceTag.DRAFT_MANUAL,
+                            provenance = GraphProvenance.USER_DRAFT,
                         ),
                     ),
                 ),
@@ -1088,7 +1088,7 @@ class LlmPromptFactoryTest {
                             id = "method:order-place",
                             type = NodeType.METHOD,
                             title = "OrderService.place",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -1117,7 +1117,7 @@ class LlmPromptFactoryTest {
                             id = "method:order-place",
                             type = NodeType.METHOD,
                             title = "OrderService.place",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -1137,6 +1137,47 @@ class LlmPromptFactoryTest {
     }
 
     @Test
+    fun qaPromptPackageRedactsSecretLikeValuesFromSourceSnippets() {
+        val promptPackage = LlmPromptFactory().buildQaPromptPackage(
+            context = GraphQaContext(
+                factGraph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:payment-charge",
+                            type = NodeType.METHOD,
+                            title = "PaymentClient.charge",
+                            provenance = GraphProvenance.CODE_ANALYSIS,
+                        ),
+                    ),
+                ),
+                selectedNodeIds = listOf("method:payment-charge"),
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "method:payment-charge",
+                        filePath = "src/main/kotlin/com/example/PaymentClient.kt",
+                        startLine = 20,
+                        endLine = 24,
+                        snippet = """
+                            val api_key = "live-secret-value"
+                            val timeoutMillis = 3_000
+                        """.trimIndent(),
+                    ),
+                ),
+            ),
+            question = "这个调用如何认证？",
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                model = "gpt-test",
+            ),
+        )
+
+        assertFalse(promptPackage.userPrompt.contains("live-secret-value"))
+        assertTrue(promptPackage.userPrompt.contains("api_key = [REDACTED]"))
+        assertTrue(promptPackage.userPrompt.contains("timeoutMillis = 3_000"))
+    }
+
+    @Test
     fun qaPromptPackageIncludesInvocationExpansionContext() {
         val promptPackage = LlmPromptFactory().buildQaPromptPackage(
             context = GraphQaContext(
@@ -1146,7 +1187,7 @@ class LlmPromptFactoryTest {
                             id = "method:caller",
                             type = NodeType.METHOD,
                             title = "Caller.run",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),
@@ -1180,7 +1221,7 @@ class LlmPromptFactoryTest {
                             id = "method:order-place",
                             type = NodeType.METHOD,
                             title = "OrderService.place",
-                            sourceTag = GraphSourceTag.FACT,
+                            provenance = GraphProvenance.CODE_ANALYSIS,
                         ),
                     ),
                 ),

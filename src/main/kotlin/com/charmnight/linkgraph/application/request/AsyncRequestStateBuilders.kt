@@ -31,7 +31,7 @@ internal fun buildAsyncRequestLifecycleResult(
 ): AsyncRequestLifecycleResult {
     val sanitized = settings.sanitized()
     val remoteConnection = sanitized.remoteConnectionOrNull()
-    val remotePresetSelected = sanitized.usesRemoteProvider()
+    val remotePresetSelected = sanitized.isRemoteProviderSelected()
     val streamingSupported = remoteConnection?.preset?.capabilities?.supportsStreaming == true
     val executionMode = when {
         remoteConnection != null -> AsyncRequestExecutionMode.REMOTE_READY

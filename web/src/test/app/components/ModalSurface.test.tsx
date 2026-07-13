@@ -14,8 +14,8 @@ const node: LinkGraphNode = {
   inputs: ["java.lang.String"],
   outputs: ["com.example.OrderResult"],
   doc: "Places an order.",
-  certainty: "PROVEN",
-  bindingStatus: "BOUND",
+  confidence: "VERIFIED",
+  binding: "CODE_BOUND",
 };
 
 describe("shared modal surfaces", () => {

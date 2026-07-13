@@ -170,6 +170,47 @@ class GraphBrowserPayloadParserTest {
     }
 
     @Test
+    fun bridgeCommandEnvelopeRejectsTooManyLayoutPositions() {
+        val positions = List(BridgeCommandParser.MAX_LAYOUT_POSITIONS + 1) { index ->
+            mapOf("nodeId" to "node-$index", "x" to index.toDouble(), "y" to 0.0)
+        }
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            BridgeCommandParser.parse(
+                command(
+                    "layoutChanged",
+                    mapOf("positions" to positions),
+                ),
+            )
+        }
+
+        assertTrue(error.message.orEmpty().contains("positions"))
+        assertTrue(error.message.orEmpty().contains(BridgeCommandParser.MAX_LAYOUT_POSITIONS.toString()))
+    }
+
+    @Test
+    fun bridgeCommandEnvelopeRejectsTooManySelectedNodeIds() {
+        val selectedNodeIds = List(BridgeCommandParser.MAX_STRING_LIST_ITEMS + 1) { index -> "node-$index" }
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            BridgeCommandParser.parse(
+                command(
+                    "requestAssistantTask",
+                    mapOf(
+                        "intent" to "ASK_CODE",
+                        "actionId" to "ASK_CONTEXT",
+                        "prompt" to "检查节点",
+                        "selectedNodeIds" to selectedNodeIds,
+                    ),
+                ),
+            )
+        }
+
+        assertTrue(error.message.orEmpty().contains("selectedNodeIds"))
+        assertTrue(error.message.orEmpty().contains(BridgeCommandParser.MAX_STRING_LIST_ITEMS.toString()))
+    }
+
+    @Test
     fun bridgeCommandEnvelopeRequiresConcreteAssistantActionId() {
         val error = assertFailsWith<IllegalStateException> {
             BridgeCommandParser.parse(
@@ -390,6 +431,97 @@ class GraphBrowserPayloadParserTest {
     }
 
     @Test
+    fun bridgeCommandEnvelopeClampsAllIndexedGraphBudgets() {
+        val reviewParsed = BridgeCommandParser.parse(
+            command(
+                "requestIndexedGraph",
+                mapOf(
+                    "preset" to "REVIEW",
+                    "viewport" to mapOf(
+                        "maxVisibleNodes" to Int.MAX_VALUE,
+                        "maxVisibleEdges" to Int.MAX_VALUE,
+                    ),
+                    "review" to mapOf(
+                        "maxChangedNodes" to Int.MAX_VALUE,
+                        "maxRelatedTestNodes" to Int.MAX_VALUE,
+                        "maxUpstreamNodes" to Int.MAX_VALUE,
+                        "maxDownstreamNodes" to Int.MAX_VALUE,
+                    ),
+                ),
+            ),
+        )
+
+        val classParsed = BridgeCommandParser.parse(
+            command(
+                "requestIndexedGraph",
+                mapOf(
+                    "preset" to "CLASS_DIAGRAM",
+                    "classDiagram" to mapOf(
+                        "neighborhoodLimit" to Int.MAX_VALUE,
+                        "memberLimit" to Int.MAX_VALUE,
+                    ),
+                ),
+            ),
+        )
+
+        val reviewRequest = assertIs<GraphEditorMessage.RequestIndexedGraph>(reviewParsed.message).request
+        val classRequest = assertIs<GraphEditorMessage.RequestIndexedGraph>(classParsed.message).request
+        assertEquals(500, reviewRequest.viewport.maxVisibleNodes)
+        assertEquals(1_000, reviewRequest.viewport.maxVisibleEdges)
+        assertEquals(200, classRequest.classDiagram.neighborhoodLimit)
+        assertEquals(100, classRequest.classDiagram.memberLimit)
+        assertEquals(500, reviewRequest.review.maxChangedNodes)
+        assertEquals(500, reviewRequest.review.maxRelatedTestNodes)
+        assertEquals(500, reviewRequest.review.maxUpstreamNodes)
+        assertEquals(500, reviewRequest.review.maxDownstreamNodes)
+    }
+
+    @Test
+    fun bridgeCommandEnvelopeNormalizesNonPositiveIndexedGraphBudgets() {
+        val reviewParsed = BridgeCommandParser.parse(
+            command(
+                "requestIndexedGraph",
+                mapOf(
+                    "preset" to "REVIEW",
+                    "viewport" to mapOf(
+                        "maxVisibleNodes" to -1,
+                        "maxVisibleEdges" to -1,
+                    ),
+                    "review" to mapOf(
+                        "maxChangedNodes" to -1,
+                        "maxRelatedTestNodes" to -1,
+                        "maxUpstreamNodes" to -1,
+                        "maxDownstreamNodes" to -1,
+                    ),
+                ),
+            ),
+        )
+        val classParsed = BridgeCommandParser.parse(
+            command(
+                "requestIndexedGraph",
+                mapOf(
+                    "preset" to "CLASS_DIAGRAM",
+                    "classDiagram" to mapOf(
+                        "neighborhoodLimit" to 0,
+                        "memberLimit" to -1,
+                    ),
+                ),
+            ),
+        )
+
+        val reviewRequest = assertIs<GraphEditorMessage.RequestIndexedGraph>(reviewParsed.message).request
+        val classRequest = assertIs<GraphEditorMessage.RequestIndexedGraph>(classParsed.message).request
+        assertEquals(1, reviewRequest.viewport.maxVisibleNodes)
+        assertEquals(0, reviewRequest.viewport.maxVisibleEdges)
+        assertEquals(1, classRequest.classDiagram.neighborhoodLimit)
+        assertEquals(0, classRequest.classDiagram.memberLimit)
+        assertEquals(0, reviewRequest.review.maxChangedNodes)
+        assertEquals(0, reviewRequest.review.maxRelatedTestNodes)
+        assertEquals(0, reviewRequest.review.maxUpstreamNodes)
+        assertEquals(0, reviewRequest.review.maxDownstreamNodes)
+    }
+
+    @Test
     fun bridgeCommandEnvelopeParsesArtifactRequestsSeparatelyFromEditorMessages() {
         val parsed = BridgeCommandParser.parse(
             command("requestArtifact", mapOf("artifactIds" to listOf("artifact:1", "artifact:2"))),
@@ -414,6 +546,15 @@ class GraphBrowserPayloadParserTest {
         val message = assertIs<GraphEditorMessage.RequestExpandInvocation>(parsed.message)
         assertEquals("invoke:create-info", message.nodeId)
         assertEquals(1_788_888_888_123L, message.frontendRequestedAtMs)
+    }
+
+    @Test
+    fun bridgeCommandEnvelopeRejectsRemovedInvocationExpansionActivationCommand() {
+        assertFailsWith<IllegalStateException> {
+            BridgeCommandParser.parse(
+                command("activateInvocationExpansion", mapOf("expansionId" to "invocation:1")),
+            )
+        }
     }
 
     @Test

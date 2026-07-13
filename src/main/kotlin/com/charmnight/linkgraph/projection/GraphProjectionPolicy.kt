@@ -5,6 +5,12 @@ import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 
+/** 所有图投影入口共享的硬资源预算。 */
+object GraphProjectionLimits {
+    const val MAX_VISIBLE_NODES: Int = 500
+    const val MAX_VISIBLE_EDGES: Int = 1_000
+}
+
 /**
  * 图投影的策略参数。
  *

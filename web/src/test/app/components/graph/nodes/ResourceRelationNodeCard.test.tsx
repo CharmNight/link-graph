@@ -11,8 +11,8 @@ function resourceNode(): LinkGraphNode {
     signature: "GET /common/download",
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
   };
 }
 

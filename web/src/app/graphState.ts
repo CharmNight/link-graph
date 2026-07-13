@@ -266,10 +266,10 @@ function nodeSemanticSignature(node: LinkGraphNode): string {
     node.inputs.join(","),
     node.outputs.join(","),
     node.doc ?? "",
-    node.certainty,
-    node.bindingStatus,
+    node.confidence,
+    node.binding,
     node.diffStatus ?? "",
-    node.sourceTag ?? "",
+    node.provenance ?? "",
     JSON.stringify(normalizeSemanticMetadata(node.metadata) ?? {}),
   ].join("|");
 }
@@ -283,7 +283,7 @@ function edgeSemanticSignature(edge: LinkGraphEdge): string {
     edge.target,
     edge.label ?? "",
     JSON.stringify(edge.metadata ?? {}),
-    edge.sourceTag ?? "",
+    edge.provenance ?? "",
   ].join("|");
 }
 

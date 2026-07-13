@@ -859,7 +859,6 @@ export function App() {
     onRemoveInvocationExpansion: workbenchCommands.handleRemoveInvocationExpansion,
     onCollapseInvocationExpansion: workbenchCommands.handleCollapseInvocationExpansion,
     onOpenInvocationExpansion: workbenchCommands.handleOpenInvocationExpansion,
-    onActivateInvocationExpansion: workbenchCommands.handleActivateInvocationExpansion,
   };
 
   const editableStageProps: EditableStageProps = {

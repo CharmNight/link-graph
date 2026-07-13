@@ -101,7 +101,7 @@ class GenerationDiagnosticsTest {
         val resultSummary = GenerationDiagnostics.summarizeCodeGenerationResult(
             CodeGenerationResult(
                 drafts = listOf(
-                    GeneratedCodeDraft(
+                    GeneratedCodeDraft.createFile(
                         id = "draft-file-download",
                         sourceNodeId = "method:file-download",
                         title = "CommonController.java",

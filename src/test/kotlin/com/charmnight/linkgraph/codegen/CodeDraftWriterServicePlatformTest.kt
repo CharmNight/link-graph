@@ -34,7 +34,7 @@ class CodeDraftWriterServicePlatformTest : BasePlatformTestCase() {
 
         val result = CodeDraftWriterService(project).prepareExistingFileDraft(
             projectBasePath = projectDir.toString(),
-            draft = GeneratedCodeDraft(
+            draft = GeneratedCodeDraft.patchExistingFile(
                 id = "draft:file-download",
                 sourceNodeId = "method:file-download",
                 title = "CommonController.java",
@@ -104,7 +104,7 @@ class CodeDraftWriterServicePlatformTest : BasePlatformTestCase() {
 
         val result = CodeDraftWriterService(project).prepareExistingFileDraft(
             projectBasePath = projectDir.toString(),
-            draft = GeneratedCodeDraft(
+            draft = GeneratedCodeDraft.patchExistingFile(
                 id = "draft:file-download-servlet",
                 sourceNodeId = "method:file-download-servlet",
                 title = "CommonController.java",
@@ -170,7 +170,7 @@ class CodeDraftWriterServicePlatformTest : BasePlatformTestCase() {
             """.trimIndent(),
         )
 
-        val draft = GeneratedCodeDraft(
+        val draft = GeneratedCodeDraft.patchExistingFile(
             id = "draft:file-download-delete-guard",
             sourceNodeId = "scope:file-download-if",
             title = "CommonController.java",
@@ -249,7 +249,7 @@ class CodeDraftWriterServicePlatformTest : BasePlatformTestCase() {
             """.trimIndent(),
         )
 
-        val draft = GeneratedCodeDraft(
+        val draft = GeneratedCodeDraft.patchExistingFile(
             id = "draft:file-download-try-guard",
             sourceNodeId = "scope:file-download-try",
             title = "CommonController.java",
@@ -318,7 +318,7 @@ class CodeDraftWriterServicePlatformTest : BasePlatformTestCase() {
             """.trimIndent(),
         )
 
-        val draft = GeneratedCodeDraft(
+        val draft = GeneratedCodeDraft.patchExistingFile(
             id = "draft:file-download",
             sourceNodeId = "method:file-download",
             title = "CommonController.java",
@@ -394,7 +394,7 @@ class CodeDraftWriterServicePlatformTest : BasePlatformTestCase() {
             document.insertString(document.text.indexOf("public class CommonController {"), "    // 未保存改动\n")
         }
 
-        val draft = GeneratedCodeDraft(
+        val draft = GeneratedCodeDraft.patchExistingFile(
             id = "draft:file-download-unsaved",
             sourceNodeId = "method:file-download",
             title = "CommonController.java",

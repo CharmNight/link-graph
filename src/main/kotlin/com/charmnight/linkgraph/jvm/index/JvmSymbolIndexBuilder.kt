@@ -6,6 +6,7 @@ import com.charmnight.linkgraph.source.AttachedJarClassKind
 import com.charmnight.linkgraph.source.AttachedJarClassEntry
 import com.charmnight.linkgraph.source.AttachedJarIndex
 import com.charmnight.linkgraph.source.AttachedJarServiceFileEntry
+import com.charmnight.linkgraph.source.SourceArchiveReadLimits
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.module.ModuleUtilCore
@@ -38,7 +39,6 @@ import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
 import java.net.URI
-import java.nio.charset.StandardCharsets
 import java.nio.file.FileSystems
 import java.nio.file.Files
 
@@ -141,6 +141,9 @@ class JvmSymbolIndexBuilder(
                         val resource = indexResource(file, resources) ?: return@iterateChildrenRecursively true
                         if (resource.kind == JvmResourceKind.SPI_SERVICE_FILE) {
                             val providers = providerClassNames(file)
+                            if (providers.isEmpty()) {
+                                return@iterateChildrenRecursively true
+                            }
                             serviceFiles.getOrPut(resource.path.substringAfter("META-INF/services/")) { mutableListOf() } +=
                                 JvmServiceProviderFile(
                                     serviceInterfaceName = resource.path.substringAfter("META-INF/services/"),
@@ -340,6 +343,9 @@ class JvmSymbolIndexBuilder(
                             stats.resourceFiles += 1
                             if (resource.kind == JvmResourceKind.SPI_SERVICE_FILE) {
                                 val providers = providerClassNames(file)
+                                if (providers.isEmpty()) {
+                                    return@forEach
+                                }
                                 serviceFiles.getOrPut(resource.path.substringAfter("META-INF/services/")) { mutableListOf() } +=
                                     JvmServiceProviderFile(
                                         serviceInterfaceName = resource.path.substringAfter("META-INF/services/"),
@@ -429,7 +435,11 @@ class JvmSymbolIndexBuilder(
 
     /** 容错读取 [VirtualFile] 文本，捕获编码异常返回 null，避免单文件失败拖垮整次扫描。 */
     private fun readVirtualFileText(file: VirtualFile): String? =
-        runCatching { String(file.contentsToByteArray(), file.charset) }.getOrNull()
+        com.charmnight.linkgraph.jvm.index.readVirtualFileTextBounded(
+            file,
+            SourceArchiveReadLimits.MAX_TEXT_ENTRY_BYTES,
+            file.charset,
+        )
 
     private fun javaFallbackClassInfo(
         file: VirtualFile,
@@ -726,8 +736,10 @@ class JvmSymbolIndexBuilder(
                                     checkCanceled()
                                     val serviceName = file.fileName.toString().takeIf(String::isNotBlank)
                                         ?: return@forEach
-                                    val text = runCatching { Files.readString(file, StandardCharsets.UTF_8) }
-                                        .getOrDefault("")
+                                    val text = readPathTextBounded(
+                                        file,
+                                        SourceArchiveReadLimits.MAX_SERVICE_ENTRY_BYTES,
+                                    ) ?: return@forEach
                                     val providers = providerClassNames(text)
                                     if (providers.isEmpty()) {
                                         return@forEach
@@ -780,8 +792,9 @@ class JvmSymbolIndexBuilder(
         budget: com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget,
     ) {
         val remaining = (budget.maxExternalClasses - classes.values.count { symbol -> symbol.external }).coerceAtLeast(0)
-        attachedJarIndex.classesByQualifiedName.values
+        attachedJarIndex.classEntries
             .sortedBy { entry -> entry.qualifiedName }
+            .distinctBy { entry -> entry.qualifiedName }
             .take(remaining)
             .forEach { entry ->
                 checkCanceled()
@@ -800,7 +813,7 @@ class JvmSymbolIndexBuilder(
                 val classSymbol = JvmClassSymbol(
                     id = stableJvmId("class", entry.qualifiedName),
                     qualifiedName = entry.qualifiedName,
-                    simpleName = entry.qualifiedName.substringAfterLast('.').substringBefore('$'),
+                    simpleName = entry.qualifiedName.substringAfterLast('.'),
                     packageName = packageName,
                     moduleName = "attached:${java.nio.file.Path.of(entry.classJarPath).fileName}",
                     kind = entry.kind.toJvmClassKind(),
@@ -935,7 +948,7 @@ class JvmSymbolIndexBuilder(
                 val classSymbol = JvmClassSymbol(
                     id = stableJvmId("class", entry.qualifiedName),
                     qualifiedName = entry.qualifiedName,
-                    simpleName = entry.qualifiedName.substringAfterLast('.').substringBefore('$'),
+                    simpleName = entry.qualifiedName.substringAfterLast('.'),
                     packageName = packageName,
                     moduleName = "attached:${java.nio.file.Path.of(entry.classJarPath).fileName}",
                     kind = entry.kind.toJvmClassKind(),
@@ -1240,8 +1253,7 @@ class JvmSymbolIndexBuilder(
         val classes = ctx.classes
         val budget = ctx.budget
         checkCanceled()
-        val text = runCatching { String(file.contentsToByteArray(), StandardCharsets.UTF_8) }
-            .getOrDefault("")
+        val text = readVirtualFileText(file).orEmpty()
         if (text.isBlank()) {
             return
         }
@@ -1437,9 +1449,7 @@ class JvmSymbolIndexBuilder(
     /** 读取 SPI 服务配置文件，逐行剔除注释与空白，得到该接口的实现类全限定名列表。 */
     private fun providerClassNames(file: VirtualFile): List<String> {
         checkCanceled()
-        return runCatching { String(file.contentsToByteArray(), StandardCharsets.UTF_8) }
-            .getOrDefault("")
-            .let(::providerClassNames)
+        return readSpiProviderClassNames(file)
     }
 
     /** 纯文本版本的 SPI 实现名提取：详见 top-level fun spiProviderClassNames。 */

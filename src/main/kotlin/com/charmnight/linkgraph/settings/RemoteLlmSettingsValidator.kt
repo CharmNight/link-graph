@@ -11,6 +11,8 @@ import com.charmnight.linkgraph.llm.LlmUserMessageFormatter
 import com.charmnight.linkgraph.settings.LlmWireProtocol
 import com.charmnight.linkgraph.settings.RemoteLlmEndpointPolicy
 import com.charmnight.linkgraph.llm.RemoteLlmConnection
+import com.charmnight.linkgraph.llm.RemoteLlmRequestFactory
+import com.charmnight.linkgraph.llm.RemotePromptContent
 import com.charmnight.linkgraph.llm.RoutingLlmGateway
 import com.charmnight.linkgraph.llm.remoteConnectionOrNull
 
@@ -107,7 +109,7 @@ class RemoteLlmSettingsValidator(
 
         // 用一条极小的探针请求验证鉴权、地址和模型配置。
         return runCatching {
-            executeValidationProbe(remoteConnection)
+            executeValidationProbe(remoteConnection, sanitized)
         }.fold(
             onSuccess = { _: LlmResponse ->
                 RemoteLlmSettingsValidationResult(
@@ -142,21 +144,26 @@ class RemoteLlmSettingsValidator(
      * 设置页验证必须覆盖真实问答会用到的远程能力，而不是只测一个普通完整返回。
      * 否则会出现“验证连接成功，但问答请求因流式或结构化输出不兼容失败”的假阳性。
      */
-    private fun executeValidationProbe(remoteConnection: RemoteLlmConnection): LlmResponse {
-        val request = remoteConnection
-            .toRequest(
+    private fun executeValidationProbe(
+        remoteConnection: RemoteLlmConnection,
+        settings: LinkGraphSettingsState,
+    ): LlmResponse {
+        val request = RemoteLlmRequestFactory.create(
+            connection = remoteConnection,
+            settings = settings,
+            content = RemotePromptContent(
                 systemPrompt = buildValidationSystemPrompt(remoteConnection),
                 userPrompt = buildValidationUserPrompt(remoteConnection),
-            )
+            ),
+        )
             .withQuestionRequestShape()
         if (!remoteConnection.preset.capabilities.supportsStreaming) {
             return gateway.generate(request.copy(deliveryMode = LlmDeliveryMode.FULL))
         }
-        val responseBuilder = StringBuilder()
         return gateway.stream(request.copy(deliveryMode = LlmDeliveryMode.STREAM)) { event ->
             when (event) {
-                is LlmStreamEvent.TextDelta -> responseBuilder.append(event.text)
                 is LlmStreamEvent.Failed -> throw event.error
+                is LlmStreamEvent.TextDelta,
                 is LlmStreamEvent.Started,
                 is LlmStreamEvent.Completed -> Unit
             }

@@ -27,6 +27,7 @@ function draft(overrides: Partial<GeneratedCodeDraft> = {}): GeneratedCodeDraft 
     sourceNodeId: "method:submit-order",
     title: "补齐订单提交失败测试",
     targetPath: "src/test/java/com/example/OrderControllerTest.java",
+    commandKind: "CREATE_FILE",
     content: "class OrderControllerTest {}",
     warnings: [],
     ...overrides,

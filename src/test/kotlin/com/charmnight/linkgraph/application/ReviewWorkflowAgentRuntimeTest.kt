@@ -25,7 +25,7 @@ import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.ui.GraphEditorStateService
@@ -384,7 +384,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                         type = NodeType.METHOD,
                         title = "UploadService.submit",
                         signature = "com.example.UploadService.submit(java.lang.String):java.lang.String",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                         metadata = mapOf(
                             "source.filePath" to sourceFile.toString(),
                             "source.startLine" to "1",
@@ -487,7 +487,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                         type = NodeType.METHOD,
                         title = "CommonController.fileDownload",
                         signature = "com.example.CommonController.fileDownload(java.lang.String):java.lang.String",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                         metadata = mapOf(
                             "source.filePath" to controllerFile.toString(),
                             "source.startLine" to "1",
@@ -499,7 +499,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                         type = NodeType.METHOD,
                         title = "RuoYiConfig.getDownloadPath",
                         signature = "com.example.RuoYiConfig.getDownloadPath():java.lang.String",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                         metadata = mapOf(
                             "source.filePath" to configFile.toString(),
                             "source.startLine" to "1",
@@ -601,7 +601,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                         id = "method:add-pool",
                         type = NodeType.METHOD,
                         title = "PoolService.addPool",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
             ),
@@ -720,7 +720,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                         id = "method:add-pool",
                         type = NodeType.METHOD,
                         title = "PoolService.addPool",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
             ),
@@ -846,7 +846,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                         id = "method:add-pool",
                         type = NodeType.METHOD,
                         title = "PoolService.addPool",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                     ),
                 ),
             ),
@@ -942,7 +942,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                         type = NodeType.METHOD,
                         title = "CommonController.fileDownload",
                         signature = "com.example.CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                         metadata = mapOf(
                             "source.filePath" to sourceFile.toString(),
                             "source.startLine" to "1",
@@ -1022,13 +1022,13 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             type = NodeType.METHOD,
             title = "CommonController.fileDownload",
             signature = "com.example.CommonController.fileDownload(java.lang.String):void",
-            sourceTag = GraphSourceTag.FACT,
+            provenance = GraphProvenance.CODE_ANALYSIS,
         )
         val editableDecision = GraphNode(
             id = "scope:file-download-if",
             type = NodeType.FLOW_SCOPE,
             title = "if (delete)",
-            sourceTag = GraphSourceTag.DRAFT_MANUAL,
+            provenance = GraphProvenance.USER_DRAFT,
             metadata = mapOf(
                 "flowchart.kind" to "DECISION",
                 "flow.ownerMethod" to "com.example.CommonController.fileDownload(java.lang.String):void",
@@ -1045,7 +1045,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                         type = EdgeType.CONTROL_FLOW,
                         fromNodeId = factMethod.id,
                         toNodeId = editableDecision.id,
-                        sourceTag = GraphSourceTag.DRAFT_MANUAL,
+                        provenance = GraphProvenance.USER_DRAFT,
                     ),
                 ),
             ),
@@ -1145,7 +1145,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                         type = NodeType.METHOD,
                         title = "UploadService.submit",
                         signature = "com.example.UploadService.submit(java.lang.String):java.lang.String",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                         metadata = mapOf(
                             "source.filePath" to uploadFile.toString(),
                             "source.startLine" to "1",
@@ -1157,7 +1157,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                         type = NodeType.METHOD,
                         title = "QaService.shouldAnswer",
                         signature = "com.example.QaService.shouldAnswer(java.lang.String):boolean",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                         metadata = mapOf(
                             "source.filePath" to qaFile.toString(),
                             "source.startLine" to "1",
@@ -1247,7 +1247,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                         type = NodeType.METHOD,
                         title = "UploadService.submit",
                         signature = "com.example.UploadService.submit(java.lang.String):java.lang.String",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                         metadata = mapOf(
                             "source.filePath" to sourceFile.toString(),
                             "source.startLine" to "1",
@@ -1364,7 +1364,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                         type = NodeType.METHOD,
                         title = "UploadService.submit",
                         signature = "com.example.UploadService.submit(java.lang.String):java.lang.String",
-                        sourceTag = GraphSourceTag.FACT,
+                        provenance = GraphProvenance.CODE_ANALYSIS,
                         metadata = mapOf(
                             "source.filePath" to sourceFile.toString(),
                             "source.startLine" to "1",
@@ -1458,7 +1458,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     type = NodeType.METHOD,
                     title = "CommonController.uploadFile",
                     signature = "com.example.CommonController.uploadFile(java.lang.String):void",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )

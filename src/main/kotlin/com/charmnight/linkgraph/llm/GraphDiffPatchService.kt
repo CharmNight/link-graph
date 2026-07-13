@@ -10,7 +10,7 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.model.GraphPatchAction
 import com.charmnight.linkgraph.model.GraphPatchOperation
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 
 /**
@@ -35,8 +35,10 @@ class GraphDiffPatchService(
     ): GraphPatchResult {
         /** 清洗后的生成设置。 */
         val sanitized = settings.sanitized()
+        /** 远程请求前应用源码片段外发授权策略。 */
+        val sourceContextPolicy = context.withRemoteSourceContextPolicy(sanitized)
         /** 差异问答提示词包。 */
-        val promptPackage = promptFactory.buildDiffReviewPromptPackage(context, question, sanitized)
+        val promptPackage = promptFactory.buildDiffReviewPromptPackage(sourceContextPolicy.context, question, sanitized)
         if (!sanitized.usesRemoteProvider()) {
             return buildMockResult(context, question, promptPackage.preview)
         }
@@ -44,14 +46,20 @@ class GraphDiffPatchService(
         val remoteConnection = sanitized.remoteConnectionOrNull()
         if (remoteConnection == null) {
             return buildMockResult(context, question, promptPackage.preview).copy(
-                warnings = listOf(sanitized.remoteLlmSetupHint("本地规则差异分析")),
+                warnings = sourceContextPolicy.warnings() + sanitized.remoteLlmSetupHint("本地规则差异分析"),
             )
         }
         return runCatching {
             responseSupport.request(
-                remoteConnection.toRequest(
-                    systemPrompt = promptPackage.systemPrompt,
-                    userPrompt = promptPackage.userPrompt,
+                RemoteLlmRequestFactory.create(
+                    connection = remoteConnection,
+                    settings = sanitized,
+                    content = promptPackage.toRemotePromptContent(
+                        sourceContextClassifications(
+                            sourceContextPolicy.context.sourceContext,
+                            RemoteDataClassification.DIFF_SNIPPET,
+                        ),
+                    ),
                 ),
                 scene = "差异分析",
                 schema = LlmStructuredSchemas.PATCH_RESULT,
@@ -61,10 +69,10 @@ class GraphDiffPatchService(
                 RemoteGraphPatchResultParser.parse(content, promptPackage.preview, question)
             }
         }.map { remote ->
-            remote.value.withPrependedWarnings(remote.warnings)
+            remote.value.withPrependedWarnings(sourceContextPolicy.warnings() + remote.warnings)
         }.getOrElse { error ->
             buildMockResult(context, question, promptPackage.preview).copy(
-                warnings = listOf(
+                warnings = sourceContextPolicy.warnings() + listOf(
                     buildRemoteFallbackWarning(error),
                 ),
             )
@@ -169,7 +177,7 @@ class GraphDiffPatchService(
     /** 把设计节点转换为草稿建议节点。 */
     private fun GraphNode.toDraftSuggestion(): GraphNode {
         return copy(
-            sourceTag = GraphSourceTag.DRAFT_AI,
+            provenance = GraphProvenance.AI_DRAFT,
             metadata = metadata + mapOf(
                 "draft.reason" to "diff-review",
                 "draft.originId" to id,

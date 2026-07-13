@@ -11,8 +11,8 @@ function factNode(): LinkGraphNode {
     signature: "com.example.OrderService.submit(java.lang.String):void",
     inputs: ["java.lang.String"],
     outputs: ["void"],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
   };
 }
 

@@ -20,6 +20,7 @@ import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
+import com.charmnight.linkgraph.source.SourceArchiveReadLimits
 import com.charmnight.linkgraph.sync.SyncPreviewPlanner
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
@@ -140,6 +141,48 @@ class PlanningContextFactoryTest {
         assertEquals("class:com.example.orders.OrderService", context.sourceContext.single().nodeId)
         assertTrue(context.sourceContext.single().snippet?.contains("validateOrder") == true)
         assertTrue(context.presentationContext.fullGraph.nodes.none { node -> node.id == staleMethod.id })
+    }
+
+    @Test
+    fun buildGraphBeautificationContextSkipsOversizedSourceSamples() {
+        val projectDir = Files.createTempDirectory("architecture-beautification-oversized-source")
+        val sourceFile = projectDir.resolve("src/main/java/com/example/orders/HugeOrderService.java")
+        Files.createDirectories(sourceFile.parent)
+        Files.writeString(sourceFile, "x".repeat(SourceArchiveReadLimits.MAX_TEXT_ENTRY_BYTES + 1))
+        val packageNode = GraphNode(
+            id = "package:orders",
+            type = NodeType.PACKAGE,
+            title = "com.example.orders",
+            metadata = mapOf(
+                "architecture.kind" to "PACKAGE",
+                "architecture.sourceSample.count" to "1",
+                "architecture.sourceSample.0.nodeId" to "class:com.example.orders.HugeOrderService",
+                "architecture.sourceSample.0.filePath" to sourceFile.toString(),
+                "architecture.sourceSample.0.startLine" to "1",
+                "architecture.sourceSample.0.endLine" to "1",
+            ),
+        )
+        val graph = GraphDocument(nodes = listOf(packageNode))
+        val stateService = GraphEditorStateService()
+        stateService.loadArchitectureGraphView(
+            ArchitectureGraphResult(
+                visibleGraph = graph,
+                fullGraph = graph,
+                anchorNodeId = packageNode.id,
+            ),
+        )
+
+        val context = planningContextFactory().buildGraphBeautificationContext(
+            snapshot = stateService.snapshot().toWorkflowEditorSnapshot(),
+            goal = "解释架构关系",
+            preferredStyle = null,
+            explanationFocus = "架构图",
+            focusNodeId = packageNode.id,
+            followUp = null,
+            granularity = com.charmnight.linkgraph.workbench.StepGranularity.BUSINESS,
+        )
+
+        assertTrue(context.sourceContext.isEmpty())
     }
 
     @Test

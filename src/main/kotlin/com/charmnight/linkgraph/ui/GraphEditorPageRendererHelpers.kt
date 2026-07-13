@@ -66,7 +66,9 @@ internal data class GraphEdgeDto(
     val target: String,
     val label: String?,
     val metadata: Map<String, String>?,
-    val sourceTag: String,
+    val confidence: String,
+    val binding: String,
+    val provenance: String,
 )
 
 internal data class GraphNodePositionDto(
@@ -83,10 +85,10 @@ internal data class GraphNodeDto(
     val inputs: List<String>,
     val outputs: List<String>,
     val doc: String?,
-    val certainty: String,
-    val bindingStatus: String,
+    val confidence: String,
+    val binding: String,
     val diffStatus: String?,
-    val sourceTag: String,
+    val provenance: String,
     val metadata: Map<String, String>?,
     val position: GraphNodePositionDto?,
 )
@@ -165,20 +167,11 @@ internal data class GraphSceneLayoutStateDto(
     val positions: Map<String, GraphNodePositionDto>,
 )
 
-internal data class ChildInvocationExpansionStateDto(
-    val activeExpansionId: String?,
-    val activeExpansionPath: List<String>,
-    val collapsedExpansionIds: List<String>,
-    val activeSiblingByParentContext: Map<String, String>,
-)
-
 internal data class InvocationExpansionSceneStateDto(
     val activeExpansionId: String?,
     val activeExpansionPath: List<String>,
     val collapsedExpansionIds: List<String>,
     val activeSiblingByParentContext: Map<String, String>,
-    val blockPositions: Map<String, GraphNodePositionDto>,
-    val lastChildStateByExpansionId: Map<String, ChildInvocationExpansionStateDto>,
     val contextMode: String,
 )
 
@@ -227,7 +220,9 @@ internal fun edgeToDto(edge: GraphEdge): GraphEdgeDto = GraphEdgeDto(
     target = edge.toNodeId,
     label = edge.label,
     metadata = edge.metadata,
-    sourceTag = edge.sourceTag.name,
+    confidence = edge.confidence.name,
+    binding = edge.binding.name,
+    provenance = edge.provenance.name,
 )
 
 /** 把节点转换为前端 DTO（含 layoutState 提供的 UI 坐标）。 */
@@ -243,10 +238,10 @@ internal fun nodeToDto(
     inputs = node.inputs,
     outputs = node.outputs,
     doc = node.doc,
-    certainty = node.certainty.name,
-    bindingStatus = node.bindingStatus.name,
+    confidence = node.confidence.name,
+    binding = node.binding.name,
     diffStatus = node.diff.status.takeUnless { it.name == "MATCHED" }?.name,
-    sourceTag = node.sourceTag.name,
+    provenance = node.provenance.name,
     metadata = node.metadata.semanticMetadata(),
     position = (layoutState?.positions?.get(node.id)?.let { it.x to it.y } ?: node.metadata.uiPosition())?.let { (x, y) ->
         GraphNodePositionDto(x = x, y = y)
@@ -361,17 +356,6 @@ private fun invocationExpansionSceneStateToDto(
     activeExpansionPath = state.activeExpansionPath,
     collapsedExpansionIds = state.collapsedExpansionIds.toList(),
     activeSiblingByParentContext = state.activeSiblingByParentContext,
-    blockPositions = state.blockPositions.mapValues { (_, position) ->
-        GraphNodePositionDto(x = position.x, y = position.y)
-    },
-    lastChildStateByExpansionId = state.lastChildStateByExpansionId.mapValues { (_, childState) ->
-        ChildInvocationExpansionStateDto(
-            activeExpansionId = childState.activeExpansionId,
-            activeExpansionPath = childState.activeExpansionPath,
-            collapsedExpansionIds = childState.collapsedExpansionIds.toList(),
-            activeSiblingByParentContext = childState.activeSiblingByParentContext,
-        )
-    },
     contextMode = state.contextMode.name,
 )
 

@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.usage
 
+import com.charmnight.linkgraph.jvm.index.readVirtualFileTextBounded
 import com.charmnight.linkgraph.jvm.index.stableJvmId
 import com.intellij.ide.highlighter.JavaFileType
 import com.intellij.openapi.project.Project
@@ -167,7 +168,7 @@ class ClassUsageTargetResolver(
     /** 把虚拟文件转换为 PsiJavaFile；若 PSI 不存在则按文本内容现场构造一个轻量 PSI。 */
     private fun VirtualFile.toPsiJavaFile(psiManager: PsiManager): PsiJavaFile? {
         (psiManager.findFile(this) as? PsiJavaFile)?.let { return it }
-        val sourceText = runCatching { String(contentsToByteArray(), charset) }.getOrNull() ?: return null
+        val sourceText = readVirtualFileTextBounded(this) ?: return null
         return PsiFileFactory.getInstance(project)
             .createFileFromText(name, JavaFileType.INSTANCE, sourceText) as? PsiJavaFile
     }

@@ -8,7 +8,7 @@ import com.charmnight.linkgraph.model.GraphDiffElementKind
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.model.GraphPatchAction
 import com.charmnight.linkgraph.model.GraphPatchOperation
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.model.EdgeType
@@ -27,7 +27,7 @@ class DraftWorkbenchServiceTest {
                     id = "method:upload-condition",
                     type = NodeType.METHOD,
                     title = "CommonController.uploadFile",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -63,7 +63,7 @@ class DraftWorkbenchServiceTest {
                     id = "flow-scope:delete-guard",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (delete)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("flowchart.kind" to "DECISION"),
                 ),
             ),
@@ -102,7 +102,7 @@ class DraftWorkbenchServiceTest {
                     id = "scope:delete-if",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (delete)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flow.kind" to "IF",
                         "flowchart.kind" to "DECISION",
@@ -135,7 +135,7 @@ class DraftWorkbenchServiceTest {
                                 id = "scope:delete-if",
                                 type = NodeType.FLOW_SCOPE,
                                 title = "if (Boolean.TRUE.equals(delete))",
-                                sourceTag = GraphSourceTag.DRAFT_AI,
+                                provenance = GraphProvenance.AI_DRAFT,
                                 metadata = mapOf("flowchart.kind" to "PROCESS"),
                             ),
                         ),
@@ -158,7 +158,7 @@ class DraftWorkbenchServiceTest {
                     id = "method:file-download",
                     type = NodeType.METHOD,
                     title = "CommonController.fileDownload",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -192,7 +192,7 @@ class DraftWorkbenchServiceTest {
                     id = "scope:file-download-if",
                     type = NodeType.FLOW_SCOPE,
                     title = "if (delete)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("flowchart.kind" to "DECISION"),
                 ),
             ),
@@ -233,14 +233,14 @@ class DraftWorkbenchServiceTest {
                     id = "method:file-download",
                     type = NodeType.METHOD,
                     title = "CommonController.fileDownload",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("flowchart.kind" to "ENTRY"),
                 ),
                 GraphNode(
                     id = "action:write-bytes",
                     type = NodeType.FLOW_ACTION,
                     title = "FileUtils.writeBytes(filePath, response.getOutputStream())",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("flowchart.kind" to "PROCESS"),
                 ),
             ),
@@ -250,7 +250,7 @@ class DraftWorkbenchServiceTest {
                     type = EdgeType.CONTROL_FLOW,
                     fromNodeId = "method:file-download",
                     toNodeId = "action:write-bytes",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )
@@ -294,14 +294,14 @@ class DraftWorkbenchServiceTest {
                     id = "method:file-download",
                     type = NodeType.METHOD,
                     title = "CommonController.fileDownload",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf("flowchart.kind" to "ENTRY"),
                 ),
                 GraphNode(
                     id = "action:delete-file",
                     type = NodeType.FLOW_ACTION,
                     title = "FileUtils.deleteFile(filePath)",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "PROCESS",
                         "flow.ownerMethod" to "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
@@ -311,7 +311,7 @@ class DraftWorkbenchServiceTest {
                     id = "terminal:return",
                     type = NodeType.TERMINAL,
                     title = "return",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                     metadata = mapOf(
                         "flowchart.kind" to "TERMINAL",
                         "flow.ownerMethod" to "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
@@ -324,14 +324,14 @@ class DraftWorkbenchServiceTest {
                     type = EdgeType.CONTROL_FLOW,
                     fromNodeId = "method:file-download",
                     toNodeId = "action:delete-file",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
                 GraphEdge(
                     id = "edge:delete-return",
                     type = EdgeType.CONTROL_FLOW,
                     fromNodeId = "action:delete-file",
                     toNodeId = "terminal:return",
-                    sourceTag = GraphSourceTag.FACT,
+                    provenance = GraphProvenance.CODE_ANALYSIS,
                 ),
             ),
         )

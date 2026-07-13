@@ -40,7 +40,7 @@ data class AttachedJarClassEntry(
     val methods: List<AttachedJarMethodEntry> = emptyList(),
 ) {
     val displayPath: String =
-        sourceJarPath?.let { "$it!/$sourceEntryName" }
+        sourceEntryName?.let { sourceEntry -> sourceJarPath?.let { sourceJar -> "$sourceJar!/$sourceEntry" } }
             ?: "$classJarPath!/$classEntryName"
 }
 
@@ -75,13 +75,20 @@ data class AttachedJarServiceFileEntry(
 
 /** 附加 jar 索引，按类限定名与 SPI 服务接口聚合条目。 */
 class AttachedJarIndex(
-    val classesByQualifiedName: Map<String, AttachedJarClassEntry> = emptyMap(),
+    val classCandidatesByQualifiedName: Map<String, List<AttachedJarClassEntry>> = emptyMap(),
     val serviceFilesByInterfaceName: Map<String, List<AttachedJarServiceFileEntry>> = emptyMap(),
     val fingerprints: List<AttachedJarEntryFingerprint> = emptyList(),
 ) {
+    /** 按附件配置顺序展开的全部类候选；重复限定名不会互相覆盖。 */
+    val classEntries: List<AttachedJarClassEntry> = classCandidatesByQualifiedName.values.flatten()
+
     /** 按限定名查找类条目。 */
     fun findClass(qualifiedName: String): AttachedJarClassEntry? =
-        classesByQualifiedName[qualifiedName.trim()]
+        findClassCandidates(qualifiedName).firstOrNull()
+
+    /** 按附件配置顺序返回同一限定名的全部候选。 */
+    fun findClassCandidates(qualifiedName: String): List<AttachedJarClassEntry> =
+        classCandidatesByQualifiedName[qualifiedName.trim()].orEmpty()
 
     /** 查询指定 SPI 接口的所有服务文件。 */
     fun serviceFiles(interfaceName: String): List<AttachedJarServiceFileEntry> =
@@ -98,7 +105,7 @@ class AttachedJarIndex(
 class AttachedJarIndexBuilder {
     /** 构建索引主入口。 */
     fun build(entries: List<AttachedJarEntry>): AttachedJarIndex {
-        val classes = linkedMapOf<String, MutableAttachedJarClassEntry>()
+        val classCandidates = linkedMapOf<String, MutableList<AttachedJarClassEntry>>()
         val serviceFiles = linkedMapOf<String, MutableList<AttachedJarServiceFileEntry>>()
         val fingerprints = mutableListOf<AttachedJarEntryFingerprint>()
         entries.map(AttachedJarEntry::normalized)
@@ -111,13 +118,18 @@ class AttachedJarIndexBuilder {
                     ?.let { sourcePath -> runCatching { Path.of(sourcePath).normalize() }.getOrNull() }
                     ?.takeIf { path -> Files.isRegularFile(path) }
                 fingerprints += fingerprint(classJarPath, sourceJarPath)
-                indexClassJar(classJarPath, sourceJarPath, classes, serviceFiles)
+                val attachmentClasses = linkedMapOf<String, MutableAttachedJarClassEntry>()
+                indexClassJar(classJarPath, sourceJarPath, attachmentClasses, serviceFiles)
                 sourceJarPath?.let { sourcePath ->
-                    indexSourceJar(sourcePath, classJarPath, classes, serviceFiles)
+                    indexSourceJar(sourcePath, classJarPath, attachmentClasses, serviceFiles)
+                }
+                attachmentClasses.values.forEach { mutableEntry ->
+                    val immutableEntry = mutableEntry.toImmutable()
+                    classCandidates.getOrPut(immutableEntry.qualifiedName) { mutableListOf() } += immutableEntry
                 }
             }
         return AttachedJarIndex(
-            classesByQualifiedName = classes.mapValues { (_, value) -> value.toImmutable() },
+            classCandidatesByQualifiedName = classCandidates.mapValues { (_, value) -> value.toList() },
             serviceFilesByInterfaceName = serviceFiles.mapValues { (_, value) -> value.toList() },
             fingerprints = fingerprints,
         )
@@ -144,11 +156,15 @@ class AttachedJarIndexBuilder {
                         name.endsWith(".class") && !name.endsWith("module-info.class") -> {
                             val qualifiedName = name.removeSuffix(".class")
                                 .replace('/', '.')
-                                .substringBefore('$')
                             if (qualifiedName.isNotBlank()) {
-                                val kind = runCatching {
-                                    classKind(jar.getInputStream(entry).readBytes())
-                                }.getOrDefault(AttachedJarClassKind.CLASS)
+                                val bytes = jar.readEntryBytesBounded(
+                                    entry,
+                                    SourceArchiveReadLimits.MAX_CLASS_ENTRY_BYTES,
+                                ) ?: return@forEach
+                                val header = runCatching {
+                                    ClassFileHeaderParser(bytes).parse()
+                                }.getOrNull()
+                                val kind = classKind(header)
                                 classes.getOrPut(qualifiedName) {
                                     MutableAttachedJarClassEntry(
                                         qualifiedName = qualifiedName,
@@ -158,9 +174,6 @@ class AttachedJarIndexBuilder {
                                 }.apply {
                                     classEntryName = name
                                     this.kind = kind
-                                    val header = runCatching {
-                                        ClassFileHeaderParser(jar.getInputStream(entry).readBytes()).parse()
-                                    }.getOrNull()
                                     superClassName = header?.superClassName?.replace('/', '.')
                                     interfaceNames = header?.interfaceNames.orEmpty().map { interfaceName ->
                                         interfaceName.replace('/', '.')
@@ -173,7 +186,11 @@ class AttachedJarIndexBuilder {
                         name.startsWith("META-INF/services/") -> {
                             val serviceName = name.substringAfter("META-INF/services/").takeIf(String::isNotBlank)
                                 ?: return@forEach
-                            val providers = providerClassNames(jar.getInputStream(entry).readBytes().toString(Charsets.UTF_8))
+                            val serviceText = jar.readEntryTextBounded(
+                                entry,
+                                SourceArchiveReadLimits.MAX_SERVICE_ENTRY_BYTES,
+                            ) ?: return@forEach
+                            val providers = providerClassNames(serviceText)
                             serviceFiles.getOrPut(serviceName) { mutableListOf() } += AttachedJarServiceFileEntry(
                                 serviceInterfaceName = serviceName,
                                 providerClassNames = providers,
@@ -229,7 +246,11 @@ class AttachedJarIndexBuilder {
                         name.startsWith("META-INF/services/") -> {
                             val serviceName = name.substringAfter("META-INF/services/").takeIf(String::isNotBlank)
                                 ?: return@forEach
-                            val providers = providerClassNames(jar.getInputStream(entry).readBytes().toString(Charsets.UTF_8))
+                            val serviceText = jar.readEntryTextBounded(
+                                entry,
+                                SourceArchiveReadLimits.MAX_SERVICE_ENTRY_BYTES,
+                            ) ?: return@forEach
+                            val providers = providerClassNames(serviceText)
                             serviceFiles.getOrPut(serviceName) { mutableListOf() } += AttachedJarServiceFileEntry(
                                 serviceInterfaceName = serviceName,
                                 providerClassNames = providers,
@@ -290,10 +311,9 @@ class AttachedJarIndexBuilder {
             .toList()
 
     /** 通过字节码访问标记与常量池内容判断类的具体种类（注解 / 枚举 / 接口 / record / 普通类）。 */
-    private fun classKind(bytes: ByteArray): AttachedJarClassKind {
-        val parser = ClassFileHeaderParser(bytes)
-        val header = parser.parse() ?: return AttachedJarClassKind.CLASS
-        return when {
+    private fun classKind(header: ClassFileHeader?): AttachedJarClassKind =
+        when {
+            header == null -> AttachedJarClassKind.CLASS
             header.accessFlags and ACC_ANNOTATION != 0 -> AttachedJarClassKind.ANNOTATION
             header.accessFlags and ACC_ENUM != 0 -> AttachedJarClassKind.ENUM
             header.accessFlags and ACC_INTERFACE != 0 -> AttachedJarClassKind.INTERFACE
@@ -301,7 +321,6 @@ class AttachedJarIndexBuilder {
                 AttachedJarClassKind.RECORD
             else -> AttachedJarClassKind.CLASS
         }
-    }
 
     /** 字节码头解析结果：包含访问标记、本类与父类名、实现接口、字段与方法等关键信息。 */
     private data class ClassFileHeader(

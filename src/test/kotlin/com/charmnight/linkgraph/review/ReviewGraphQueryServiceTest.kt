@@ -23,7 +23,7 @@ import com.charmnight.linkgraph.review.git.GitChangeKind
 import com.charmnight.linkgraph.review.git.GitChangeSetProvider
 import com.charmnight.linkgraph.review.git.GitChangedFile
 import com.charmnight.linkgraph.review.git.GitHunk
-import com.charmnight.linkgraph.source.SourceContent
+import com.charmnight.linkgraph.source.BoundedSourceContent
 import com.charmnight.linkgraph.source.SourceContentResolver
 import com.charmnight.linkgraph.source.SourceOrigin
 import com.charmnight.linkgraph.testing.assertReviewGraphViewDataContract
@@ -769,11 +769,11 @@ class ReviewGraphQueryServiceTest {
 
     private fun mapResolver(contentByPath: Map<String, String>): SourceContentResolver =
         object : SourceContentResolver {
-            override fun readByVirtualFileUrl(url: String): SourceContent? = readByPath(url)
+            override fun readByVirtualFileUrl(url: String): BoundedSourceContent? = readByPath(url)
 
-            override fun readByPath(path: String): SourceContent? {
+            override fun readByPath(path: String): BoundedSourceContent? {
                 val text = contentByPath[path] ?: return null
-                return SourceContent(
+                return BoundedSourceContent(
                     text = text,
                     displayPath = path,
                     virtualFileUrl = null,
@@ -784,7 +784,7 @@ class ReviewGraphQueryServiceTest {
                 )
             }
 
-            override fun readSnippetByPath(path: String, startLine: Int?, endLine: Int?): SourceContent? =
+            override fun readSnippetByPath(path: String, startLine: Int?, endLine: Int?): BoundedSourceContent? =
                 readByPath(path)?.let { content ->
                     if (startLine == null || endLine == null) {
                         content
@@ -799,8 +799,8 @@ class ReviewGraphQueryServiceTest {
                     }
                 }
 
-            override fun readClassByQualifiedName(qualifiedName: String): SourceContent? = null
+            override fun readClassByQualifiedName(qualifiedName: String): BoundedSourceContent? = null
 
-            override fun readResourceByPath(resourcePath: String): SourceContent? = readByPath(resourcePath)
+            override fun readResourceByPath(resourcePath: String): BoundedSourceContent? = readByPath(resourcePath)
         }
 }

@@ -5,12 +5,12 @@ import com.charmnight.linkgraph.application.runtime.LinkGraphProjectRuntimeHooks
 import com.charmnight.linkgraph.architecture.architectureIndexRuntime
 import com.charmnight.linkgraph.testing.*
 
-import com.charmnight.linkgraph.model.Certainty
-import com.charmnight.linkgraph.model.BindingStatus
+import com.charmnight.linkgraph.model.GraphConfidence
+import com.charmnight.linkgraph.model.GraphBinding
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.semantic.SemanticAnalyzer
@@ -471,7 +471,7 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
                     id = "design:manual-step",
                     type = NodeType.METHOD,
                     title = "ManualFlowStep",
-                    sourceTag = GraphSourceTag.DRAFT_MANUAL,
+                    provenance = GraphProvenance.USER_DRAFT,
                 ),
             ),
         )

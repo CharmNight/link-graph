@@ -16,8 +16,8 @@ function node(
     title: id,
     inputs: [],
     outputs: [],
-    certainty: "PROVEN",
-    bindingStatus: "BOUND",
+    confidence: "VERIFIED",
+    binding: "CODE_BOUND",
     position: { x, y },
     metadata: {
       "presentation.laneId": laneId,

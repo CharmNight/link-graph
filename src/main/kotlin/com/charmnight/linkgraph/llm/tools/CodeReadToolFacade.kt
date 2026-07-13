@@ -15,6 +15,8 @@ import com.charmnight.linkgraph.source.AttachedJarContentResolver
 import com.charmnight.linkgraph.source.CompositeSourceContentResolver
 import com.charmnight.linkgraph.source.IdeSourceContentResolver
 import com.charmnight.linkgraph.foundation.LoggedFailures
+import com.charmnight.linkgraph.foundation.truncateUtf8
+import com.charmnight.linkgraph.foundation.utf8ByteCount
 import com.charmnight.linkgraph.source.SourceContentResolver
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
@@ -89,11 +91,13 @@ class CodeReadToolFacade(
         resolver: SourceContentResolver? = project?.let(::defaultResolver),
     ): RichSourceSnippet? {
         fallbackSnippet?.takeIf { it.isNotBlank() }?.let {
+            val truncated = utf8ByteCount(it) > MAX_SOURCE_SNIPPET_BYTES
             return RichSourceSnippet(
                 filePath = filePath,
                 startLine = startLine,
                 endLine = endLine,
-                snippet = it,
+                snippet = buildPlainSnippet(it, truncated),
+                sourceDiagnostic = if (truncated) "SOURCE_SNIPPET_TRUNCATED" else null,
             )
         }
         if (filePath.contains("://") || filePath.contains("!/")) {
@@ -512,34 +516,6 @@ class CodeReadToolFacade(
         private const val SOURCE_NEIGHBOR_CONTEXT_LINES = 3
         private const val SOURCE_SNIPPET_TRUNCATED_NOTICE = "片段已截断：最多返回 400 行或 64 KiB。"
         private val CLASS_DECLARATION_REGEX = Regex("\\b(class|interface|enum|record)\\b")
-
-        private fun utf8ByteCount(value: String): Int =
-            value.toByteArray(StandardCharsets.UTF_8).size
-
-        private fun truncateUtf8(value: String, maxBytes: Int): String {
-            if (maxBytes <= 0) {
-                return ""
-            }
-            if (utf8ByteCount(value) <= maxBytes) {
-                return value
-            }
-            val builder = StringBuilder()
-            var byteCount = 0
-            var index = 0
-            while (index < value.length) {
-                val codePoint = value.codePointAt(index)
-                val chars = Character.toChars(codePoint)
-                val codePointText = String(chars)
-                val codePointBytes = utf8ByteCount(codePointText)
-                if (byteCount + codePointBytes > maxBytes) {
-                    break
-                }
-                builder.appendCodePoint(codePoint)
-                byteCount += codePointBytes
-                index += chars.size
-            }
-            return builder.toString()
-        }
 
         private class BoundedSnippetLines(
             private val maxBytes: Int,

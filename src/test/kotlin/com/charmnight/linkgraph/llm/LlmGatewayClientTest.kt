@@ -11,7 +11,6 @@ import java.net.CookieHandler
 import java.net.ProxySelector
 import java.net.URI
 import java.net.http.HttpClient
-import java.net.http.HttpHeaders
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
@@ -21,10 +20,10 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executor
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLParameters
-import javax.net.ssl.SSLSession
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class LlmGatewayClientTest {
@@ -57,6 +56,33 @@ class LlmGatewayClientTest {
 
         assertEquals("Remote LLM request failed with HTTP 503 (model_not_found): No channel", openAiMessage)
         assertEquals("Remote LLM request failed with HTTP 429 (rate_limit_error): Too many requests", anthropicMessage)
+    }
+
+    @Test
+    fun buildFailureMessageRedactsSecretLikeProviderMessages() {
+        val message = LlmGatewayClient.buildFailureMessage(
+            statusCode = 500,
+            body = """{"error":{"code":"server_error","message":"upstream echoed {\"api_key\":\"live-secret-value\"}"}}""",
+        )
+
+        assertFalse(message.contains("live-secret-value"))
+        assertTrue(message.contains("api_key"))
+        assertTrue(message.contains("[REDACTED]"))
+    }
+
+    @Test
+    fun retryableHttpExceptionRedactsSecretLikeResponseBodies() {
+        val message = LlmUserMessageFormatter.describe(
+            LlmHttpException(
+                statusCode = 503,
+                retryAfterSeconds = null,
+                body = """{"api_key":"live-secret-value","message":"temporary failure"}""",
+            ),
+        )
+
+        assertFalse(message.contains("live-secret-value"))
+        assertTrue(message.contains("api_key"))
+        assertTrue(message.contains("[REDACTED]"))
     }
 
     @Test
@@ -147,6 +173,15 @@ class LlmGatewayClientTest {
         assertEquals("session_id: [REDACTED]", lines[4])
         assertEquals("access_token:[REDACTED]", lines[5])
         assertEquals("private_key=[REDACTED]", lines[6])
+    }
+
+    @Test
+    fun redactForTraceRedactsQuotedJsonKeys() {
+        val input = """{"api_key":"live-secret-value","safe":"kept"}"""
+
+        val redacted = redactForTrace(input)
+
+        assertEquals("""{"api_key":[REDACTED],"safe":"kept"}""", redacted)
     }
 
     @Test
@@ -360,6 +395,40 @@ class LlmGatewayClientTest {
         assertEquals(LlmStreamEvent.TextDelta("hel"), events[1])
         assertEquals(LlmStreamEvent.TextDelta("lo"), events[2])
         assertEquals(LlmStreamEvent.Completed(response), events[3])
+    }
+
+    @Test
+    fun streamSseAbortsWhenExtractedContentExceedsMaxSize() {
+        val body = """
+            data: {"delta":"small"}
+            data: [DONE]
+        """.trimIndent()
+        val client = RecordingHttpClient(
+            response = SimpleHttpResponse(
+                statusCode = 200,
+                body = ByteArrayInputStream(body.toByteArray(StandardCharsets.UTF_8)),
+            ),
+        )
+        val events = mutableListOf<LlmStreamEvent>()
+        val hugeDelta = "x".repeat(2_500_000)
+
+        val failure = assertFailsWith<IllegalStateException> {
+            LlmGatewayClient.streamSse(
+                client = client,
+                request = testLlmRequest(),
+                url = "https://api.example.com/v1/responses",
+                headers = emptyList(),
+                payload = """{"stream":true}""",
+                listener = events::add,
+                extractTextDelta = { hugeDelta },
+            )
+        }
+
+        assertTrue(
+            failure.message!!.contains("stream content exceeded maximum supported size"),
+            "实际：${failure.message}",
+        )
+        assertEquals(listOf<LlmStreamEvent>(LlmStreamEvent.Started(model = "gpt-5.4")), events)
     }
 
     @Test
@@ -635,46 +704,6 @@ class LlmGatewayClientTest {
         assertEquals("ok", response.content)
     }
 
-    private class RecordingHttpClient(
-        private val response: HttpResponse<*>,
-    ) : HttpClient() {
-        var lastRequest: HttpRequest? = null
-
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : Any?> send(
-            request: HttpRequest,
-            responseBodyHandler: HttpResponse.BodyHandler<T>,
-        ): HttpResponse<T> {
-            lastRequest = request
-            return response as HttpResponse<T>
-        }
-
-        override fun cookieHandler(): Optional<CookieHandler> = Optional.empty()
-        override fun connectTimeout(): Optional<Duration> = Optional.empty()
-        override fun followRedirects(): Redirect = Redirect.NEVER
-        override fun proxy(): Optional<ProxySelector> = Optional.empty()
-        override fun sslContext(): SSLContext = SSLContext.getDefault()
-        override fun sslParameters(): SSLParameters = SSLParameters()
-        override fun authenticator(): Optional<Authenticator> = Optional.empty()
-        override fun version(): Version = Version.HTTP_1_1
-        override fun executor(): Optional<Executor> = Optional.empty()
-
-        override fun <T : Any?> sendAsync(
-            request: HttpRequest,
-            responseBodyHandler: HttpResponse.BodyHandler<T>,
-        ): CompletableFuture<HttpResponse<T>> {
-            error("sendAsync is not used by gateway support tests.")
-        }
-
-        override fun <T : Any?> sendAsync(
-            request: HttpRequest,
-            responseBodyHandler: HttpResponse.BodyHandler<T>,
-            pushPromiseHandler: HttpResponse.PushPromiseHandler<T>,
-        ): CompletableFuture<HttpResponse<T>> {
-            error("sendAsync is not used by gateway support tests.")
-        }
-    }
-
     /**
      * 测试用 HTTP 客户端：按入队顺序依次返回 response；队空时抛错。
      * 用于验证重试次数——若被测代码错误地多发了 send，会立即暴露为 "no more queued responses"。
@@ -745,18 +774,4 @@ class LlmGatewayClientTest {
         }
     }
 
-    private class SimpleHttpResponse<T>(
-        private val statusCode: Int,
-        private val body: T,
-        private val headerMap: Map<String, List<String>> = emptyMap(),
-    ) : HttpResponse<T> {
-        override fun statusCode(): Int = statusCode
-        override fun request(): HttpRequest? = null
-        override fun previousResponse(): Optional<HttpResponse<T>> = Optional.empty()
-        override fun headers(): HttpHeaders = HttpHeaders.of(headerMap) { _, _ -> true }
-        override fun body(): T = body
-        override fun sslSession(): Optional<SSLSession> = Optional.empty()
-        override fun uri(): URI = URI.create("https://api.example.com")
-        override fun version(): HttpClient.Version = HttpClient.Version.HTTP_1_1
-    }
 }

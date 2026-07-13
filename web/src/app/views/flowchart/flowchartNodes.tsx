@@ -17,6 +17,7 @@ import type { NodeMeasuredSize, NodeSizeRegistry } from "../../graph/nodeSizeReg
 import type { DraftCompareStatus, GraphProjectionIndex, LinkGraphEdge, LinkGraphNode } from "../../types";
 import { edgeTypeLabel } from "../../labels";
 import { FlowchartNodeCard } from "../../components/graph/nodes/FlowchartNodeCard";
+import { useNodeCardMeasure } from "../../components/graph/nodes/useNodeCardMeasure";
 import { flowchartKind } from "../../components/graph/nodes/nodePresentation";
 import { canEditNodeLayout } from "../../layoutEditability";
 import { reactFlowNodeInternalsSignature } from "../../reactflow/nodeInternalsSignature";
@@ -51,12 +52,15 @@ interface FlowchartNodeData extends Record<string, unknown> {
   explanationFocused?: boolean;
   draftChanged?: boolean;
   draftCompareStatus?: DraftCompareStatus;
+  collapsedInvocationExpansions?: CollapsedInvocationExpansionDescriptor[];
+  onOpenInvocationExpansion?: (expansionId: string) => void;
   onMeasure?: (size: NodeMeasuredSize) => void;
 }
 
-interface InvocationExpansionSummaryNodeData extends Record<string, unknown> {
-  node: LinkGraphNode;
-  selected?: boolean;
+export interface CollapsedInvocationExpansionDescriptor {
+  expansionId: string;
+  nodeCount: number;
+  targetTitle: string;
 }
 
 /** 构造流程图 React Flow 节点列表时所需的全部入参：节点、边、选中态、解释聚焦、草稿比较与投影信息。 */
@@ -68,6 +72,8 @@ interface BuildFlowchartNodesOptions {
   draftChangedNodeIds?: string[];
   activeExpansionIds?: string[];
   expandedInvocationSourceNodeIds?: string[];
+  collapsedInvocationExpansionsByNodeId?: Record<string, CollapsedInvocationExpansionDescriptor[]>;
+  onOpenInvocationExpansion?: (expansionId: string) => void;
   draftCompareNodeStatuses?: Record<string, DraftCompareStatus>;
   projectionIndex?: GraphProjectionIndex | null;
   nodeSizeRegistry: NodeSizeRegistry;
@@ -81,12 +87,9 @@ interface BuildFlowchartEdgesOptions {
 }
 
 /** 流程图节点在 React Flow 中的具体节点类型别名，绑定 flowchartNode 类型与 FlowchartNodeData。 */
-type FlowchartFlowNode =
-  | Node<FlowchartNodeData, "flowchartNode">
-  | Node<InvocationExpansionSummaryNodeData, "invocationExpansionSummaryNode">;
+type FlowchartFlowNode = Node<FlowchartNodeData, "flowchartNode">;
 /** React Flow 注入给单个流程图节点的属性类型，包含 id、数据、连接能力、选中状态等。 */
 type FlowchartFlowNodeProps = NodeProps<Node<FlowchartNodeData, "flowchartNode">>;
-type InvocationExpansionSummaryNodeProps = NodeProps<Node<InvocationExpansionSummaryNodeData, "invocationExpansionSummaryNode">>;
 
 // 节点元数据中保存"投影来源节点 ID 列表"的字段名，用于在融合/投影节点上回溯原始节点身份。
 const FLOWCHART_ALIAS_IDS_KEY = "flowchart.projectedFromNodeIds";
@@ -248,9 +251,15 @@ function FlowchartReactNode({ id, data, isConnectable, selected }: FlowchartFlow
     String(mergeRightTargetCount),
   ].join("\u0001");
   useStableNodeInternalsUpdate(id, nodeInternalsSignature);
+  const rootRef = useNodeCardMeasure(data.onMeasure, [
+    data.node,
+    data.collapsedInvocationExpansions,
+    data.onMeasure,
+  ]);
 
   return (
     <div
+      ref={rootRef}
       className={[
         "flowchart-react-node",
         `kind-${kind.toLowerCase()}`,
@@ -313,32 +322,22 @@ function FlowchartReactNode({ id, data, isConnectable, selected }: FlowchartFlow
         explanationFocused={data.explanationFocused}
         draftChanged={data.draftChanged}
         draftCompareStatus={data.draftCompareStatus}
-        onMeasure={data.onMeasure}
       />
-    </div>
-  );
-}
-
-function InvocationExpansionSummaryReactNode({ data, selected }: InvocationExpansionSummaryNodeProps) {
-  const metadata = data.node.metadata ?? {};
-  const nodeCount = metadata["linkGraph.expansion.summary.nodeCount"] ?? "0";
-  const branchCount = metadata["linkGraph.expansion.summary.branchCount"] ?? "0";
-  const returnCount = metadata["linkGraph.expansion.summary.returnCount"] ?? "0";
-  const childExpansionCount = metadata["linkGraph.expansion.summary.childExpansionCount"] ?? "0";
-  const hasBorrowedRoot = metadata["linkGraph.expansion.summary.hasBorrowedRoot"] === "true";
-  return (
-    <div className={["flowchart-invocation-summary", selected || data.selected ? "is-selected" : ""].join(" ").trim()}>
-      <Handle id="target-left" type="target" position={Position.Left} isConnectableStart={false} />
-      <Handle id="source-right" type="source" position={Position.Right} isConnectableEnd={false} />
-      <div className="flowchart-invocation-summary__eyebrow">调用展开摘要</div>
-      <div className="flowchart-invocation-summary__title" title={data.node.title}>{data.node.title}</div>
-      <div className="flowchart-invocation-summary__metrics">
-        <span>{nodeCount} 节点</span>
-        <span>{branchCount} 分支</span>
-        <span>{returnCount} 返回</span>
-        {childExpansionCount !== "0" ? <span>{childExpansionCount} 子展开</span> : null}
-      </div>
-      {hasBorrowedRoot ? <div className="flowchart-invocation-summary__shared">共享入口</div> : null}
+      {data.collapsedInvocationExpansions?.map((descriptor) => (
+        <button
+          key={descriptor.expansionId}
+          type="button"
+          className="flowchart-collapsed-expansion-badge nodrag nopan"
+          title={`重新打开 ${descriptor.targetTitle}`}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            data.onOpenInvocationExpansion?.(descriptor.expansionId);
+          }}
+        >
+          已收起 · {descriptor.nodeCount} 节点 · 点击重新打开
+        </button>
+      ))}
     </div>
   );
 }
@@ -346,12 +345,7 @@ function InvocationExpansionSummaryReactNode({ data, selected }: InvocationExpan
 /** 注册给 React Flow 的流程图节点类型映射。 */
 export const FLOWCHART_NODE_TYPES: NodeTypes = {
   flowchartNode: FlowchartReactNode,
-  invocationExpansionSummaryNode: InvocationExpansionSummaryReactNode,
 };
-
-function isInvocationExpansionSummaryNode(node: LinkGraphNode): boolean {
-  return node.metadata?.["flowchart.synthetic"] === "invocation-expansion-summary";
-}
 
 function invocationExpansionId(node: LinkGraphNode): string | null {
   return node.metadata?.["linkGraph.expansion.id"]?.trim() || null;
@@ -359,17 +353,6 @@ function invocationExpansionId(node: LinkGraphNode): string | null {
 
 /** 根据节点类型生成节点外壳的内联样式，覆盖宽度、最小高度、圆角、边框、背景与阴影等视觉差异。 */
 function flowchartNodeStyle(node: LinkGraphNode) {
-  if (isInvocationExpansionSummaryNode(node)) {
-    return {
-      width: 280,
-      minHeight: 132,
-      borderRadius: 8,
-      border: "1px solid rgba(25, 90, 153, 0.34)",
-      background: "rgba(255, 255, 255, 0.94)",
-      boxShadow: "0 10px 24px rgba(35, 42, 48, 0.12)",
-      padding: 0,
-    };
-  }
   const kind = flowchartKind(node);
   return {
     width: flowchartNodeCardWidth(node),
@@ -550,6 +533,8 @@ export function buildFlowchartNodes({
   draftChangedNodeIds = [],
   activeExpansionIds = [],
   expandedInvocationSourceNodeIds = [],
+  collapsedInvocationExpansionsByNodeId = {},
+  onOpenInvocationExpansion,
   draftCompareNodeStatuses = {},
   projectionIndex = null,
   nodeSizeRegistry,
@@ -568,26 +553,6 @@ export function buildFlowchartNodes({
   return nodes.map((node) => {
     const expansionId = invocationExpansionId(node);
     const activeInvocationExpansion = expansionId ? activeExpansionIdSet.has(expansionId) : false;
-    if (isInvocationExpansionSummaryNode(node)) {
-      return {
-        id: node.id,
-        type: "invocationExpansionSummaryNode",
-        className: [
-          "flowchart-rf-node kind-invocation-expansion-summary",
-          activeInvocationExpansion ? "is-active-invocation-expansion" : "",
-        ].join(" ").trim(),
-        selected: selectedNodeId === node.id,
-        draggable: canEditNodeLayout(node, "FLOWCHART", projectionIndex),
-        position: node.position ?? { x: 80, y: 88 },
-        sourcePosition: Position.Right,
-        targetPosition: Position.Left,
-        data: {
-          node,
-          selected: selectedNodeId === node.id,
-        },
-        style: flowchartNodeStyle(node),
-      };
-    }
     const kind = flowchartKind(node);
     const mergeTargetPortCounts = mergeTargetPortLayout.countsByNodeId.get(node.id);
     const projectedDraftChanged = Array.from(draftChangedNodeIdSet)
@@ -623,6 +588,8 @@ export function buildFlowchartNodes({
         explanationFocused: explanationFocusNodeId === node.id,
         draftChanged: projectedDraftChanged,
         draftCompareStatus: projectedDraftCompareStatus,
+        collapsedInvocationExpansions: collapsedInvocationExpansionsByNodeId[node.id],
+        onOpenInvocationExpansion,
         onMeasure: nodeSizeRegistry.reporter(node.id),
       },
       style: flowchartNodeStyle(node),

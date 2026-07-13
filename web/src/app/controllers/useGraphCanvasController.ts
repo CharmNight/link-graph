@@ -177,9 +177,9 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
         inputs: [],
         outputs: [],
         doc: "请填写业务说明",
-        certainty: "PROVEN",
-        bindingStatus: "DESIGN_ONLY",
-        sourceTag: "DRAFT_MANUAL",
+        confidence: "VERIFIED",
+        binding: "DESIGN_ONLY",
+        provenance: "USER_DRAFT",
         position,
         metadata: {
           "linkGraph.manual": "true",
@@ -194,9 +194,9 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
       title: `新方法${nextIndex}`,
       inputs: [],
       outputs: [],
-      certainty: "PROVEN",
-      bindingStatus: "DESIGN_ONLY",
-      sourceTag: "DRAFT_MANUAL",
+      confidence: "VERIFIED",
+      binding: "DESIGN_ONLY",
+      provenance: "USER_DRAFT",
       position,
       metadata: {
         "linkGraph.manual": "true",
@@ -374,7 +374,7 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
             target: targetId,
             sourceHandle: sourceHandle ?? null,
             targetHandle: targetHandle ?? null,
-            sourceTag: "DRAFT_MANUAL",
+            provenance: "USER_DRAFT",
           },
         ],
       );
@@ -420,14 +420,14 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
             target: nextNode.id,
             label: targetEdge.label,
             metadata: targetEdge.metadata,
-            sourceTag: "DRAFT_MANUAL",
+            provenance: "USER_DRAFT",
           },
           {
             id: `${edgeId}:after`,
             type: nextEdgeType,
             source: nextNode.id,
             target: targetEdge.target,
-            sourceTag: "DRAFT_MANUAL",
+            provenance: "USER_DRAFT",
           },
         );
       args.syncGraph([...args.nodes, nextNode], nextEdges, nextNode.id);

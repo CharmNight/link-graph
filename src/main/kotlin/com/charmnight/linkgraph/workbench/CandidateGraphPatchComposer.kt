@@ -7,7 +7,7 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.model.GraphPatchAction
 import com.charmnight.linkgraph.model.GraphPatchOperation
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.model.EdgeType
 
@@ -129,7 +129,7 @@ class CandidateGraphPatchComposer {
                 explicitTitle = operation.node?.title,
             ),
             doc = buildPatchedNodeDoc(targetNode, candidate),
-            sourceTag = GraphSourceTag.DRAFT_AI,
+            provenance = GraphProvenance.AI_DRAFT,
             metadata = normalizeUpdatedNodeMetadata(
                 targetNode = targetNode,
                 incomingMetadata = operation.node?.metadata.orEmpty() + operation.metadata + buildDraftMetadata(candidate),
@@ -197,7 +197,7 @@ class CandidateGraphPatchComposer {
             type = NodeType.FLOW_ACTION,
             title = insertedTitle,
             doc = buildInsertedNodeDoc(candidate),
-            sourceTag = GraphSourceTag.DRAFT_AI,
+            provenance = GraphProvenance.AI_DRAFT,
             metadata = buildInsertedFlowNodeMetadata(
                 candidate = candidate,
                 sourceNode = sourceNode,
@@ -213,7 +213,7 @@ class CandidateGraphPatchComposer {
             fromNodeId = sourceNode.id,
             toNodeId = insertedNodeId,
             label = attachEdge.label,
-            sourceTag = GraphSourceTag.DRAFT_AI,
+            provenance = GraphProvenance.AI_DRAFT,
             metadata = attachEdge.metadata + buildDraftMetadata(candidate),
         )
         val insertedToTargetEdge = GraphEdge(
@@ -221,7 +221,7 @@ class CandidateGraphPatchComposer {
             type = EdgeType.CONTROL_FLOW,
             fromNodeId = insertedNodeId,
             toNodeId = targetNode.id,
-            sourceTag = GraphSourceTag.DRAFT_AI,
+            provenance = GraphProvenance.AI_DRAFT,
             metadata = buildDraftMetadata(candidate),
         )
         return GraphPatch(
@@ -295,7 +295,7 @@ class CandidateGraphPatchComposer {
             type = NodeType.FLOW_SCOPE,
             title = insertedTitle,
             doc = buildInsertedNodeDoc(candidate),
-            sourceTag = GraphSourceTag.DRAFT_AI,
+            provenance = GraphProvenance.AI_DRAFT,
             metadata = buildInsertedFlowNodeMetadata(
                 candidate = candidate,
                 sourceNode = sourceNode,
@@ -311,7 +311,7 @@ class CandidateGraphPatchComposer {
             fromNodeId = sourceNode.id,
             toNodeId = insertedNodeId,
             label = attachEdge.label,
-            sourceTag = GraphSourceTag.DRAFT_AI,
+            provenance = GraphProvenance.AI_DRAFT,
             metadata = attachEdge.metadata + buildDraftMetadata(candidate),
         )
         val trueEdge = GraphEdge(
@@ -320,7 +320,7 @@ class CandidateGraphPatchComposer {
             fromNodeId = insertedNodeId,
             toNodeId = trueBranchTarget.id,
             label = "TRUE",
-            sourceTag = GraphSourceTag.DRAFT_AI,
+            provenance = GraphProvenance.AI_DRAFT,
             metadata = buildDraftMetadata(candidate),
         )
         val falseEdge = GraphEdge(
@@ -329,7 +329,7 @@ class CandidateGraphPatchComposer {
             fromNodeId = insertedNodeId,
             toNodeId = falseBranchTarget.id,
             label = "FALSE",
-            sourceTag = GraphSourceTag.DRAFT_AI,
+            provenance = GraphProvenance.AI_DRAFT,
             metadata = buildDraftMetadata(candidate),
         )
         return GraphPatch(
@@ -607,7 +607,7 @@ class CandidateGraphPatchComposer {
                             explicitTitle = null,
                         ),
                         doc = patchDoc,
-                        sourceTag = GraphSourceTag.DRAFT_AI,
+                        provenance = GraphProvenance.AI_DRAFT,
                         metadata = mergedMetadata,
                     ),
                     metadata = mapOf(
@@ -877,7 +877,7 @@ class CandidateGraphPatchComposer {
                         type = NodeType.DOC_PAGE,
                         title = noteTitle,
                         doc = noteDoc,
-                        sourceTag = GraphSourceTag.DRAFT_AI,
+                        provenance = GraphProvenance.AI_DRAFT,
                         metadata = mapOf(
                             "draft.role" to "change-note",
                             "draft.changeId" to candidate.changeId,
@@ -896,7 +896,7 @@ class CandidateGraphPatchComposer {
                         fromNodeId = anchorNodeId,
                         toNodeId = noteNodeId,
                         label = "调整说明",
-                        sourceTag = GraphSourceTag.DRAFT_AI,
+                        provenance = GraphProvenance.AI_DRAFT,
                         metadata = mapOf("draft.changeId" to candidate.changeId),
                     ),
                 ),

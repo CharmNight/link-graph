@@ -1,12 +1,12 @@
 package com.charmnight.linkgraph.projection
 
-import com.charmnight.linkgraph.model.Certainty
+import com.charmnight.linkgraph.model.GraphConfidence
 import com.charmnight.linkgraph.model.EdgeType
-import com.charmnight.linkgraph.model.BindingStatus
+import com.charmnight.linkgraph.model.GraphBinding
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 import com.charmnight.linkgraph.model.NodeType
 import java.util.ArrayDeque
 
@@ -153,8 +153,8 @@ internal class InteractiveProjectionEngine(
                 id = GraphEdge.stableId(EdgeType.CALL, upOverflow.id, resolvedAnchorNodeId, "interactive-overflow"),
                 type = EdgeType.CALL, fromNodeId = upOverflow.id, toNodeId = resolvedAnchorNodeId,
                 label = "还有 ${upstreamHiddenNodeIds.size} 个上游节点",
-                certainty = Certainty.RULE_INFERRED, bindingStatus = BindingStatus.PARTIALLY_SYNCED,
-                sourceTag = GraphSourceTag.UNCERTAIN_FACT,
+                confidence = GraphConfidence.INFERRED, binding = GraphBinding.PARTIAL,
+                provenance = GraphProvenance.DERIVED,
             )
         }
 
@@ -183,8 +183,8 @@ internal class InteractiveProjectionEngine(
                 id = GraphEdge.stableId(EdgeType.CALL, resolvedAnchorNodeId, downOverflow.id, "interactive-overflow"),
                 type = EdgeType.CALL, fromNodeId = resolvedAnchorNodeId, toNodeId = downOverflow.id,
                 label = "还有 ${totalDownstreamHidden.size} 个下游节点",
-                certainty = Certainty.RULE_INFERRED, bindingStatus = BindingStatus.PARTIALLY_SYNCED,
-                sourceTag = GraphSourceTag.UNCERTAIN_FACT,
+                confidence = GraphConfidence.INFERRED, binding = GraphBinding.PARTIAL,
+                provenance = GraphProvenance.DERIVED,
             )
         }
 

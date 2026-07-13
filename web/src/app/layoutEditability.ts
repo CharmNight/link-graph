@@ -8,7 +8,7 @@ import type { AnalysisDisplayMode, GraphProjectionIndex, LinkGraphNode } from ".
  * 1) 若传入投影索引，则交给投影层判断（投影视图可能有自己的锁，例如只读视图）；
  * 2) 流程图、架构图、类图、审查图这几个视图默认允许编辑，因为它们本就是给人手工整理的；
  * 3) 元数据 linkGraph.manual=true 表示该节点是用户手动添加/调整过的，自然允许继续编辑；
- * 4) 最后按节点来源标签（sourceTag）判定：基线设计、人工草稿、AI 草稿来源的节点都可编辑，
+ * 4) 最后按节点来源标签（provenance）判定：基线设计、人工草稿、AI 草稿来源的节点都可编辑，
  *    其余来源（例如来自索引或导入）默认不可编辑，避免误改原始数据。
  */
 export function canEditNodeLayout(
@@ -33,10 +33,10 @@ export function canEditNodeLayout(
     return true;
   }
   // 按节点来源标签做最后兜底
-  switch (node.sourceTag) {
-    case "DESIGN_BASELINE":
-    case "DRAFT_MANUAL":
-    case "DRAFT_AI":
+  switch (node.provenance) {
+    case "DESIGN_IMPORT":
+    case "USER_DRAFT":
+    case "AI_DRAFT":
       return true;
     default:
       return false;

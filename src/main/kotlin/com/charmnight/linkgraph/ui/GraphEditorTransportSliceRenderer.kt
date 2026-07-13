@@ -495,7 +495,14 @@ class GraphEditorTransportSliceRenderer(
             graphBeautificationResult = snapshot.graphBeautificationResult?.copy(promptPreview = ""),
             generationPlan = snapshot.generationPlan?.copy(promptPreview = ""),
             generationPlanDiscussionSession = snapshot.generationPlanDiscussionSession?.copy(promptPreview = null),
-            generatedCodeDrafts = snapshot.generatedCodeDrafts.map { draft -> draft.copy(content = null) },
+            generatedCodeDrafts = snapshot.generatedCodeDrafts.map { draft ->
+                val command = draft.command
+                if (command is com.charmnight.linkgraph.codegen.CodeDraftCommand.CreateFile) {
+                    draft.copy(command = command.copy(content = ""))
+                } else {
+                    draft
+                }
+            },
             generatedCodeDraftPromptPreview = null,
             assistantResultStore = stripAssistantArtifactPayloads(snapshot.assistantResultStore),
         )
@@ -514,7 +521,14 @@ class GraphEditorTransportSliceRenderer(
                     explanation = entry.explanation?.copy(promptPreview = ""),
                     generationPlan = entry.generationPlan?.copy(promptPreview = ""),
                     generationDiscussionSession = entry.generationDiscussionSession?.copy(promptPreview = null),
-                    codeDrafts = entry.codeDrafts.map { draft -> draft.copy(content = null) },
+                    codeDrafts = entry.codeDrafts.map { draft ->
+                        val command = draft.command
+                        if (command is com.charmnight.linkgraph.codegen.CodeDraftCommand.CreateFile) {
+                            draft.copy(command = command.copy(content = ""))
+                        } else {
+                            draft
+                        }
+                    },
                     check = entry.check?.copy(promptPreview = ""),
                 )
             },

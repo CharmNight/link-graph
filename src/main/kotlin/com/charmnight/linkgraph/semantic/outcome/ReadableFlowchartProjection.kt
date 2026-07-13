@@ -4,7 +4,7 @@ import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphSourceTag
+import com.charmnight.linkgraph.model.GraphProvenance
 
 /** 节点元数据中记录"投影后合并自的原始节点 ID 列表"的字段名。 */
 private const val FLOWCHART_ALIAS_IDS_KEY = "flowchart.projectedFromNodeIds"
@@ -272,7 +272,7 @@ private fun projectedAliasNodeIds(node: GraphNode): Set<String> {
 
 /** 判断节点是否为用户手工编辑的草稿节点，这类节点需要保留可编辑性。 */
 private fun shouldRetainEditableNodeInReadableFlowchart(node: GraphNode): Boolean {
-    return node.sourceTag == GraphSourceTag.DRAFT_MANUAL
+    return node.provenance == GraphProvenance.USER_DRAFT
 }
 
 /** 判断节点是否需要打上可读投影模式的标记。 */

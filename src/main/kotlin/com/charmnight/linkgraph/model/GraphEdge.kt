@@ -17,10 +17,12 @@ data class GraphEdge(
     val toNodeId: String,
     /** 保存边的展示标签。 */
     val label: String? = null,
-    /** 保存当前边结论的可信程度。 */
-    val certainty: Certainty = Certainty.PROVEN,
+    /** 保存边最初的产生来源。 */
+    val provenance: GraphProvenance = GraphProvenance.CODE_ANALYSIS,
+    /** 保存当前边结论的可验证程度。 */
+    val confidence: GraphConfidence = provenance.defaultConfidence(),
     /** 保存当前边的绑定状态。 */
-    val bindingStatus: BindingStatus = BindingStatus.BOUND,
+    val binding: GraphBinding = provenance.defaultBinding(),
     /** 保存用于界面展示的业务状态。 */
     val status: String? = null,
     /** 保存当前边的差异信息。 */
@@ -31,8 +33,6 @@ data class GraphEdge(
     val uncertainty: GraphUncertainty? = null,
     /** 保存边的扩展元数据。 */
     val metadata: Map<String, String> = emptyMap(),
-    /** 保存边来源于事实、设计稿还是草稿。 */
-    val sourceTag: GraphSourceTag = GraphSourceTag.FACT,
 ) {
     /**
      * 提供稳定边标识的构建逻辑。

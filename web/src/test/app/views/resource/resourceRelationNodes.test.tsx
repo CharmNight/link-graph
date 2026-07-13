@@ -53,8 +53,8 @@ describe("RESOURCE_RELATION_NODE_TYPES", () => {
       title: "order_mapper.xml#insertOrder",
       inputs: [],
       outputs: [],
-      certainty: "PROVEN" as const,
-      bindingStatus: "BOUND" as const,
+      confidence: "VERIFIED" as const,
+      binding: "CODE_BOUND" as const,
     };
 
     const { rerender } = render(
@@ -99,8 +99,8 @@ describe("RESOURCE_RELATION_NODE_TYPES", () => {
             title: "order_mapper.xml#insertOrder",
             inputs: [],
             outputs: [],
-            certainty: "PROVEN",
-            bindingStatus: "BOUND",
+            confidence: "VERIFIED",
+            binding: "CODE_BOUND",
           },
         }}
         selected={false}
@@ -125,8 +125,8 @@ describe("RESOURCE_RELATION_NODE_TYPES", () => {
             title: "GET /common/download",
             inputs: [],
             outputs: [],
-            certainty: "PROVEN",
-            bindingStatus: "BOUND",
+            confidence: "VERIFIED",
+            binding: "CODE_BOUND",
           },
         }}
         selected={false}
@@ -148,8 +148,8 @@ describe("RESOURCE_RELATION_NODE_TYPES", () => {
           title: "GET /common/download",
           inputs: [],
           outputs: [],
-          certainty: "PROVEN",
-          bindingStatus: "BOUND",
+          confidence: "VERIFIED",
+          binding: "CODE_BOUND",
         },
         {
           id: "resource:sql",
@@ -157,8 +157,8 @@ describe("RESOURCE_RELATION_NODE_TYPES", () => {
           title: "order_mapper.xml#insertOrder",
           inputs: [],
           outputs: [],
-          certainty: "PROVEN",
-          bindingStatus: "BOUND",
+          confidence: "VERIFIED",
+          binding: "CODE_BOUND",
         },
       ],
       selectedNodeId: "resource:http",
@@ -180,8 +180,8 @@ describe("RESOURCE_RELATION_NODE_TYPES", () => {
           title: "GET /common/download",
           inputs: [],
           outputs: [],
-          certainty: "PROVEN",
-          bindingStatus: "BOUND",
+          confidence: "VERIFIED",
+          binding: "CODE_BOUND",
         },
         {
           id: "resource:sql",
@@ -189,8 +189,8 @@ describe("RESOURCE_RELATION_NODE_TYPES", () => {
           title: "order_mapper.xml#insertOrder",
           inputs: [],
           outputs: [],
-          certainty: "PROVEN",
-          bindingStatus: "BOUND",
+          confidence: "VERIFIED",
+          binding: "CODE_BOUND",
         },
       ],
       selectedNodeId: null,
@@ -213,8 +213,8 @@ describe("RESOURCE_RELATION_NODE_TYPES", () => {
         title: "GET /common/download",
         inputs: [],
         outputs: [],
-        certainty: "PROVEN" as const,
-        bindingStatus: "BOUND" as const,
+        confidence: "VERIFIED" as const,
+        binding: "CODE_BOUND" as const,
       },
       {
         id: "resource:sql",
@@ -222,8 +222,8 @@ describe("RESOURCE_RELATION_NODE_TYPES", () => {
         title: "order_mapper.xml#insertOrder",
         inputs: [],
         outputs: [],
-        certainty: "PROVEN" as const,
-        bindingStatus: "BOUND" as const,
+        confidence: "VERIFIED" as const,
+        binding: "CODE_BOUND" as const,
       },
     ];
 
@@ -285,8 +285,8 @@ describe("RESOURCE_RELATION_NODE_TYPES", () => {
           title: "GET /common/download",
           inputs: [],
           outputs: [],
-          certainty: "PROVEN",
-          bindingStatus: "BOUND",
+          confidence: "VERIFIED",
+          binding: "CODE_BOUND",
         },
       ],
       selectedNodeId: "resource:http",
