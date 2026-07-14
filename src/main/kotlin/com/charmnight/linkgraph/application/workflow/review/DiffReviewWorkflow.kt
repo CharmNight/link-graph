@@ -69,8 +69,9 @@ internal class DiffReviewWorkflow(
         )
         val previewUpdater = if (presentation.requestState.streaming) {
             asyncRequestLifecycle.createStreamingPreviewUpdater(
-                requestId,
-                { _, previewText, finalizing ->
+                requestId = requestId,
+                isRequestActive = asyncRequestLifecycle::isDiffReviewRequestActive,
+                updatePreview = { _, previewText, finalizing ->
                     emitReviewStreamingPreview(
                         scene = ReviewRequestScene.DIFF_REVIEW,
                         requestId = requestId,

@@ -402,13 +402,8 @@ class GraphStateArchitectureGateTest {
     @Test
     fun servicesPackageDoesNotOwnBusinessWorkflows() {
         val servicesRoot = root.resolve("src/main/kotlin/com/charmnight/linkgraph/services")
-        val allowedWorkflowFiles = setOf(
-            "AsyncRequestLifecycleSupport.kt",
-            "AsyncRequestTracker.kt",
-        )
         val offenders = ktFilesUnder(servicesRoot)
             .filter { path -> path.toString().endsWith("Workflow.kt") }
-            .filterNot { path -> path.fileName.toString() in allowedWorkflowFiles }
             .map { path -> root.relativize(path).toString() }
 
         assertTrue(

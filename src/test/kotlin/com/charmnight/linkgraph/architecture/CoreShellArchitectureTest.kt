@@ -334,17 +334,80 @@ class CoreShellArchitectureTest {
     }
 
     @Test
-    fun applicationCommandsUseExplicitDispatcherAndHandlers() {
+    fun applicationCommandsUseTypedNamedHandlerBeans() {
+        val commandFiles = listOf(
+            "ApplicationCommand.kt",
+            "ApplicationCommandDispatcher.kt",
+            "ApplicationCommandHandlers.kt",
+            "AssistantTaskExecutor.kt",
+            "AssistantApplicationCommandHandler.kt",
+            "SubjectApplicationCommandHandler.kt",
+            "IndexedGraphApplicationCommandHandler.kt",
+            "WorkspaceApplicationCommandHandler.kt",
+            "SourceNavigationApplicationCommandHandler.kt",
+            "ReviewApplicationCommandHandler.kt",
+            "DraftApplicationCommandHandler.kt",
+            "GenerationApplicationCommandHandler.kt",
+            "DebugApplicationCommandHandler.kt",
+        )
+        commandFiles.forEach { fileName ->
+            assertExists("src/main/kotlin/com/charmnight/linkgraph/application/command/$fileName")
+        }
+
+        val command = read("src/main/kotlin/com/charmnight/linkgraph/application/command/ApplicationCommand.kt")
+        val dispatcher = read("src/main/kotlin/com/charmnight/linkgraph/application/command/ApplicationCommandDispatcher.kt")
+        val handlers = read("src/main/kotlin/com/charmnight/linkgraph/application/command/ApplicationCommandHandlers.kt")
+        val composition = read("src/main/kotlin/com/charmnight/linkgraph/application/composition/ApplicationCommandComposition.kt")
+        val commandPackage = commandFiles.joinToString("\n") { fileName ->
+            read("src/main/kotlin/com/charmnight/linkgraph/application/command/$fileName")
+        }
+
+        assertTrue(command.contains("fun dispatchTo(handlers: ApplicationCommandHandlers): R"))
+        assertTrue(dispatcher.contains("command.dispatchTo(handlers)"))
+        assertTrue(composition.contains("ApplicationCommandHandlers("))
         listOf(
-            "src/main/kotlin/com/charmnight/linkgraph/application/command/ApplicationCommand.kt",
-            "src/main/kotlin/com/charmnight/linkgraph/application/command/ApplicationCommandHandler.kt",
-            "src/main/kotlin/com/charmnight/linkgraph/application/command/ApplicationCommandDispatcher.kt",
-        ).forEach(::assertExists)
+            "val subject:",
+            "val indexedGraph:",
+            "val workspace:",
+            "val sourceNavigation:",
+            "val assistant:",
+            "val review:",
+            "val draft:",
+            "val generation:",
+            "val debug:",
+        ).forEach { namedField -> assertTrue(handlers.contains(namedField)) }
+        listOf(
+            "subject = subject",
+            "indexedGraph = indexedGraph",
+            "workspace = workspace",
+            "sourceNavigation = sourceNavigation",
+            "assistant = assistant",
+            "review = review",
+            "draft = draft",
+            "generation = generation",
+            "debug = debug",
+        ).forEach { namedBean -> assertTrue(composition.contains(namedBean)) }
+
+        assertFalse(
+            Files.exists(projectRoot.resolve(
+                "src/main/kotlin/com/charmnight/linkgraph/application/command/ApplicationCommandHandler.kt",
+            )),
+            "旧责任链接口文件必须在类型化迁移后删除",
+        )
+        listOf(
+            "canHandle(",
+            "ApplicationCommand<*>): Any?",
+            "UNCHECKED_CAST",
+            "firstOrNull { candidate",
+            "Map<KClass",
+        ).forEach { forbidden ->
+            assertFalse(commandPackage.contains(forbidden), "typed command dispatch must not contain $forbidden")
+        }
 
         val router = read("src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorCommandRouter.kt")
         assertTrue(
             router.contains("ApplicationCommand") && router.contains("commandDispatcher.dispatch"),
-            "GraphEditorCommandRouter should map bridge messages to ApplicationCommand and dispatch through ApplicationCommandDispatcher.",
+            "GraphEditorCommandRouter should dispatch typed application commands.",
         )
 
         val service = read("src/main/kotlin/com/charmnight/linkgraph/application/GraphEditorApplicationService.kt")

@@ -3,6 +3,7 @@ package com.charmnight.linkgraph.application.composition
 import org.junit.Test
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -12,7 +13,7 @@ import kotlin.test.assertTrue
  * 在单测里全部模拟成本过高；这里改为静态检查：
  * - 关键惰性属性都存在（subjectFlow / workspaceFlow / architectureFlow / classDiagramFlow 等）
  * - 所有工作流构造时都把 `infrastructure.eventSink` 作为事件出口传入（保证单一事件总线）
- * - LazyThreadSafetyMode.PUBLICATION 用于并发初始化
+ * - 组合根使用默认同步 lazy，保证有状态 bean 的 initializer 最多执行一次
  *
  * 若后续把这些结构改坏（例如新工作流忘了接 eventSink），本测试会失败。
  */
@@ -65,14 +66,24 @@ class WorkflowCompositionSmokeTest {
             eventSinkUsages >= 5,
             "至少应有 5 处工作流把 infrastructure.eventSink 作为事件出口，实际 $eventSinkUsages",
         )
+    }
 
-        // 所有 lazy 都用 PUBLICATION 模式，避免并发首访时的重复构造
-        val publicationCount = "LazyThreadSafetyMode.PUBLICATION".let { keyword ->
-            source.split(keyword).size - 1
-        }
-        assertTrue(
-            publicationCount >= 5,
-            "至少应有 5 处使用 PUBLICATION 模式，实际 $publicationCount",
+    @Test
+    fun compositionRootsDoNotUseSafePublicationForStatefulBeans() {
+        val compositionSources = listOf(
+            "src/main/kotlin/com/charmnight/linkgraph/application/GraphEditorApplicationService.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/application/composition/InfrastructureComposition.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/application/composition/WorkflowComposition.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/application/composition/ApplicationCommandComposition.kt",
+        ).associateWith { path -> Files.readString(Path.of(path)) }
+
+        val offenders = compositionSources
+            .filterValues { currentSource -> currentSource.contains("LazyThreadSafetyMode.PUBLICATION") }
+            .keys
+
+        assertFalse(
+            offenders.isNotEmpty(),
+            "组合根中的 bean initializer 必须最多执行一次，禁止 PUBLICATION: ${offenders.joinToString()}",
         )
     }
 }

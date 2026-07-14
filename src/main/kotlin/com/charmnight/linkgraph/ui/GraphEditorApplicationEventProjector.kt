@@ -84,6 +84,19 @@ internal class GraphEditorApplicationEventProjector(
                 workspacePresenter().presentDiffMode(event.graph, event.diff)
             is GraphEditorApplicationEvent.SyncPreviewReady ->
                 workspacePresenter().presentSyncPreview(event.items)
+            is GraphEditorApplicationEvent.AsyncRequestsInvalidated -> {
+                val changed = stateService.asyncRequests.invalidateRunningRequests(
+                    qaRequestId = event.qaRequestId,
+                    diffReviewRequestId = event.diffReviewRequestId,
+                    beautificationRequestId = event.beautificationRequestId,
+                    generationPlanRequestId = event.generationPlanRequestId,
+                    generationPlanDiscussionRequestId = event.generationPlanDiscussionRequestId,
+                    codeDraftRequestId = event.codeDraftRequestId,
+                )
+                if (changed) {
+                    requestBrowserSync()
+                }
+            }
             is GraphEditorApplicationEvent.Feedback ->
                 subjectPresenter().presentFeedback(event.level, event.message, event.preservePreviousStatusKind)
             is GraphEditorApplicationEvent.AnalysisDisplayModeChanged ->

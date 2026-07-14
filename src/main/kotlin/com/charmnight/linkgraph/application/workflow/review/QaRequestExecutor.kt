@@ -158,7 +158,10 @@ internal class QaRequestExecutor(
             effectiveMode = modeContext.effectiveMode,
         )
         val previewUpdater = if (presentation.requestState.streaming) {
-            asyncRequestLifecycle.createStreamingPreviewUpdater(requestId) { _, previewText, finalizing ->
+            asyncRequestLifecycle.createStreamingPreviewUpdater(
+                requestId = requestId,
+                isRequestActive = asyncRequestLifecycle::isQaRequestActive,
+            ) { _, previewText, finalizing ->
                 emitReviewStreamingPreview(
                     eventSink = eventSink,
                     scene = ReviewRequestScene.QA,

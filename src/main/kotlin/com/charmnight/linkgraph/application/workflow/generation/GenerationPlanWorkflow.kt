@@ -63,8 +63,9 @@ internal class GenerationPlanWorkflow(
         )
         val previewUpdater = if (presentation.requestState.streaming) {
             dependencies.asyncRequestLifecycle.createStreamingPreviewUpdater(
-                requestId,
-                { _, previewText, finalizing ->
+                requestId = requestId,
+                isRequestActive = dependencies.asyncRequestLifecycle::isGenerationPlanRequestActive,
+                updatePreview = { _, previewText, finalizing ->
                     dependencies.emitGenerationStreamingPreview(
                         scene = GenerationRequestScene.PLAN,
                         requestId = requestId,

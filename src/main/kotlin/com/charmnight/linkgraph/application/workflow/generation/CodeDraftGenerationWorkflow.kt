@@ -70,8 +70,9 @@ internal class CodeDraftGenerationWorkflow(
         )
         val previewUpdater = if (presentation.requestState.streaming) {
             dependencies.asyncRequestLifecycle.createStreamingPreviewUpdater(
-                requestId,
-                { _, previewText, finalizing ->
+                requestId = requestId,
+                isRequestActive = dependencies.asyncRequestLifecycle::isCodeDraftRequestActive,
+                updatePreview = { _, previewText, finalizing ->
                     dependencies.emitGenerationStreamingPreview(
                         scene = GenerationRequestScene.CODE_DRAFT,
                         requestId = requestId,

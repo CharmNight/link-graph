@@ -69,6 +69,15 @@ sealed interface GraphEditorApplicationEvent {
     data class DiffModeShown(val graph: GraphDocument, val diff: GraphDiff) : GraphEditorApplicationEvent
     /** 同步预览准备就绪，包含待同步条目列表 */
     data class SyncPreviewReady(val items: List<SyncPreviewItem>) : GraphEditorApplicationEvent
+    /** 当前 generation 的异步请求资格已整体失效，只清理 requestId 匹配的运行态。 */
+    data class AsyncRequestsInvalidated(
+        val qaRequestId: Long? = null,
+        val diffReviewRequestId: Long? = null,
+        val beautificationRequestId: Long? = null,
+        val generationPlanRequestId: Long? = null,
+        val generationPlanDiscussionRequestId: Long? = null,
+        val codeDraftRequestId: Long? = null,
+    ) : GraphEditorApplicationEvent
 
     /** 用于在状态栏向用户展示的反馈消息，可控制是否保留先前状态类型 */
     data class Feedback(

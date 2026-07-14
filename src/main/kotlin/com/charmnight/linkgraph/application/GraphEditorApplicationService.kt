@@ -5,6 +5,7 @@ import com.charmnight.linkgraph.application.composition.ApplicationCommandCompos
 import com.charmnight.linkgraph.application.composition.ApplicationWorkflowComposition
 import com.charmnight.linkgraph.application.composition.ApplicationWorkflows
 import com.charmnight.linkgraph.application.composition.InfrastructureComposition
+import com.charmnight.linkgraph.application.composition.LifecycleLazy
 import com.charmnight.linkgraph.application.composition.WorkflowComposition
 import com.charmnight.linkgraph.application.runtime.LinkGraphProjectRuntimeHooks
 import com.charmnight.linkgraph.application.workflow.generation.CodeDraftApplyWorkflow
@@ -35,7 +36,7 @@ internal class GraphEditorApplicationService(
         get() = project.getService(LinkGraphProjectRuntimeHooks::class.java)
 
     /** 共享基础设施协作者集合；惰性初始化以避免循环依赖。 */
-    private val infrastructure: InfrastructureComposition by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    private val infrastructure: InfrastructureComposition by lazy {
         InfrastructureComposition(
             project = project,
             logger = logger,
@@ -43,16 +44,20 @@ internal class GraphEditorApplicationService(
     }
 
     /** 各工作流装配集合；惰性初始化以保证装配顺序。 */
-    private val workflows: WorkflowComposition by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        WorkflowComposition(
-            project = project,
-            logger = logger,
-            infrastructure = infrastructure,
-        )
-    }
+    private val workflowsDelegate = LifecycleLazy(
+        initializer = {
+            WorkflowComposition(
+                project = project,
+                logger = logger,
+                infrastructure = infrastructure,
+            )
+        },
+        disposer = WorkflowComposition::dispose,
+    )
+    private val workflows: WorkflowComposition by workflowsDelegate
 
     /** 应用工作流集合包装器，把单个工作流统一暴露给命令派发层。 */
-    private val workflowComposition by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    private val workflowComposition by lazy {
         ApplicationWorkflowComposition(
             workflowsProvider = {
                 ApplicationWorkflows(
@@ -78,16 +83,21 @@ internal class GraphEditorApplicationService(
     }
 
     /** 应用命令派发器；惰性初始化以集中装配各命令处理器。 */
-    val commandDispatcher: ApplicationCommandDispatcher by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        ApplicationCommandComposition(
-            workflows = workflowComposition.workflows(),
-            openCodeDraftNativeDiffHook = { runtimeHooks.openCodeDraftNativeDiff },
-        ).dispatcher()
-    }
+    private val commandDispatcherDelegate = LifecycleLazy(
+        initializer = {
+            ApplicationCommandComposition(
+                workflows = workflowComposition.workflows(),
+                openCodeDraftNativeDiffHook = { runtimeHooks.openCodeDraftNativeDiff },
+            ).dispatcher()
+        },
+        disposer = {},
+    )
+    val commandDispatcher: ApplicationCommandDispatcher by commandDispatcherDelegate
 
     /** 释放工作流持有的资源。 */
     override fun dispose() {
-        workflows.subjectFlow.dispose()
+        commandDispatcherDelegate.dispose()
+        workflowsDelegate.dispose()
     }
 
     companion object {

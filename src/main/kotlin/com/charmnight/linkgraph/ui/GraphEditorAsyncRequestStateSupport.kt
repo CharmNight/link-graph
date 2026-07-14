@@ -26,6 +26,34 @@ internal class GraphEditorAsyncRequestStateSupport(
     /** 把状态变更函数应用到当前编辑器状态快照的回调（通常委托给 GraphEditor ViewModel）。 */
     private val mutate: ((GraphEditorStateSnapshot) -> GraphEditorStateSnapshot) -> Unit,
 ) {
+    /** 统一结束已失效 generation 中仍在运行的六类 UI 请求态。 */
+    fun invalidateRunningRequests(
+        qaRequestId: Long?,
+        diffReviewRequestId: Long?,
+        beautificationRequestId: Long?,
+        generationPlanRequestId: Long?,
+        generationPlanDiscussionRequestId: Long?,
+        codeDraftRequestId: Long?,
+    ): Boolean {
+        var changed = false
+        mutate { currentState ->
+            val nextState = currentState.copy(
+                qaRequestState = currentState.qaRequestState.idleIfRunning(qaRequestId),
+                diffReviewRequestState = currentState.diffReviewRequestState.idleIfRunning(diffReviewRequestId),
+                graphBeautificationRequestState =
+                    currentState.graphBeautificationRequestState.idleIfRunning(beautificationRequestId),
+                generationPlanRequestState =
+                    currentState.generationPlanRequestState.idleIfRunning(generationPlanRequestId),
+                generationPlanDiscussionRequestState =
+                    currentState.generationPlanDiscussionRequestState.idleIfRunning(generationPlanDiscussionRequestId),
+                codeDraftRequestState = currentState.codeDraftRequestState.idleIfRunning(codeDraftRequestId),
+            )
+            changed = nextState != currentState
+            nextState
+        }
+        return changed
+    }
+
     /**
      * 记录一次问答结果：写入 qaResult、更新请求态、登记到结果仓；
      * 可选追加一条助手轮次引用，否则只更新当前助手上下文。

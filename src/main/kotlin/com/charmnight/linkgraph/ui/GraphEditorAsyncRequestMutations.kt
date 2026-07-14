@@ -16,3 +16,11 @@ internal fun AsyncRequestState.updatedPreviewOrNull(
         finalizingStructuredResult = finalizingStructuredResult,
     )
 }
+
+/** 失效时只清理 ID 匹配的运行中请求，保留新 generation 和已经完成的结果。 */
+internal fun AsyncRequestState.idleIfRunning(invalidatedRequestId: Long?): AsyncRequestState =
+    if (invalidatedRequestId != null && phase == AsyncRequestPhase.RUNNING && requestId == invalidatedRequestId) {
+        AsyncRequestState()
+    } else {
+        this
+    }

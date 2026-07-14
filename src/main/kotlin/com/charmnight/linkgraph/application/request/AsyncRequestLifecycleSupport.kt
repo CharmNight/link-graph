@@ -24,68 +24,81 @@ internal class AsyncRequestLifecycleSupport(
     private val project: Project,
     /** 测试环境下的超时覆盖值。 */
     private val timeoutMillisSupplier: () -> Long?,
+    /** 请求代际失效后同步通知表现层退出仍在运行的状态。 */
+    private val onRequestsInvalidated: (InvalidatedAsyncRequests) -> Unit = {},
 ) {
     // P2-1 真正的架构分解：线程调度委托给独立的 AsyncTaskDispatcher
     internal val taskDispatcher = AsyncTaskDispatcher(project)
-    /** 图问答请求跟踪器。 */
-    private val qaRequestTracker = AsyncRequestTracker()
-    /** diff 审核请求跟踪器。 */
-    private val diffReviewRequestTracker = AsyncRequestTracker()
-    /** 生成计划请求跟踪器。 */
-    private val generationPlanRequestTracker = AsyncRequestTracker()
-    /** 实现建议追问请求跟踪器。 */
-    private val generationPlanDiscussionRequestTracker = AsyncRequestTracker()
-    /** 代码草稿请求跟踪器。 */
-    private val codeDraftRequestTracker = AsyncRequestTracker()
-    /** 链路讲解请求跟踪器。 */
-    private val beautificationRequestTracker = AsyncRequestTracker()
+    /** 所有异步请求共享的 generation 与活跃请求注册表。 */
+    private val requestRegistry = AsyncRequestRegistry()
 
     /** 标记一次新的图问答请求开始，返回该请求的唯一 ID 用于后续完成或取消。 */
-    fun beginQaRequest(): Long = qaRequestTracker.beginRequest()
+    fun beginQaRequest(): Long = requestRegistry.beginRequest(AsyncRequestScene.QA)
 
     /** 完成指定 ID 的图问答请求，返回是否确实由本次调用关闭了该请求。 */
-    fun completeQaRequest(requestId: Long): Boolean = qaRequestTracker.finishRequest(requestId)
+    fun completeQaRequest(requestId: Long): Boolean =
+        requestRegistry.finishRequest(AsyncRequestScene.QA, requestId)
+
+    fun isQaRequestActive(requestId: Long): Boolean =
+        requestRegistry.isRequestActive(AsyncRequestScene.QA, requestId)
 
     /** 标记一次新的图 diff 评审请求开始，返回唯一请求 ID。 */
-    fun beginDiffReviewRequest(): Long = diffReviewRequestTracker.beginRequest()
+    fun beginDiffReviewRequest(): Long = requestRegistry.beginRequest(AsyncRequestScene.DIFF_REVIEW)
 
     /** 完成指定 ID 的图 diff 评审请求。 */
-    fun completeDiffReviewRequest(requestId: Long): Boolean = diffReviewRequestTracker.finishRequest(requestId)
+    fun completeDiffReviewRequest(requestId: Long): Boolean =
+        requestRegistry.finishRequest(AsyncRequestScene.DIFF_REVIEW, requestId)
+
+    fun isDiffReviewRequestActive(requestId: Long): Boolean =
+        requestRegistry.isRequestActive(AsyncRequestScene.DIFF_REVIEW, requestId)
 
     /** 标记一次新的生成计划请求开始，返回唯一请求 ID。 */
-    fun beginGenerationPlanRequest(): Long = generationPlanRequestTracker.beginRequest()
+    fun beginGenerationPlanRequest(): Long = requestRegistry.beginRequest(AsyncRequestScene.GENERATION_PLAN)
 
     /** 完成指定 ID 的生成计划请求。 */
-    fun completeGenerationPlanRequest(requestId: Long): Boolean = generationPlanRequestTracker.finishRequest(requestId)
+    fun completeGenerationPlanRequest(requestId: Long): Boolean =
+        requestRegistry.finishRequest(AsyncRequestScene.GENERATION_PLAN, requestId)
+
+    fun isGenerationPlanRequestActive(requestId: Long): Boolean =
+        requestRegistry.isRequestActive(AsyncRequestScene.GENERATION_PLAN, requestId)
 
     /** 标记一次新的实现建议追问请求开始，返回唯一请求 ID。 */
-    fun beginGenerationPlanDiscussionRequest(): Long = generationPlanDiscussionRequestTracker.beginRequest()
+    fun beginGenerationPlanDiscussionRequest(): Long =
+        requestRegistry.beginRequest(AsyncRequestScene.GENERATION_PLAN_DISCUSSION)
 
     /** 完成指定 ID 的实现建议追问请求。 */
-    fun completeGenerationPlanDiscussionRequest(requestId: Long): Boolean = generationPlanDiscussionRequestTracker.finishRequest(requestId)
+    fun completeGenerationPlanDiscussionRequest(requestId: Long): Boolean =
+        requestRegistry.finishRequest(AsyncRequestScene.GENERATION_PLAN_DISCUSSION, requestId)
+
+    fun isGenerationPlanDiscussionRequestActive(requestId: Long): Boolean =
+        requestRegistry.isRequestActive(AsyncRequestScene.GENERATION_PLAN_DISCUSSION, requestId)
 
     /** 标记一次新的代码草稿生成请求开始，返回唯一请求 ID。 */
-    fun beginCodeDraftRequest(): Long = codeDraftRequestTracker.beginRequest()
+    fun beginCodeDraftRequest(): Long = requestRegistry.beginRequest(AsyncRequestScene.CODE_DRAFT)
 
     /** 完成指定 ID 的代码草稿生成请求。 */
-    fun completeCodeDraftRequest(requestId: Long): Boolean = codeDraftRequestTracker.finishRequest(requestId)
+    fun completeCodeDraftRequest(requestId: Long): Boolean =
+        requestRegistry.finishRequest(AsyncRequestScene.CODE_DRAFT, requestId)
+
+    fun isCodeDraftRequestActive(requestId: Long): Boolean =
+        requestRegistry.isRequestActive(AsyncRequestScene.CODE_DRAFT, requestId)
 
     /** 标记一次新的链路讲解请求开始，返回唯一请求 ID。 */
-    fun beginBeautificationRequest(): Long = beautificationRequestTracker.beginRequest()
+    fun beginBeautificationRequest(): Long = requestRegistry.beginRequest(AsyncRequestScene.BEAUTIFICATION)
 
     /** 完成指定 ID 的链路讲解请求。 */
-    fun completeBeautificationRequest(requestId: Long): Boolean = beautificationRequestTracker.finishRequest(requestId)
+    fun completeBeautificationRequest(requestId: Long): Boolean =
+        requestRegistry.finishRequest(AsyncRequestScene.BEAUTIFICATION, requestId)
+
+    fun isBeautificationRequestActive(requestId: Long): Boolean =
+        requestRegistry.isRequestActive(AsyncRequestScene.BEAUTIFICATION, requestId)
 
     /**
      * 使所有异步分析类请求失效。
      */
     fun invalidateRequests() {
-        qaRequestTracker.invalidate()
-        diffReviewRequestTracker.invalidate()
-        generationPlanRequestTracker.invalidate()
-        generationPlanDiscussionRequestTracker.invalidate()
-        codeDraftRequestTracker.invalidate()
-        beautificationRequestTracker.invalidate()
+        val invalidatedRequests = requestRegistry.invalidateAll()
+        onRequestsInvalidated(invalidatedRequests)
     }
 
     /**
@@ -182,8 +195,13 @@ internal class AsyncRequestLifecycleSupport(
      */
     fun createStreamingPreviewUpdater(
         requestId: Long,
+        isRequestActive: (Long) -> Boolean,
         updatePreview: (Long, String, Boolean) -> Unit,
-    ): (String, Boolean) -> Unit = taskDispatcher.createStreamingPreviewUpdater(requestId, updatePreview)
+    ): (String, Boolean) -> Unit = taskDispatcher.createStreamingPreviewUpdater(requestId) { id, text, finalizing ->
+        if (isRequestActive(id)) {
+            updatePreview(id, text, finalizing)
+        }
+    }
 
     /**
      * 安排异步请求超时回调。

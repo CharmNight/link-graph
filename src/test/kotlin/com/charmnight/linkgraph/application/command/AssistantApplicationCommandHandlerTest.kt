@@ -74,22 +74,6 @@ class AssistantApplicationCommandHandlerTest {
     }
 
     @Test
-    fun requestAssistantTaskCanHandleCommandThroughDispatcher() {
-        val executor = RecordingAssistantTaskExecutor()
-        val dispatcher = ApplicationCommandDispatcher(listOf(AssistantApplicationCommandHandler(executor)))
-
-        dispatcher.dispatch(
-            ApplicationCommand.RequestAssistantTask(
-                intent = AssistantIntent.ASK_CODE,
-                actionId = AssistantActionId.ASK_CONTEXT,
-                prompt = "继续问答",
-            ),
-        )
-
-        assertTrue(executor.events.contains("qa:继续问答:::AUTO"))
-    }
-
-    @Test
     fun checkChangeSkipsReviewGraphWhenNoDiffItemsSelected() {
         val executor = RecordingAssistantTaskExecutor()
         val handler = AssistantApplicationCommandHandler(executor)

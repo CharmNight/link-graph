@@ -74,8 +74,9 @@ internal class GraphBeautificationReviewWorkflow(
         )
         val previewUpdater = if (presentation.requestState.streaming) {
             asyncRequestLifecycle.createStreamingPreviewUpdater(
-                requestId,
-                { _, previewText, finalizing ->
+                requestId = requestId,
+                isRequestActive = asyncRequestLifecycle::isBeautificationRequestActive,
+                updatePreview = { _, previewText, finalizing ->
                     emitReviewStreamingPreview(
                         scene = ReviewRequestScene.BEAUTIFICATION,
                         requestId = requestId,

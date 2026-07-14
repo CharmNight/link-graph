@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.application.composition
 
 import com.charmnight.linkgraph.application.command.ApplicationCommandDispatcher
+import com.charmnight.linkgraph.application.command.ApplicationCommandHandlers
 import com.charmnight.linkgraph.application.command.AssistantApplicationCommandHandler
 import com.charmnight.linkgraph.application.command.DebugApplicationCommandHandler
 import com.charmnight.linkgraph.application.command.DraftApplicationCommandHandler
@@ -31,9 +32,8 @@ import com.charmnight.linkgraph.application.workflow.ReviewGraphWorkflow
 /**
  * 应用命令组合根。
  *
- * 把所有 ApplicationCommandHandler 实例按固定顺序注册到统一的调度器中，
- * 上层只需拿到 dispatcher 即可派发任意命令，不需要关心各 handler 的依赖关系。
- * 命令处理器的注册顺序决定了匹配优先级，新增 handler 时需谨慎放置位置。
+ * 显式构造各业务 handler bean，并通过具名字段交给统一调度器。
+ * 上层只需拿到 dispatcher 即可派发任意命令，不依赖注册顺序或运行时类型匹配。
  */
 internal class ApplicationCommandComposition(
     /** 已组装好的所有工作流集合，作为各 handler 的依赖来源。 */
@@ -44,46 +44,55 @@ internal class ApplicationCommandComposition(
     /**
      * 构造聚合所有 handler 的命令调度器。
      */
-    fun dispatcher(): ApplicationCommandDispatcher =
-        ApplicationCommandDispatcher(
-            listOf(
-                SubjectApplicationCommandHandler(workflows.subjectFlow),
-                IndexedGraphApplicationCommandHandler(
-                    architectureGraphFlow = workflows.architectureGraphFlow,
-                    classDiagramFlow = workflows.classDiagramFlow,
-                    reviewGraphFlow = workflows.reviewGraphFlow,
-                ),
-                WorkspaceApplicationCommandHandler(
-                    workspaceFlow = workflows.workspaceFlow,
-                    workspaceChangeCoordinator = workflows.workspaceChangeCoordinator,
-                ),
-                SourceNavigationApplicationCommandHandler(
-                    sourceNavigationFlow = workflows.sourceNavigationFlow,
-                    invocationExpansionFlow = workflows.invocationExpansionFlow,
-                ),
-                AssistantApplicationCommandHandler(
-                    WorkflowAssistantTaskExecutor(
-                        reviewFlow = workflows.reviewFlow,
-                        reviewGraphFlow = workflows.reviewGraphFlow,
-                        generationPlanFlow = workflows.generationPlanFlow,
-                        generationDiscussionFlow = workflows.generationDiscussionFlow,
-                    ),
-                ),
-                ReviewApplicationCommandHandler(workflows.reviewFlow),
-                DraftApplicationCommandHandler(
-                    confirmedDraftCoordinator = workflows.confirmedDraftCoordinator,
-                    draftPatchFlow = workflows.draftPatchFlow,
-                ),
-                GenerationApplicationCommandHandler(
-                    generationPlanFlow = workflows.generationPlanFlow,
-                    generationDiscussionFlow = workflows.generationDiscussionFlow,
-                    codeDraftGenerationFlow = workflows.codeDraftGenerationFlow,
-                    codeDraftApplyFlow = workflows.codeDraftApplyFlow,
-                    openCodeDraftNativeDiffHook = openCodeDraftNativeDiffHook,
-                ),
-                DebugApplicationCommandHandler(workflows.debugFlow),
+    fun dispatcher(): ApplicationCommandDispatcher {
+        val subject = SubjectApplicationCommandHandler(workflows.subjectFlow)
+        val indexedGraph = IndexedGraphApplicationCommandHandler(
+            architectureGraphFlow = workflows.architectureGraphFlow,
+            classDiagramFlow = workflows.classDiagramFlow,
+            reviewGraphFlow = workflows.reviewGraphFlow,
+        )
+        val workspace = WorkspaceApplicationCommandHandler(
+            workspaceFlow = workflows.workspaceFlow,
+            workspaceChangeCoordinator = workflows.workspaceChangeCoordinator,
+        )
+        val sourceNavigation = SourceNavigationApplicationCommandHandler(
+            sourceNavigationFlow = workflows.sourceNavigationFlow,
+            invocationExpansionFlow = workflows.invocationExpansionFlow,
+        )
+        val assistant = AssistantApplicationCommandHandler(
+            WorkflowAssistantTaskExecutor(
+                reviewFlow = workflows.reviewFlow,
+                reviewGraphFlow = workflows.reviewGraphFlow,
+                generationPlanFlow = workflows.generationPlanFlow,
+                generationDiscussionFlow = workflows.generationDiscussionFlow,
             ),
         )
+        val review = ReviewApplicationCommandHandler(workflows.reviewFlow)
+        val draft = DraftApplicationCommandHandler(
+            confirmedDraftCoordinator = workflows.confirmedDraftCoordinator,
+            draftPatchFlow = workflows.draftPatchFlow,
+        )
+        val generation = GenerationApplicationCommandHandler(
+            codeDraftGenerationFlow = workflows.codeDraftGenerationFlow,
+            codeDraftApplyFlow = workflows.codeDraftApplyFlow,
+            openCodeDraftNativeDiffHook = openCodeDraftNativeDiffHook,
+        )
+        val debug = DebugApplicationCommandHandler(workflows.debugFlow)
+
+        return ApplicationCommandDispatcher(
+            ApplicationCommandHandlers(
+                subject = subject,
+                indexedGraph = indexedGraph,
+                workspace = workspace,
+                sourceNavigation = sourceNavigation,
+                assistant = assistant,
+                review = review,
+                draft = draft,
+                generation = generation,
+                debug = debug,
+            ),
+        )
+    }
 }
 
 /**
